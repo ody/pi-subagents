@@ -8,7 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **BREAKING (fork): a `model` passed to the `Agent` tool now beats an agent file's `model:` pin.** `model:` in frontmatter used to be a hard pin with no way to express "this agent's model unless the caller says otherwise"; a caller's value was dropped with no message. It now wins, for every agent, with no opt-in field. The other frontmatter-locked fields (`thinking`, `max_turns`, `inherit_context`, `isolated`, `isolation`, `run_in_background`) are unchanged. The displaced pin is disclosed to the user as `opus 4.6 (over pinned anthropic/claude-haiku-4-5)`, but nothing about the capability is added to any string the LLM reads — the `model` parameter's description instead tells it to set the field only when the user named a model. Scope enforcement follows the caller: a caller-supplied model is hard-checked against `enabledModels` whether or not the agent pins one, and a caller spelling that resolves to nothing refuses the spawn rather than demoting it to the pin. Local divergence from `tintinweb/pi-subagents`, which closed #106 as working-as-intended.
+
+- **BREAKING (fork): a `model` passed to the `Agent` tool now beats an agent file's `model:` pin.** A pin used to be absolute and a caller's value was dropped with no message, so there was no way to express "this agent's model unless the caller says otherwise". It now wins, for every agent, with no opt-in field. Local divergence from `tintinweb/pi-subagents`, which closed #106 as working-as-intended. Four consequences:
+  - The other frontmatter-locked fields are unchanged: `thinking`, `max_turns`, `inherit_context`, `isolated`, `isolation`, `run_in_background`.
+  - The displaced pin is disclosed to the user as `opus 4.6 (over pinned anthropic/claude-haiku-4-5)`.
+  - Nothing about the capability reaches a string the LLM reads. The `model` parameter's description tells it to set the field only when the user named a model.
+  - Scope and resolution follow the caller. A caller-supplied model is hard-checked against `enabledModels` whether or not the agent pins one, and a caller spelling that resolves to nothing refuses the spawn instead of demoting it to the pin.
 
 ## [0.19.0] - 2026-08-25
 
