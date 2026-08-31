@@ -232,7 +232,7 @@ describe("Agent tool result — effective model", () => {
     expect(result.details.tags).toContain("thinking: low (asked max)");
   });
 
-  it("discloses a model an agent file pinned over the caller's (#182)", async () => {
+  it("runs a caller's model over an agent file's pin, and discloses the pin", async () => {
     pinnedAgent("model: anthropic/claude-haiku-4-5\n");
     const tool = agentTool();
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
@@ -251,7 +251,48 @@ describe("Agent tool result — effective model", () => {
       ctx(),
     );
 
-    expect(result.details.modelName).toBe("haiku 4.5 (asked anthropic/claude-opus-4-6)");
+    expect(result.details.modelName).toBe("opus 4.6 (over pinned anthropic/claude-haiku-4-5)");
+  });
+
+  it("keeps the disclosure suffix out of the text the model reads", async () => {
+    // Requirement 2: the widget and the viewer may say which pin was displaced;
+    // the tool result the LLM reads may not, or it learns the capability from
+    // its own output.
+    pinnedAgent("model: anthropic/claude-haiku-4-5\n");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+
+    const result = await tool.execute(
+      "tc-5d",
+      {
+        prompt: "go",
+        description: "d",
+        subagent_type: "pinned",
+        model: "anthropic/claude-opus-4-6",
+        run_in_background: true,
+      },
+      undefined,
+      undefined,
+      ctx(),
+    );
+
+    const text = result.content.map((c: any) => c.text ?? "").join("\n");
+    expect(text).not.toContain("over pinned");
+    expect(text).not.toContain("asked");
+  });
+
+  it("never advertises the pin override in the Agent tool schema", async () => {
+    // The other half of requirement 2. The parameter is usable when the user
+    // names a model; the schema says nothing about pins or precedence, and it
+    // tells the model not to reach for it on its own.
+    const tool = agentTool();
+    const description = tool.parameters.properties.model.description as string;
+
+    expect(description).toBe(
+      'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). '
+        + "Only set this when the user named a model in their request; otherwise omit.",
+    );
+    expect(`${tool.description}\n${description}`).not.toMatch(/pin|frontmatter|override.*agent file/i);
   });
 
   it("stays quiet when the caller's spelling names the model that won", async () => {
@@ -273,10 +314,13 @@ describe("Agent tool result — effective model", () => {
     expect(result.details.modelName).toBe("haiku 4.5");
   });
 
-  it("discloses a spelling that names no available model at all", async () => {
+  it("refuses a caller spelling that names no available model, pin or no pin", async () => {
+    // Fail loud rather than demote to the pin: silently running on a model other
+    // than the one asked for is the substitution caller-wins exists to remove.
     pinnedAgent("model: anthropic/claude-haiku-4-5\n");
     const tool = agentTool();
-    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+    const run = vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+    run.mockClear();
 
     const result = await tool.execute(
       "tc-5c",
@@ -286,7 +330,8 @@ describe("Agent tool result — effective model", () => {
       ctx(),
     );
 
-    expect(result.details.modelName).toBe("haiku 4.5 (asked gpt-9)");
+    expect(result.content.map((c: any) => c.text ?? "").join("\n")).toContain("gpt-9");
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("says nothing about a request that was honored", async () => {

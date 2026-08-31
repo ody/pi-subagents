@@ -189,9 +189,13 @@ export function getPromptModeLabel(type: SubagentType): string | undefined {
 /**
  * Mode label is not included — callers add it where they want it.
  *
- * Both model forms come back so each surface can pick by width; the
- * "(asked X)" annotation is applied here rather than by callers, so a value the
- * spawn did not honor cannot be rendered as though it had been (#182).
+ * Both model forms come back so each surface can pick by width; the disclosure
+ * annotation is applied here rather than by callers, so a value the spawn did
+ * not honor cannot be rendered as though it had been (#182).
+ *
+ * The two annotations read in opposite directions because the two parameters
+ * have opposite precedence: `thinking` says "(asked X)" because the caller lost,
+ * `model` says "(over pinned X)" because the agent file did.
  */
 export function buildInvocationTags(
   invocation: AgentInvocation | undefined,
@@ -200,6 +204,8 @@ export function buildInvocationTags(
   if (!invocation) return { tags };
   const asked = (value: string | undefined, requested: string | undefined): string | undefined =>
     value && requested && requested !== value ? `${value} (asked ${requested})` : value;
+  const overPinned = (value: string | undefined, pinned: string | undefined): string | undefined =>
+    value && pinned && pinned !== value ? `${value} (over pinned ${pinned})` : value;
   const thinking = asked(invocation.thinking, invocation.requestedThinking);
   if (thinking) tags.push(`thinking: ${thinking}`);
   if (invocation.isolated) tags.push("isolated");
@@ -208,8 +214,8 @@ export function buildInvocationTags(
   if (invocation.runInBackground) tags.push("background");
   if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
   return {
-    modelName: asked(invocation.modelName, invocation.requestedModel),
-    modelId: asked(invocation.modelId, invocation.requestedModel),
+    modelName: overPinned(invocation.modelName, invocation.pinnedModel),
+    modelId: overPinned(invocation.modelId, invocation.pinnedModel),
     tags,
   };
 }

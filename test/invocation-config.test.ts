@@ -41,8 +41,10 @@ describe("resolveAgentInvocationConfig", () => {
       },
     );
 
-    expect(resolved.modelInput).toBe("provider/config-model");
-    expect(resolved.modelFromParams).toBe(false);
+    // `model` is the one field the caller wins, so it is excluded from the
+    // locked set the rest of this case asserts.
+    expect(resolved.modelInput).toBe("provider/param-model");
+    expect(resolved.modelFromParams).toBe(true);
     expect(resolved.thinking).toBe("high");
     expect(resolved.maxTurns).toBe(42);
     expect(resolved.inheritContext).toBe(false);
@@ -150,13 +152,47 @@ describe("resolveJoinMode", () => {
 });
 
 describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
-  it("records the caller's values when the agent file outranks them", () => {
+  it("records the losing side of each disagreement", () => {
+    // Opposite provenance per field, because the precedence is opposite:
+    // frontmatter outranks a caller's `thinking`, a caller outranks a `model` pin.
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ model: "provider/config-model", thinking: "low" }),
       { model: "provider/param-model", thinking: "max" },
     );
 
-    expect(resolved.overridden).toEqual({ thinking: "max", model: "provider/param-model" });
+    expect(resolved.overridden).toEqual({ thinking: "max", model: "provider/config-model" });
+  });
+
+  it("lets a caller-supplied model beat a frontmatter pin", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ model: "provider/config-model" }),
+      { model: "provider/param-model" },
+    );
+
+    expect(resolved.modelInput).toBe("provider/param-model");
+  });
+
+  it("reports a winning caller model as caller-supplied even against a pin", () => {
+    // The scope-policy regression guard. `modelFromParams` is what splits
+    // `checkModelScope` between hard refusal and warn-and-proceed; a caller model
+    // that wins precedence while reporting itself as frontmatter-sourced would
+    // downgrade an out-of-scope refusal to a toast.
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ model: "provider/config-model" }),
+      { model: "provider/param-model" },
+    );
+
+    expect(resolved.modelFromParams).toBe(true);
+  });
+
+  it("still lets a pinned thinking level outrank the caller's", () => {
+    // Requirement 4: only `model` flipped.
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ thinking: "low" }),
+      { thinking: "max" },
+    );
+
+    expect(resolved.thinking).toBe("low");
   });
 
   it("records nothing when the caller got what they asked for", () => {
@@ -189,5 +225,14 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
     );
 
     expect(resolved.overridden).toEqual({ thinking: "max", model: undefined });
+  });
+
+  it("records the pin alone when only the model disagreed", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ model: "provider/config-model" }),
+      { model: "provider/param-model" },
+    );
+
+    expect(resolved.overridden).toEqual({ thinking: undefined, model: "provider/config-model" });
   });
 });

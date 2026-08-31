@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING (fork): a `model` passed to the `Agent` tool now beats an agent file's `model:` pin.** `model:` in frontmatter used to be a hard pin with no way to express "this agent's model unless the caller says otherwise"; a caller's value was dropped with no message. It now wins, for every agent, with no opt-in field. The other frontmatter-locked fields (`thinking`, `max_turns`, `inherit_context`, `isolated`, `isolation`, `run_in_background`) are unchanged. The displaced pin is disclosed to the user as `opus 4.6 (over pinned anthropic/claude-haiku-4-5)`, but nothing about the capability is added to any string the LLM reads — the `model` parameter's description instead tells it to set the field only when the user named a model. Scope enforcement follows the caller: a caller-supplied model is hard-checked against `enabledModels` whether or not the agent pins one, and a caller spelling that resolves to nothing refuses the spawn rather than demoting it to the pin. Local divergence from `tintinweb/pi-subagents`, which closed #106 as working-as-intended.
+
 ## [0.19.0] - 2026-08-25
 
 > **⚠️ Breaking — this release requires pi 0.84.0 or newer** (`peerDependencies` moves from `>=0.81.0`). `SubagentWorkflow` needs two host APIs that do not exist below it, and both fail the typecheck rather than degrading quietly — see the `Changed` entry below for which, and why neither was worth reimplementing to hold the old floor. npm flags an older pi at install time.

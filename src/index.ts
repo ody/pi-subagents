@@ -1608,7 +1608,7 @@ Terse command-style prompts produce shallow, generic work.
       model: Type.Optional(
         Type.String({
           description:
-            'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Omit to use the agent type\'s default.',
+            'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Only set this when the user named a model in their request; otherwise omit.',
         }),
       ),
       thinking: Type.Optional(
@@ -1807,7 +1807,9 @@ Terse command-style prompts produce shallow, generic work.
         defaultRunInBackground: getBackgroundByDefault(),
       });
 
-      // Resolve model from agent config first; tool-call params only fill gaps.
+      // Caller-supplied model first; the agent file's pin is the fallback. An
+      // unresolvable caller spelling is a hard error rather than a quiet demotion
+      // to the pin — same policy as an out-of-scope caller model.
       let model = ctx.model;
       if (resolvedConfig.modelInput) {
         const resolved = resolveModel(resolvedConfig.modelInput, ctx.modelRegistry);
@@ -1856,16 +1858,16 @@ Terse command-style prompts produce shallow, generic work.
       // This is the pre-session snapshot — agent-manager overwrites it with the
       // effective values the moment a session reports them.
       const { modelName, modelId } = model ? describeModel(model) : { modelName: undefined, modelId: undefined };
-      // What the caller SPELLED, kept only if it names a different model than the
-      // one that won. Model input is fuzzy — `"haiku"` and
+      // The agent file's pin, kept only if it names a different model than the one
+      // that won. Model input is fuzzy — `"haiku"` and
       // `"anthropic/claude-haiku-4-5"` are the same model — so comparing the two
-      // strings would disclose an override that never happened. A spelling that
+      // strings would disclose an override that never happened. A pin that
       // resolves to nothing is still worth disclosing: it cannot have taken effect.
-      const askedModel = ((asked: string | undefined) => {
-        if (!asked) return undefined;
-        const resolvedAsked = resolveModel(asked, ctx.modelRegistry);
-        if (typeof resolvedAsked === "string") return asked;
-        return resolvedAsked.provider === model?.provider && resolvedAsked.id === model?.id ? undefined : asked;
+      const pinnedModel = ((pin: string | undefined) => {
+        if (!pin) return undefined;
+        const resolvedPin = resolveModel(pin, ctx.modelRegistry);
+        if (typeof resolvedPin === "string") return pin;
+        return resolvedPin.provider === model?.provider && resolvedPin.id === model?.id ? undefined : pin;
       })(resolvedConfig.overridden?.model);
       const effectiveMaxTurns = normalizeMaxTurns(resolvedConfig.maxTurns ?? getDefaultMaxTurns());
       const agentInvocation: AgentInvocation = {
@@ -1875,7 +1877,9 @@ Terse command-style prompts produce shallow, generic work.
         // Only set where the agent file outranked the caller, so the surfaces can
         // disclose a parameter that was accepted but could not take effect (#182).
         requestedThinking: resolvedConfig.overridden?.thinking,
-        requestedModel: askedModel,
+        // The mirror image: `model` precedence runs the other way, so what gets
+        // disclosed is the pin the caller displaced.
+        pinnedModel,
         // Explicit value only — the default fallback would just add noise.
         // Normalize so `0` (unlimited) doesn't surface as a misleading "max turns: 0".
         maxTurns: normalizeMaxTurns(resolvedConfig.maxTurns),

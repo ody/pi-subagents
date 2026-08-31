@@ -113,7 +113,10 @@ function resolvedInfo(record: AgentRecord | undefined) {
     modelId: invocation.modelId,
     thinking: invocation.thinking,
     requestedThinking: invocation.requestedThinking,
-    requestedModel: invocation.requestedModel,
+    // No `requestedModel`: this path resolves `request.model ?? config?.model`,
+    // so the script's model always wins and there is never a displaced request
+    // to report. The Agent tool's own disclosure runs the other way (it names
+    // the pin a caller displaced) and does not belong in this shape.
   };
 }
 

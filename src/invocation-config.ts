@@ -107,10 +107,16 @@ export function resolveAgentInvocationConfig(
   isolated: boolean;
   isolation?: IsolationMode;
   /**
-   * Caller parameters an agent file's frontmatter outranked, so the surfaces can
-   * say "(asked X)" instead of presenting the effective value as the requested
-   * one (#182). Populated only where both sides named something and they
+   * The losing side of a caller-vs-frontmatter disagreement, so the surfaces can
+   * disclose it instead of presenting the effective value as the only one in
+   * play (#182). Populated only where both sides named something and they
    * disagree — a caller who asked for what they got was still honored.
+   *
+   * The two fields carry opposite provenance, because the two parameters have
+   * opposite precedence in this fork:
+   *
+   * - `thinking` holds the CALLER's value; frontmatter outranks it.
+   * - `model` holds the FRONTMATTER pin; the caller outranks it.
    *
    * `max_turns` is deliberately absent: no surface renders a requested-vs-
    * effective turn limit, so recording one would be dead data.
@@ -127,14 +133,24 @@ export function resolveAgentInvocationConfig(
     && agentConfig.thinking !== params.thinking
     ? params.thinking as ThinkingLevel
     : undefined;
+  // The pin, not the caller's value: `model` precedence is caller-wins here, so
+  // the frontmatter side is the one that got dropped and therefore the one worth
+  // disclosing.
   const overriddenModel = agentConfig?.model != null && params.model != null
     && agentConfig.model !== params.model
-    ? params.model
+    ? agentConfig.model
     : undefined;
 
   return {
-    modelInput: agentConfig?.model ?? params.model,
-    modelFromParams: agentConfig?.model == null && params.model != null,
+    // Caller-wins, unlike every other field here: a `model` passed to the tool
+    // takes effect even against a frontmatter pin, so `model:` in an agent file
+    // means "this agent's model unless the caller says otherwise".
+    modelInput: params.model ?? agentConfig?.model,
+    // Must track the line above. Provenance feeds `checkModelScope`, whose
+    // policy split is hard-refusal for caller-supplied and warn-only for
+    // frontmatter; reporting a winning caller model as frontmatter-sourced would
+    // silently downgrade an out-of-scope refusal to a warning.
+    modelFromParams: params.model != null,
     thinking: (agentConfig?.thinking ?? params.thinking) as ThinkingLevel | undefined,
     maxTurns: agentConfig?.maxTurns ?? params.max_turns,
     inheritContext: agentConfig?.inheritContext ?? params.inherit_context ?? false,
