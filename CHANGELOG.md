@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The displaced pin is disclosed to the user as `opus 4.6 (over pinned anthropic/claude-haiku-4-5)`.
   - Nothing about the capability reaches a string the LLM reads. The `model` parameter's description tells it to set the field only when the user named a model.
   - Scope and resolution follow the caller. A caller-supplied model is hard-checked against `enabledModels` whether or not the agent pins one, and a caller spelling that resolves to nothing refuses the spawn instead of demoting it to the pin.
+- **The `Agent` tool's delegation guideline no longer names which tools to use for non-delegated work.** It read "Otherwise use direct tools (read, grep, find) when the target is already known" and now reads "Otherwise handle it yourself when the target is already known". The delegation advice is the point and it is unchanged; the parenthetical was the problem.
+  - A `promptGuidelines` entry renders inside pi's `Guidelines:` block, next to the tool schemas, which is the highest-attention position in the prompt for a tool-choice decision.
+  - Naming three built-ins there silently overrode whatever tool policy the host session had configured. A session whose search goes through a language-server-backed MCP server, for instance, got told to grep by a package that has no stake in the question.
+  - This is a package about delegation. Which tool reads a file is not its call to make, so the fix is to stop prescribing rather than to prescribe something else.
 
 ## [0.19.0] - 2026-08-25
 
