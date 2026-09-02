@@ -1,10 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../src/agent-types.js";
 import subagentsExtension from "../src/index.js";
-import type { AgentConfig, AgentRecord } from "../src/types.js";
-import { type AgentActivity, AgentWidget } from "../src/ui/agent-widget.js";
+import type { AgentActivity, AgentConfig, AgentRecord } from "../src/types.js";
+import { AgentWidget } from "../src/ui/agent-widget.js";
 import { ConversationViewer } from "../src/ui/conversation-viewer.js";
 import { FleetList, type FleetUICtx } from "../src/ui/fleet-list.js";
+
+/** Fold an activity map into a fake manager: the widget reads `getActivity`. */
+function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
+  return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;
+}
+
 
 const TYPE = "colored-reviewer";
 const DISPLAY_NAME = "Code Reviewer";
@@ -153,8 +159,7 @@ describe("custom agent color runtime surfaces", () => {
   it("renders the above-editor Agent widget with the display name and color", () => {
     const record = makeRecord();
     const widget = new AgentWidget(
-      { listAgents: () => [record] } as unknown as ConstructorParameters<typeof AgentWidget>[0],
-      new Map([[record.id, makeActivity()]]),
+      withActivity({ listAgents: () => [record] } as unknown as ConstructorParameters<typeof AgentWidget>[0], new Map([[record.id, makeActivity()]])),
       () => "all",
     );
     let factory: WidgetFactory | undefined;
@@ -189,7 +194,7 @@ describe("custom agent color runtime surfaces", () => {
       abort: vi.fn(() => true),
       steer: vi.fn(() => true),
     } as unknown as ConstructorParameters<typeof FleetList>[0];
-    const fleet = new FleetList(manager, new Map());
+    const fleet = new FleetList(withActivity(manager, new Map()));
     let factory: WidgetFactory | undefined;
     fleet.setUICtx({
       setWidget: (_key, content) => {

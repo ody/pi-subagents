@@ -36,10 +36,10 @@ import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
 import { applyAndEmitLoaded, loadSettings, type SubagentsSettings, saveAndEmitChanged, type ToolDescriptionMode } from "./settings.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
-import { type AgentConfig, type AgentInvocation, type AgentMentionMode, type AgentRecord, type JoinMode, type NotificationDetails, type SubagentType, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
+import { type AgentActivity, type AgentConfig, type AgentInvocation, type AgentMentionMode, type AgentRecord, type JoinMode, type NotificationDetails, type SubagentType, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
+import { buildAgentTree } from "./ui/agent-tree.js";
 import {
-  type AgentActivity,
   type AgentDetails,
   AgentWidget,
   buildInvocationTags,
@@ -101,50 +101,22 @@ function formatLifetimeTokens(o: { lifetimeUsage: LifetimeUsage }): string {
 }
 
 /**
- * Create an AgentActivity state and spawn callbacks for tracking tool usage.
- * Used by both foreground and background paths to avoid duplication.
+ * Spawn callbacks that only repaint.
+ *
+ * The activity state itself lives on `AgentManager` (see `getActivity`), which
+ * updates it for every spawn path; these callbacks exist so the tool result,
+ * widget and FleetView redraw when it changes.
  */
-function createActivityTracker(maxTurns?: number, onStreamUpdate?: () => void) {
-  const state: AgentActivity = {
-    activeTools: new Map(),
-    toolUses: 0,
-    turnCount: 1,
-    maxTurns,
-    responseText: "",
-    session: undefined,
-  };
-
-  const callbacks = {
-    onToolActivity: (activity: { type: "start" | "end"; toolName: string }) => {
-      if (activity.type === "start") {
-        state.activeTools.set(activity.toolName + "_" + Date.now(), activity.toolName);
-      } else {
-        for (const [key, name] of state.activeTools) {
-          if (name === activity.toolName) { state.activeTools.delete(key); break; }
-        }
-        state.toolUses++;
-      }
-      onStreamUpdate?.();
-    },
-    onTextDelta: (_delta: string, fullText: string) => {
-      state.responseText = fullText;
-      onStreamUpdate?.();
-    },
-    onTurnEnd: (turnCount: number) => {
-      state.turnCount = turnCount;
-      onStreamUpdate?.();
-    },
-    onSessionCreated: (session: any) => {
-      state.session = session;
-    },
+function createActivityTracker(onStreamUpdate?: () => void) {
+  return {
+    onToolActivity: (_activity: { type: "start" | "end"; toolName: string }) => { onStreamUpdate?.(); },
+    onTextDelta: (_delta: string, _fullText: string) => { onStreamUpdate?.(); },
+    onTurnEnd: (_turnCount: number) => { onStreamUpdate?.(); },
+    onSessionCreated: (_session: any) => {},
     // Spend is accumulated on the AgentRecord (agent-manager), which is what
     // every surface reads; this callback exists here only to repaint on it.
-    onAssistantUsage: (_usage: LifetimeUsage) => {
-      onStreamUpdate?.();
-    },
+    onAssistantUsage: (_usage: LifetimeUsage) => { onStreamUpdate?.(); },
   };
-
-  return { state, callbacks };
 }
 
 /**
@@ -402,8 +374,7 @@ export default function (pi: ExtensionAPI) {
   // session on the next unrelated spawn, so every later reload keeps warning.
   reloadCustomAgents(strictAgentFiles);
 
-  // ---- Agent activity tracking + widget ----
-  const agentActivity = new Map<string, AgentActivity>();
+  // ---- Widget ----
 
   // ---- Usage reporting (both off by default; see SubagentsSettings) ----
   /** Attach subagent spend to tool results, so the parent session counts it. */
@@ -480,12 +451,11 @@ export default function (pi: ExtensionAPI) {
       customType: "subagent-notification",
       content: notification + footer,
       display: true,
-      details: buildNotificationDetails(record, 500, agentActivity.get(record.id)),
+      details: buildNotificationDetails(record, 500, manager.getActivity(record.id)),
     }, { deliverAs: "followUp", triggerTurn: true });
   }
 
   function sendIndividualNudge(record: AgentRecord) {
-    agentActivity.delete(record.id);
     widget.markFinished(record.id);
     fleet.onAgentFinished(record.id);
     scheduleNudge(record.id, () => emitIndividualNudge(record));
@@ -495,7 +465,7 @@ export default function (pi: ExtensionAPI) {
   // ---- Group join manager ----
   const groupJoin = new GroupJoinManager(
     (records, partial) => {
-      for (const r of records) { agentActivity.delete(r.id); widget.markFinished(r.id); fleet.onAgentFinished(r.id); }
+      for (const r of records) { widget.markFinished(r.id); fleet.onAgentFinished(r.id); }
 
       const groupKey = `group:${records.map(r => r.id).join(",")}`;
       scheduleNudge(groupKey, () => {
@@ -509,9 +479,9 @@ export default function (pi: ExtensionAPI) {
           : `${unconsumed.length} agent(s) finished`;
 
         const [first, ...rest] = unconsumed;
-        const details = buildNotificationDetails(first, 300, agentActivity.get(first.id));
+        const details = buildNotificationDetails(first, 300, manager.getActivity(first.id));
         if (rest.length > 0) {
-          details.others = rest.map(r => buildNotificationDetails(r, 300, agentActivity.get(r.id)));
+          details.others = rest.map(r => buildNotificationDetails(r, 300, manager.getActivity(r.id)));
         }
 
         pi.sendMessage<NotificationDetails>({
@@ -590,7 +560,6 @@ export default function (pi: ExtensionAPI) {
 
     // Skip notification if result was already consumed via get_subagent_result
     if (record.resultConsumed) {
-      agentActivity.delete(record.id);
       widget.markFinished(record.id);
       fleet.onAgentFinished(record.id);
       widget.update();
@@ -687,12 +656,12 @@ export default function (pi: ExtensionAPI) {
     // built with `undefined` renders `↻3` where the Agent tool renders `↻3≤20`.
     // Like the tool's own, it is a prediction — editing the agent file mid-run
     // leaves the displayed ceiling stale.
-    const { state, callbacks } = createActivityTracker(resolveEffectiveMaxTurns(dispatch.type, options?.maxTurns));
     // Repaints are left to the manager's `onStart` callback, which already starts
     // the widget/fleet timers for agents that enter this way.
-    const id = manager.spawn(piRef, ctxRef, dispatch.type, prompt, { ...options, ...callbacks });
-    agentActivity.set(id, state);
-    return id;
+    return manager.spawn(piRef, ctxRef, dispatch.type, prompt, {
+      ...options,
+      maxTurns: options?.maxTurns ?? resolveEffectiveMaxTurns(dispatch.type, options?.maxTurns),
+    });
   };
 
   const spawnTopLevel = (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => {
@@ -1129,13 +1098,13 @@ export default function (pi: ExtensionAPI) {
   // everything else; "off" = hide the widget entirely. Read live at render time.
   let widgetMode: WidgetMode = "background";
   function getWidgetMode(): WidgetMode { return widgetMode; }
-  const widget = new AgentWidget(manager, agentActivity, getWidgetMode, isShowCostEnabled, isShowModelEnabled);
+  const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled);
   function setWidgetMode(m: WidgetMode): void { widgetMode = m; widget.update(); }
 
   // Claude Code-style FleetView: navigable list of main + subagents below the editor.
   // The last two arguments keep a conversation overlay opened here identical to
   // one opened from `/agents`: same setting on the way in, same persist out.
-  const fleet = new FleetList(manager, agentActivity, isShowCostEnabled, getViewerMarkdown,
+  const fleet = new FleetList(manager, isShowCostEnabled, getViewerMarkdown,
     (mode) => chooseViewerMarkdown(mode, currentCtx as unknown as ExtensionCommandContext | undefined));
   let fleetViewEnabled = true;
   function isFleetViewEnabled(): boolean { return fleetViewEnabled; }
@@ -1301,10 +1270,7 @@ export default function (pi: ExtensionAPI) {
     // this index, so it is written exactly once.
     const transcriptAnchor = existing.session?.messages.length ?? 0;
 
-    const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(opts.maxTurns);
-    // resumeAgent has no onSessionCreated — the session predates this run —
-    // so seed it directly, or the widget shows no context % for the agent.
-    bgState.session = existing.session;
+    const bgCallbacks = createActivityTracker();
 
     // No `signal`: a background spawn deliberately omits it, and a detached
     // resume must behave the same. Passing it would abort this agent when
@@ -1312,6 +1278,7 @@ export default function (pi: ExtensionAPI) {
     // run_in_background in that same turn keep going.
     const record = await manager.resume(id, prompt, undefined, {
       isBackground: true,
+      maxTurns: opts.maxTurns,
       onToolActivity: bgCallbacks.onToolActivity,
       onAssistantUsage: bgCallbacks.onAssistantUsage,
       // Fires when the run actually starts — immediately, or on queue
@@ -1333,7 +1300,6 @@ export default function (pi: ExtensionAPI) {
       batchFinalizeTimer = setTimeout(finalizeBatch, 100);
     }
 
-    agentActivity.set(id, bgState);
     // This agent already finished once, so the widget holds a finished-age
     // for it that is past the linger limit — without clearing it, the
     // resumed run's ✓/✗ line never renders and the agent just vanishes.
@@ -2038,7 +2004,7 @@ Terse command-style prompts produce shallow, generic work.
 
       // Background execution
       if (runInBackground) {
-        const { state: bgState, callbacks: bgCallbacks } = createActivityTracker(effectiveMaxTurns);
+        const bgCallbacks = createActivityTracker();
 
         // Wrap onSessionCreated to wire output file streaming.
         // The callback lazily reads record.outputFile (set right after spawn)
@@ -2098,7 +2064,6 @@ Terse command-style prompts produce shallow, generic work.
           batchFinalizeTimer = setTimeout(finalizeBatch, 100);
         }
 
-        agentActivity.set(id, bgState);
         widget.ensureTimer();
         widget.update();
         fleet.ensureTimer();
@@ -2136,11 +2101,20 @@ Terse command-style prompts produce shallow, generic work.
       // always when the limit is unset.
       let queuedAhead: number | undefined;
 
+      // Until `fgId` is known — the spawn may still be queued on a foreground
+      // slot — there is no record to read activity off, so the display falls
+      // back to an empty state carrying the turn ceiling this call asked for.
+      const emptyActivity: AgentActivity = {
+        activeTools: new Map(), toolUses: 0, turnCount: 1, maxTurns: effectiveMaxTurns, responseText: "",
+      };
+      const fgActivity = (): AgentActivity => (fgId ? manager.getActivity(fgId) : undefined) ?? emptyActivity;
+
       const streamUpdate = () => {
-        // Spend from the record, everything else from the live tracker. `fgId`
-        // is set in onSessionCreated below, which fires before the first
-        // assistant message — so nothing is spent while this reads zero.
+        // Spend from the record, everything else from the manager's live
+        // activity. `fgId` is set in onSessionCreated below, which fires before
+        // the first assistant message — so nothing is spent while this reads zero.
         const fgRecord = fgId ? manager.getRecord(fgId) : undefined;
+        const fgState = fgActivity();
         const details: AgentDetails = {
           ...detailBaseFor(fgRecord),
           toolUses: fgState.toolUses,
@@ -2166,7 +2140,7 @@ Terse command-style prompts produce shallow, generic work.
         });
       };
 
-      const { state: fgState, callbacks: fgCallbacks } = createActivityTracker(effectiveMaxTurns, streamUpdate);
+      const fgCallbacks = createActivityTracker(streamUpdate);
 
       // Wire session creation: register in widget + stream to output file.
       // The output file path is set synchronously after spawn (below),
@@ -2184,7 +2158,6 @@ Terse command-style prompts produce shallow, generic work.
         for (const a of manager.listAgents()) {
           if (a.session === session) {
             fgId = a.id;
-            agentActivity.set(a.id, fgState);
             widget.ensureTimer();
             fleet.ensureTimer();
             fleet.update();
@@ -2240,7 +2213,6 @@ Terse command-style prompts produce shallow, generic work.
         // ticking or a finished agent on the widget.
         clearInterval(spinnerInterval);
         if (fgId) {
-          agentActivity.delete(fgId);
           widget.markFinished(fgId);
           fleet.onAgentFinished(fgId);
         }
@@ -2250,7 +2222,7 @@ Terse command-style prompts produce shallow, generic work.
       // two describe the same work when the agent delegated to nested children.
       const tokenText = formatLifetimeTokens(record);
 
-      const details = buildDetails(detailBaseFor(record), record, fgState, { tokens: tokenText });
+      const details = buildDetails(detailBaseFor(record), record, fgActivity(), { tokens: tokenText });
 
       if (record.status === "error") {
         // Error headline + any partial output the run produced before failing.
@@ -2908,12 +2880,14 @@ Terse command-style prompts produce shallow, generic work.
     // Build select options
     const options: string[] = [];
 
-    // Running agents entry (only if there are active agents)
-    const agents = manager.listAgents().filter(isTopLevelAgent);
+    // Agents entry (only if there are any). Counts the whole hierarchy, nested
+    // and workflow-owned children included, because that is what the list it
+    // opens now shows — and "running" would misname a settled nested child.
+    const agents = manager.listAgents();
     if (agents.length > 0) {
       const running = agents.filter(a => a.status === "running" || a.status === "queued").length;
       const done = agents.filter(a => a.status === "completed" || a.status === "steered").length;
-      options.push(`Running agents (${agents.length}) — ${running} running, ${done} done`);
+      options.push(`Agents (${agents.length}) — ${running} running, ${done} done`);
     }
 
     // Agent types list
@@ -2950,7 +2924,7 @@ Terse command-style prompts produce shallow, generic work.
     const choice = await ctx.ui.select("Agents", options);
     if (!choice) return;
 
-    if (choice.startsWith("Running agents (")) {
+    if (choice.startsWith("Agents (")) {
       await showRunningAgents(ctx);
       await showAgentsMenu(ctx);
     } else if (choice.startsWith("Agent types (")) {
@@ -3039,8 +3013,16 @@ Terse command-style prompts produce shallow, generic work.
   }
 
   async function showRunningAgents(ctx: ExtensionCommandContext) {
-    const agents = manager.listAgents().filter(isTopLevelAgent);
-    if (agents.length === 0) {
+    // The whole hierarchy, not just the top level. Nested and workflow-owned
+    // children used to be filtered out here, which left them with no UI at all
+    // — nothing could watch, steer or stop one. Rows are indented by depth and
+    // a workflow's children sit under its run row.
+    const nodes = buildAgentTree<FleetWorkflow>({
+      records: manager.listAgents(),
+      workflows: fleetWorkflows(),
+      includeMain: false,
+    });
+    if (nodes.length === 0) {
       ctx.ui.notify("No agents.", "info");
       return;
     }
@@ -3048,14 +3030,23 @@ Terse command-style prompts produce shallow, generic work.
     // Numbered + item-paired. Two same-type agents spawned together with the
     // same description render identically here, and resolving the choice by
     // string match would open whichever came first.
-    const record = await selectItem(ctx.ui, "Running agents", agents, a => {
+    const node = await selectItem(ctx.ui, "Agents", nodes, n => {
+      const indent = "  ".repeat(n.depth);
+      if (n.kind === "workflow") {
+        const run = n.workflow;
+        return `${indent}workflow (${run.name}) · ${run.doneCount}/${run.totalCount} agents · ${run.status}`;
+      }
+      if (n.kind === "main") return `${indent}main`;
+      const a = n.record;
       const dn = getDisplayName(a.type);
       const dur = formatDuration(a.startedAt, a.completedAt);
-      return `${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}`;
+      const detached = n.orphan ? " · detached" : "";
+      return `${indent}${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}${detached}`;
     });
-    if (!record) return;
+    if (!node) return;
 
-    await viewAgentConversation(ctx, record);
+    if (node.kind === "workflow") await openWorkflowFromFleet(node.workflow.id, workflowMenuDeps);
+    else if (node.kind === "agent") await viewAgentConversation(ctx, node.record);
     // Back-navigation: re-show the list
     await showRunningAgents(ctx);
   }
@@ -3068,7 +3059,7 @@ Terse command-style prompts produce shallow, generic work.
 
     const { ConversationViewer, VIEWPORT_HEIGHT_PCT } = await import("./ui/conversation-viewer.js");
     const session = record.session;
-    const activity = agentActivity.get(record.id);
+    const activity = manager.getActivity(record.id);
 
     await ctx.ui.custom<undefined>(
       (tui, theme, keybindings, done) => {

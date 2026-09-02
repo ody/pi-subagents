@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { renderRunningAgentStatus } from "../src/index.js";
-import type { WidgetMode } from "../src/types.js";
-import { type AgentActivity, AgentWidget, fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-widget.js";
+import type { AgentActivity, WidgetMode } from "../src/types.js";
+import { AgentWidget, fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-widget.js";
+
+/** Fold an activity map into a fake manager: the widget reads `getActivity`. */
+function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
+  return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;
+}
+
 
 describe("formatSessionTokens", () => {
   const theme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => s };
@@ -68,13 +74,14 @@ describe("AgentWidget", () => {
 
   function makeRecord(
     id: string,
-    opts: { isBackground?: boolean; parentAgentId?: string; workflowId?: string } = {},
+    opts: { isBackground?: boolean; parentAgentId?: string; workflowId?: string; status?: string; completedAt?: number } = {},
   ) {
     return {
       id,
       type: "general-purpose",
       description: `${id} description`,
-      status: "running",
+      status: opts.status ?? "running",
+      completedAt: opts.completedAt,
       toolUses: 0,
       startedAt: Date.now(),
       lifetimeUsage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -89,8 +96,7 @@ describe("AgentWidget", () => {
   /** Render the widget for a manager and return the produced lines ("" if nothing rendered). */
   function renderLines(manager: unknown, activityId: string, mode?: () => WidgetMode, showModel = false): string {
     const widget = new AgentWidget(
-      manager as any,
-      new Map([[activityId, makeActivity()]]),
+      withActivity(manager as any, new Map([[activityId, makeActivity()]])),
       mode,
       () => false,
       () => showModel,
@@ -120,6 +126,32 @@ describe("AgentWidget", () => {
     };
     expect(renderLines(manager, "nested", () => "all")).toBe("");
     expect(renderLines(manager, "nested", () => "background")).toBe("");
+  });
+
+  it("indents a running nested child under its parent", () => {
+    const manager = {
+      listAgents: () => [
+        makeRecord("parent", { isBackground: true }),
+        makeRecord("child", { isBackground: true, parentAgentId: "parent" }),
+      ],
+    };
+    const lines = renderLines(manager, "parent", () => "all").split("\n");
+    const parent = lines.findIndex(l => l.includes("parent description"));
+    const child = lines.findIndex(l => l.includes("child description"));
+    // Header + activity line each, child immediately after its parent's pair.
+    expect(parent).toBe(1);
+    expect(child).toBe(3);
+    expect(lines[child]?.startsWith("   ")).toBe(true);
+  });
+
+  it("leaves a settled nested child to FleetView", () => {
+    const manager = {
+      listAgents: () => [
+        makeRecord("parent", { isBackground: true }),
+        makeRecord("child", { isBackground: true, parentAgentId: "parent", status: "completed", completedAt: Date.now() }),
+      ],
+    };
+    expect(renderLines(manager, "parent", () => "all")).not.toContain("child description");
   });
 
   it("hides a workflow's agents in every coordinator widget mode", () => {
@@ -201,8 +233,7 @@ describe("AgentWidget", () => {
       })),
     ];
     const widget = new AgentWidget(
-      { listAgents: () => records } as any,
-      new Map(),
+      withActivity({ listAgents: () => records } as any, new Map()),
       () => "background",
       () => false,
       () => true,
@@ -294,8 +325,7 @@ describe("AgentWidget cost display", () => {
       lifetimeUsage: { input: 9, output: 9, cacheWrite: 0, cost: 0.9 },
     } as unknown as AgentActivity]]);
     const widget = new AgentWidget(
-      { listAgents: () => [agent] } as any,
-      activity,
+      withActivity({ listAgents: () => [agent] } as any, activity),
       () => "all",
       () => showCost,
     );
@@ -334,7 +364,7 @@ describe("AgentWidget cost display", () => {
       compactionCount: 0,
     };
     const widget = new AgentWidget(
-      { listAgents: () => [finished] } as any, new Map(), () => "all", () => true,
+      withActivity({ listAgents: () => [finished] } as any, new Map()), () => "all", () => true,
     );
     let factory: any;
     widget.setUICtx({ setStatus: () => {}, setWidget: (_k, c) => { factory = c; } } as any);
@@ -355,7 +385,7 @@ describe("AgentWidget cost display", () => {
       compactionCount: 0,
     };
     const widget = new AgentWidget(
-      { listAgents: () => [running] } as any, new Map(), () => "all", () => true,
+      withActivity({ listAgents: () => [running] } as any, new Map()), () => "all", () => true,
     );
     let factory: any;
     widget.setUICtx({ setStatus: () => {}, setWidget: (_k, c) => { factory = c; } } as any);
@@ -375,7 +405,7 @@ describe("AgentWidget cost display", () => {
     const activity = new Map([["a1", {
       activeTools: new Map(), toolUses: 0, responseText: "", turnCount: 1,
     } as AgentActivity]]);
-    const widget = new AgentWidget({ listAgents: () => [agent] } as any, activity, () => "all");
+    const widget = new AgentWidget(withActivity({ listAgents: () => [agent] } as any, activity), () => "all");
     let factory: any;
     widget.setUICtx({ setStatus: () => {}, setWidget: (_k, c) => { factory = c; } } as any);
     widget.update();
@@ -415,7 +445,7 @@ describe("AgentWidget overflow accounting", () => {
       responseText: "",
       turnCount: 1,
     } as AgentActivity]));
-    const widget = new AgentWidget({ listAgents: () => agents } as any, activity, () => "all");
+    const widget = new AgentWidget(withActivity({ listAgents: () => agents } as any, activity), () => "all");
     let factory: any;
     widget.setUICtx({ setStatus: () => {}, setWidget: (_k, c) => { factory = c; } } as any);
     widget.update();
@@ -501,7 +531,7 @@ describe("AgentWidget overflow accounting", () => {
       responseText: "",
       turnCount: 1,
     } as AgentActivity]]);
-    const widget = new AgentWidget({ listAgents: () => [agent] } as any, activity, () => "all");
+    const widget = new AgentWidget(withActivity({ listAgents: () => [agent] } as any, activity), () => "all");
     let factory: any;
     widget.setUICtx({ setStatus: () => {}, setWidget: (_k: any, c: any) => { factory = c; } } as any);
     const render = () => {

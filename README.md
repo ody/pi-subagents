@@ -15,7 +15,7 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`Agent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent), `background` (default — hides foreground runs, which already render inline as the `Agent` tool result), or `off`
-- **FleetView** — Claude Code-style navigable list of `main` + every running subagent rendered below the editor (earliest-launched first). Press `↓` (or `←`) at an empty prompt to jump in, `↑`/`↓` to move the selection, `Enter` to open the selected agent's live, auto-updating conversation, `Esc` to return. Finished agents linger briefly before dropping out, and a viewer stays open through completion so you can read the final output. Toggle via `/agents → Settings → Fleet view`
+- **FleetView** — Claude Code-style navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) and a workflow's agents indented under their owner. `↓` (or `←`) at an empty prompt jumps in, `↑`/`↓` move the selection, `←`/`→` collapse and expand a row that owns children, `Enter` opens the selected agent's live conversation, `Esc` returns. Toggle via `/agents → Settings → Fleet view`
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steer a running agent inline by pressing `Enter` to open a composer, typing, then `Enter` to send (`Esc` or an empty submit returns) — the message appears as a user message and redirects the agent after its current tool. Stop a still-running agent by pressing `x` (then `x` again to confirm) — both work for background agents too. Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings))
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally, with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
 - **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `Agent`, `get_subagent_result`, and `steer_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. The allowlist is a privilege boundary — a child runs with its own tools, so pick it as carefully as `tools:` itself
@@ -129,17 +129,44 @@ The token field is annotated with two optional signals inside parens:
 
 While subagents are running, a Claude Code-style navigable list renders **below** the editor:
 
-```
-  esc to interrupt · ← for agents · ↓ to manage
+```text
+  ↑↓ select · ←→ collapse · enter view · esc back
 
-  ● main
-  ○ workflow         audit-src                    12/40 agents · 32s · ↓ 26.4k tokens
-  ○ general-purpose  Sleep then report 1                                11s · ↓ 13.1k tokens
-  ○ general-purpose  Sleep then report 2                                11s · ↓ 13.1k tokens
+   ● main
+  ▸○ workflow         audit-src                   12/40 agents · 32s · ↓ 26.4k tokens
+  ▾○ general-purpose  Sleep then report 1                               11s · ↓ 13.1k tokens
+     ○ Explore        Find the route table                               4s · ↓ 2.1k tokens
+   ○ general-purpose  Sleep then report 2                               11s · ↓ 13.1k tokens
                                                                                    ↓ 3 more
 ```
 
-Running [workflows](#subagentworkflow) appear as a single `workflow` row above the agents, carrying their agent counts in place of a description. `Enter` on one opens the same two-pane inspector `/agents → Workflows` does, rather than a conversation overlay. A run's own agents are *not* listed separately — they belong to the run, which reports for them, so they are filtered out of the fleet list, the above-editor widget, the `/agents` menus and `@handle` resolution exactly as nested children are. They are also outside the `maxConcurrent` pool: the run has its own concurrency cap, and routing a fan-out through the session pool as well would let one workflow starve everything else. The agents are ordered earliest-launched first, and only agents you can actually open are shown (pending/queued agents with no session yet appear once they start). At an **empty prompt**, press `↓` (or `←`) to move focus from the prompt into the list — the selected row is marked `●`, the rest `○`. The selected row renders in the theme's primary text color rather than the muted/dim treatment of the others; an agent with a configured `color` shows its badge there too, bolded. `↑`/`↓` move the selection, `Enter` opens the selected agent's live conversation overlay (it auto-updates as the agent works), and `Esc` (or `↑` above `main`) returns to the prompt. Selecting `main` returns to the normal view. Inside the overlay, press `Enter` to steer the running agent — type a message and `Enter` to send it (`Esc` or an empty submit returns), and it redirects the agent the same way the `steer_subagent` tool does. A viewer stays open when its agent finishes so you can read the final output, and finished agents linger in the list for a few seconds before dropping out. Typing anything at a non-empty prompt behaves normally — the list only captures arrow keys when the prompt is empty. Disable it entirely via `/agents → Settings → Fleet view`.
+The list is a tree. A [nested child](#nested-subagents) sits indented under the agent that spawned it, at any depth, and a [workflow](#subagentworkflow)'s agents sit under their run. So every agent in the session is reachable, openable, steerable and stoppable, which nested ones were not when the list showed only the top level.
+
+Four rules govern the tree:
+
+- A row that owns children carries `▾` when expanded and `▸` when collapsed. `→` expands, `←` collapses, and `←` on a leaf moves up to its parent.
+- Workflow rows start **collapsed**, because a legal run can hold a thousand agents.
+- An agent whose owner is gone — evicted by cleanup, or a run that has aged out — renders at the top level marked `↯`, rather than vanishing.
+- Selection follows the row, not its position, so an agent starting or settling elsewhere in the tree never moves the cursor out from under you.
+
+Running workflows appear as a single `workflow` row above the agents, carrying their agent counts in place of a description. `Enter` on one opens the same two-pane inspector `/agents → Workflows` does, rather than a conversation overlay. A run's agents are still outside the `maxConcurrent` pool: the run has its own concurrency cap, and routing a fan-out through the session pool as well would let one workflow starve everything else.
+
+Which rows appear:
+
+- Siblings are ordered earliest-launched first.
+- Only agents you can actually open are shown. A pending or queued agent with no session yet appears once it starts.
+- An owner is always kept while a descendant of it is live, so an active grandchild never shows up detached.
+
+The keys, at an **empty prompt**:
+
+- `↓` (or `←`) moves focus from the prompt into the list. The selected row is marked `●`, the rest `○`.
+- `↑`/`↓` move the selection. `Esc`, or `↑` above `main`, returns to the prompt, as does selecting `main`.
+- `Enter` opens the selected agent's live conversation overlay, which auto-updates as the agent works.
+- Inside that overlay, `Enter` steers the running agent: type a message and `Enter` sends it (`Esc` or an empty submit returns), redirecting the agent the same way the `steer_subagent` tool does.
+
+The selected row renders in the theme's primary text color rather than the muted/dim treatment of the others. An agent with a configured `color` shows its badge there too, bolded.
+
+A viewer stays open when its agent finishes so you can read the final output, and finished agents linger in the list for a few seconds before dropping out. Typing anything at a non-empty prompt behaves normally — the list only captures arrow keys when the prompt is empty. Disable it entirely via `/agents → Settings → Fleet view`.
 
 ### Agent mentions
 
@@ -209,7 +236,16 @@ The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets sw
 | `@src/index.ts summarize this` | the main model, with pi's normal file attachment |
 | `@nosuchagent hello` | the main model, verbatim — no agent, no type, no interception |
 
-While an agent is live its handle addresses *it*, so `@explore` never starts a second Explore alongside a running one — use the `Agent` tool for deliberate parallelism. `@<agent-id>` works too. `main` is reserved and can never be an agent's handle (a type slugging to it gets `main-2`); handles are capped at 64 characters. A handle written as typed always wins over the `@agent-` form, so an agent genuinely called `agent-explore` stays reachable. [Nested subagents](#nested-subagents) are not addressable — they are hidden from every top-level surface and only their owner may steer them, so a handle that would name one starts a fresh top-level agent instead of reaching through that boundary. Suggestions list live agents first, then resumable ones, then startable types — and then pi's own file rows, in the same popup: `@` stays the file picker it always was, and the handles are added to it rather than replacing it. Disable the whole thing via `/agents → Settings → Agent mentions`.
+While an agent is live its handle addresses *it*, so `@explore` never starts a second Explore alongside a running one — use the `Agent` tool for deliberate parallelism. `@<agent-id>` works too.
+
+Four rules decide what a handle can name:
+
+- `main` is reserved and can never be an agent's handle. A type slugging to it gets `main-2`.
+- Handles are capped at 64 characters.
+- A handle written as typed always wins over the `@agent-` form, so an agent genuinely called `agent-explore` stays reachable.
+- [Nested subagents](#nested-subagents) are not addressable. They are absent from every programmatic top-level surface and only their owner may steer them *by tool*, so a handle that would name one starts a fresh top-level agent instead of reaching through that boundary. They are still visible and steerable by hand in [FleetView](#fleetview) and `/agents → Agents`.
+
+Suggestions list live agents first, then resumable ones, then startable types — and then pi's own file rows, in the same popup: `@` stays the file picker it always was, and the handles are added to it rather than replacing it. Disable the whole thing via `/agents → Settings → Agent mentions`.
 
 A `direct`-mode start takes the non-tool spawn path shared with the scheduler and cross-extension RPC, so — like those — it writes no `.output` transcript. That is the trade for skipping the model call: a `model`-mode start goes through the real `Agent` tool and keeps everything. Live tool activity and the turn counter are *not* part of that trade — a direct start renders them like any other agent. A mention-*resumed* agent goes through the full resume wiring and keeps both in either mode.
 
@@ -346,7 +382,23 @@ allowed_subagents: support-file-finder, support-callsite-tracer   # or `all`
 
 **The allowlist is a privilege boundary, not just a routing hint.** A child runs with *its own* `tools:`, `extensions:`, and `isolated:` — the parent's restrictions are not inherited — so delegation grants the parent the union of what the listed agents can do. The read-only agent above can write and run commands through any listed agent that can, and `all` reaches every enabled agent including `general-purpose`. Choose the list as carefully as you would choose `tools:` itself; that is the main reason this is default-off.
 
-`allowed_subagents` is runtime-enforced. A comma-separated list restricts nesting to those types; `all` (or `"*"` / `true`, matching how `extensions:` and `skills:` take booleans) allows any enabled agent; omitted, empty, `none`, or `false` means no nested tools are injected at all. Unknown, disabled, and out-of-list types are rejected rather than falling back — regardless of the project's [fallback agent](#persistent-settings) setting, so a configured fallback can never hand a nested caller an agent outside its allowlist — and a nested `model:` is validated against [Model Scope](#model-scope) exactly like a top-level spawn. Result, resume, and steering operations are ownership-scoped, so a parent can control only its own children. Nested records remain internal to that parent and do not appear in top-level tools, lifecycle events, or agent UI — so when a parent finishes, is stopped, or ends a resumed turn, its nested children are stopped with it. They do write their own `.output` transcript (subject to the same `output_transcript` gate), filed under the root session's directory alongside their ancestors', so a nested run can still be inspected after the fact. Their token usage is folded into every ancestor's totals up to the top-level agent (lifecycle events, completion notifications, `/agents`), so nested spend stays attributable at any depth even though the children themselves stay hidden. A nested result that ends `stopped`, `aborted`, or `steered` is labelled as partial, the same guarantee top-level results carry.
+`allowed_subagents` is runtime-enforced, and takes three forms:
+
+- A comma-separated list restricts nesting to those types.
+- `all` (or `"*"` / `true`, matching how `extensions:` and `skills:` take booleans) allows any enabled agent.
+- Omitted, empty, `none`, or `false` means no nested tools are injected at all.
+
+Unknown, disabled, and out-of-list types are rejected rather than falling back — regardless of the project's [fallback agent](#persistent-settings) setting, so a configured fallback can never hand a nested caller an agent outside its allowlist. A nested `model:` is validated against [Model Scope](#model-scope) exactly like a top-level spawn.
+
+Result, resume, and steering operations are ownership-scoped, so a parent can control only its own children. Nested records stay internal to that parent for every *programmatic* surface — top-level tools, lifecycle events, the [RPC channels](docs/rpc.md), `@handle` resolution — and when a parent finishes, is stopped, or ends a resumed turn, its nested children are stopped with it.
+
+Three things survive that boundary:
+
+- Nested agents write their own `.output` transcript (subject to the same `output_transcript` gate), filed under the root session's directory alongside their ancestors', so a nested run can still be inspected after the fact.
+- Their token usage is folded into every ancestor's totals up to the top-level agent — lifecycle events, completion notifications, `/agents` — so nested spend stays attributable at any depth.
+- A nested result that ends `stopped`, `aborted`, or `steered` is labelled as partial, the same guarantee top-level results carry.
+
+The **human** surfaces are not part of that ownership boundary. A nested child appears indented under its owner in [FleetView](#fleetview), in `/agents → Agents`, and, while running, in the above-editor widget — and you can open, steer and stop it from any of them. Ownership scoping keeps siblings and other extensions out of each other's agents; it is not there to hide an agent from the person running the session.
 
 The hard cap is depth 2 by default: main session (0) → subagent (1) → nested child (2). Change it project-wide with `maxSubagentDepth` in `subagents.json` (or `/agents → Settings → Nested depth`); `0` or `1` turns nesting off everywhere. An agent already at the cap gets no nested tools at all — not even `get_subagent_result`, since it can never own a child. A child must independently set `allowed_subagents` to delegate again; isolated agents never receive nested tools.
 
@@ -530,13 +582,16 @@ Use the `=` form. The bare `--flag value` spelling consumes the next argument, s
 The `/agents` command opens an interactive menu:
 
 ```
-Running agents (2) — 1 running, 1 done     ← only shown when agents exist
+Agents (4) — 2 running, 2 done              ← the whole tree, nested included
 Agent types (6)                             ← unified list: defaults + custom
 Create new agent                            ← manual wizard or AI-generated
 Settings                                    ← max concurrency (background + foreground), max turns, grace turns, join mode
 ```
 
-- **Running agents** — select one to open its live conversation viewer. While it's still running, press `Enter` to open the steering composer, then `Enter` again to send a message that redirects the agent (same mechanism as the `steer_subagent` tool; `Esc` or an empty submit returns), or press `x` (then `x` again to confirm) to stop/abort it — including **background** agents, which a global Esc can't unambiguously target (Esc still stops a blocking foreground `Agent` call). A stopped agent reports its partial output flagged as incomplete, not as a completion. `m` cycles how much of the transcript renders as Markdown — see [Viewer markdown](#persistent-settings).
+- **Agents** — the whole hierarchy, indented, with nested children under their spawner and a workflow's agents under their run. Selecting a run row opens the workflow inspector. An agent whose owner is gone is marked `detached`. Select an agent to open its live conversation viewer, where:
+  - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `steer_subagent` tool. `Esc`, or an empty submit, returns.
+  - `x` (then `x` again to confirm) stops or aborts it, **background** agents included — a global Esc can't unambiguously target those, and still stops a blocking foreground `Agent` call instead. A stopped agent reports its partial output flagged as incomplete, not as a completion.
+  - `m` cycles how much of the transcript renders as Markdown — see [Viewer markdown](#persistent-settings).
 - **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `✕` (disabled). Each row shows the agent's model, and the highlighted agent's full description appears below the list. The model column flags `(unavailable, fallback: inherit)` when a configured model can't be resolved (it would silently inherit the parent model), and shows `(→ provider/id)` when it resolves to a different provider or version than configured. Select an agent to manage it:
   - **Default agents** (no override): Eject (export as `.md`), Disable
   - **Default agents** (ejected/overridden): Edit, Disable, Reset to default, Delete
@@ -995,7 +1050,8 @@ src/
     tool-description.ts # Model-facing description carrying the orchestration patterns
   ui/
     agent-widget.ts       # Persistent widget: spinners, activity, status icons, theming
-    fleet-list.ts         # FleetView: navigable agent list below the editor
+    agent-tree.ts         # Pure projection: records + runs → flat pre-order rows with depth
+    fleet-list.ts         # FleetView: navigable agent tree below the editor
     conversation-viewer.ts # Live conversation overlay for viewing agent sessions
     viewer-keys.ts        # Viewer scroll keys resolved through user keybindings
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
