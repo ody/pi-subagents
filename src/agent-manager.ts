@@ -22,7 +22,7 @@ import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-wor
 import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
 import { assignHandle, handleBase } from "./mention.js";
 import { describeModel } from "./model-resolver.js";
-import type { AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel } from "./types.js";
+import type { AgentActivity, AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel } from "./types.js";
 import { addUsage, type LifetimeUsage } from "./usage.js";
 import type { CompiledSchema } from "./workflow/json-schema.js";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled, pruneWorktrees, } from "./worktree.js";
@@ -327,6 +327,12 @@ interface ResumeOptions {
    * torn that subscription down.
    */
   onStarted?: () => void;
+  /**
+   * The turn ceiling this resumed run was given, for display only — the run
+   * itself gets it from the agent's own config. Omitted leaves the ceiling the
+   * agent was originally spawned with.
+   */
+  maxTurns?: number;
 }
 
 /** Best-effort ceiling on one child's shutdown handlers, so teardown can't strand a quit. */
@@ -362,6 +368,16 @@ async function shutdownChildSession(session: AgentSession | undefined): Promise<
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
+  /**
+   * Live activity per agent, keyed by record id.
+   *
+   * Owned here rather than by the UI because every spawn path runs through
+   * `startAgent` — the Agent tool, a nested `Agent` call, a workflow's
+   * `agent()`, a mention, the scheduler, cross-extension RPC. The UI used to
+   * build this only on the Agent-tool path, so a nested child's row had no
+   * tool name and no turn count for its whole life.
+   */
+  private activities = new Map<string, AgentActivity>();
   private cleanupInterval: ReturnType<typeof setInterval>;
   private onComplete?: OnAgentComplete;
   private onStart?: OnAgentStart;
@@ -543,6 +559,16 @@ export class AgentManager {
       rootSessionId: options.rootSessionId,
     };
     this.agents.set(id, record);
+    // Created at spawn, not at start: a queued record is already displayed, and
+    // a surface reading its activity should get zeros rather than nothing.
+    this.activities.set(id, {
+      activeTools: new Map(),
+      toolUses: 0,
+      turnCount: 1,
+      maxTurns: options.maxTurns,
+      responseText: "",
+      session: undefined,
+    });
     // After the insert, so `takenHandles()` already counts this record's own
     // handle — a spawn named after its own type gets `explore-2`, not a
     // duplicate `explore` that would make resolution ambiguous.
@@ -781,12 +807,24 @@ export class AgentManager {
       worktreeBase: worktreeCwd ? baseCwd : undefined,
       configCwd: options.configCwd ?? (customCwd !== undefined ? ctx.cwd : undefined),
       signal: record.abortController!.signal,
+      // Each of these updates the manager's own activity state before the
+      // caller's callback runs, so a caller that supplies none (a nested or
+      // workflow spawn) still gets a fully tracked agent.
       onToolActivity: (activity) => {
         if (activity.type === "end") record.toolUses++;
+        this.noteToolActivity(id, activity);
         options.onToolActivity?.(activity);
       },
-      onTurnEnd: options.onTurnEnd,
-      onTextDelta: options.onTextDelta,
+      onTurnEnd: (turnCount) => {
+        const state = this.activities.get(id);
+        if (state) state.turnCount = turnCount;
+        options.onTurnEnd?.(turnCount);
+      },
+      onTextDelta: (delta, fullText) => {
+        const state = this.activities.get(id);
+        if (state) state.responseText = fullText;
+        options.onTextDelta?.(delta, fullText);
+      },
       onAssistantUsage: (usage) => {
         addUsage(record.lifetimeUsage, usage);
         this.onUsage?.(record, usage);
@@ -805,6 +843,8 @@ export class AgentManager {
       },
       onSessionCreated: (session) => {
         record.session = session;
+        const state = this.activities.get(id);
+        if (state) state.session = session;
         // Capture now, while the session object exists: after eviction this
         // path is the only thing that can reopen the conversation, and an
         // in-memory session reports undefined, which correctly means
@@ -1113,6 +1153,18 @@ export class AgentManager {
     const record = this.agents.get(id);
     if (!record?.session) return undefined;
 
+    // A resumed turn starts from a clean activity slate. The session is seeded
+    // here because a resume has no `onSessionCreated` — the session predates the
+    // run — and without it the widget shows no context % for the agent.
+    const activity = this.activities.get(id);
+    if (activity) {
+      activity.activeTools.clear();
+      activity.responseText = "";
+      activity.turnCount = 1;
+      activity.session = record.session;
+      if (options?.maxTurns !== undefined) activity.maxTurns = options.maxTurns;
+    }
+
     // Background resume: settle asynchronously and notify on completion exactly
     // like a background spawn, returning immediately with the record still
     // "running" — or "queued" when at the concurrency limit. Previously
@@ -1177,6 +1229,7 @@ export class AgentManager {
       const { text, failure } = await resumeAgent(record.session, prompt, {
         onToolActivity: (activity) => {
           if (activity.type === "end") record.toolUses++;
+          this.noteToolActivity(id, activity);
           options?.onToolActivity?.(activity);
         },
         onAssistantUsage: (usage) => {
@@ -1268,6 +1321,7 @@ export class AgentManager {
     const promise = resumeAgent(record.session, prompt, {
       onToolActivity: (activity) => {
         if (activity.type === "end") record.toolUses++;
+        this.noteToolActivity(id, activity);
         options.onToolActivity?.(activity);
       },
       onAssistantUsage: (usage) => {
@@ -1331,6 +1385,29 @@ export class AgentManager {
 
   getRecord(id: string): AgentRecord | undefined {
     return this.agents.get(id);
+  }
+
+  /** Live activity for an agent, for any surface that renders what it is doing. */
+  getActivity(id: string): AgentActivity | undefined {
+    return this.activities.get(id);
+  }
+
+  /**
+   * Fold one tool event into an agent's activity state. Active tools are keyed
+   * by name plus time because an agent can run two of the same tool at once,
+   * and an `end` must clear exactly one of them.
+   */
+  private noteToolActivity(id: string, activity: ToolActivity): void {
+    const state = this.activities.get(id);
+    if (!state) return;
+    if (activity.type === "start") {
+      state.activeTools.set(`${activity.toolName}_${Date.now()}`, activity.toolName);
+      return;
+    }
+    for (const [key, name] of state.activeTools) {
+      if (name === activity.toolName) { state.activeTools.delete(key); break; }
+    }
+    state.toolUses++;
   }
 
   /** Handles already in use, so a fresh spawn can pick an unclaimed one. */
@@ -1433,6 +1510,7 @@ export class AgentManager {
     // nothing can observe a session that is half torn down.
     record.session = undefined;
     this.agents.delete(id);
+    this.activities.delete(id);
     // A failed startup keeps its (rejected) entry so a late awaitStartup still
     // sees it; drop it with the record so the map can't grow unbounded.
     this.startups.delete(id);

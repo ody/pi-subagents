@@ -9,8 +9,8 @@ import { truncateToWidth } from "@earendil-works/pi-tui";
 import { renderAgentName } from "../agent-color.js";
 import { type AgentManager, isTopLevelAgent } from "../agent-manager.js";
 import { getConfig } from "../agent-types.js";
-import type { AgentInvocation, SubagentType, WidgetMode } from "../types.js";
-import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, type SessionLike } from "../usage.js";
+import type { AgentInvocation, AgentRecord, SubagentType, WidgetMode } from "../types.js";
+import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "../usage.js";
 
 // ---- Constants ----
 
@@ -49,18 +49,6 @@ export type UICtx = {
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
 };
-
-/** Per-agent live activity state. */
-export interface AgentActivity {
-  activeTools: Map<string, string>;
-  toolUses: number;
-  responseText: string;
-  session?: SessionLike;
-  /** Current turn count. */
-  turnCount: number;
-  /** Effective max turns for this agent (undefined = unlimited). */
-  maxTurns?: number;
-}
 
 /** Metadata attached to Agent tool results for custom rendering. */
 export interface AgentDetails {
@@ -275,7 +263,6 @@ export class AgentWidget {
 
   constructor(
     private manager: AgentManager,
-    private agentActivity: Map<string, AgentActivity>,
     /**
      * Read live at render time. Selects which agents the widget shows — see
      * `WidgetMode`. Defaults to `"all"` when a caller supplies no policy; the
@@ -316,6 +303,37 @@ export class AgentWidget {
       case "background": return all.filter(a => a.isBackground !== false);
       default: return all;
     }
+  }
+
+  /**
+   * The running agents to draw, each with its indentation depth: every row in
+   * `tops`, followed by that agent's own running descendants.
+   *
+   * Nested children were dropped from the widget entirely, so a coordinator
+   * that had delegated its work looked idle while its children did all of it.
+   * Only *running* descendants appear — a finished or queued one is detail for
+   * FleetView, and putting it here would spend the widget's 12-line budget on
+   * rows nobody is waiting for.
+   */
+  private runningRows(tops: readonly AgentRecord[]): { record: AgentRecord; depth: number }[] {
+    const byParent = new Map<string, AgentRecord[]>();
+    for (const record of this.manager.listAgents()) {
+      if (record.parentAgentId === undefined || record.status !== "running") continue;
+      const bucket = byParent.get(record.parentAgentId);
+      if (bucket) bucket.push(record);
+      else byParent.set(record.parentAgentId, [record]);
+    }
+    for (const bucket of byParent.values()) bucket.sort((a, b) => a.startedAt - b.startedAt);
+
+    const rows: { record: AgentRecord; depth: number }[] = [];
+    const walk = (record: AgentRecord, depth: number): void => {
+      rows.push({ record, depth });
+      // Depth is bounded by `maxSubagentDepth`, and the parent chain is built
+      // from records that exist, so this cannot run away.
+      for (const child of byParent.get(record.id) ?? []) walk(child, depth + 1);
+    };
+    for (const top of tops) walk(top, 0);
+    return rows;
   }
 
   /** Set the UI context (grabbed from first tool execution). */
@@ -402,7 +420,7 @@ export class AgentWidget {
     }
 
     const parts: string[] = [];
-    const activity = this.agentActivity.get(a.id);
+    const activity = this.manager.getActivity(a.id);
     if (activity) parts.push(formatTurns(activity.turnCount, activity.maxTurns));
     if (a.toolUses > 0) parts.push(`${a.toolUses} tool use${a.toolUses === 1 ? "" : "s"}`);
     // From the record, not the activity tracker: that entry is deleted the
@@ -422,7 +440,7 @@ export class AgentWidget {
    */
   private renderWidget(tui: any, theme: Theme): string[] {
     const allAgents = this.widgetAgents();
-    const running = allAgents.filter(a => a.status === "running");
+    const running = this.runningRows(allAgents.filter(a => a.status === "running"));
     const queued = allAgents.filter(a => a.status === "queued");
     const finished = allAgents.filter(a =>
       a.status !== "running" && a.status !== "queued" && a.completedAt
@@ -450,12 +468,13 @@ export class AgentWidget {
     }
 
     const runningLines: string[][] = []; // each entry is [header, activity]
-    for (const a of running) {
+    for (const { record: a, depth } of running) {
+      const indent = "   ".repeat(depth);
       const modeLabel = getPromptModeLabel(a.type);
       const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
       const elapsed = formatMs(Date.now() - a.startedAt);
 
-      const bg = this.agentActivity.get(a.id);
+      const bg = this.manager.getActivity(a.id);
       const toolUses = bg?.toolUses ?? a.toolUses;
       // Spend comes from the record, never from the activity tracker: the record
       // is the one that survives the agent finishing, and the one nested-tools
@@ -486,8 +505,8 @@ export class AgentWidget {
       const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
       runningLines.push([
-        truncate(theme.fg("dim", "├─") + ` ${theme.fg("accent", frame)} ${renderAgentName(a.type, theme, { bold: true })}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${fgPreservingNestedStyles(theme, "dim", statsText)}`),
-        truncate(theme.fg("dim", "│  ") + theme.fg("dim", `  ⎿  ${activity}`)),
+        truncate(theme.fg("dim", `${indent}├─`) + ` ${theme.fg("accent", frame)} ${renderAgentName(a.type, theme, { bold: true })}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${fgPreservingNestedStyles(theme, "dim", statsText)}`),
+        truncate(theme.fg("dim", `${indent}│  `) + theme.fg("dim", `  ⎿  ${activity}`)),
       ]);
     }
 

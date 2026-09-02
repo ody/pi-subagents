@@ -126,9 +126,10 @@ export function makeActivity(records: { id: string; toolUses: number }[]): Map<s
 }
 
 /** A manager stub. `listAgents` is a plain function so a guard can count calls. */
-export function makeManager(records: unknown[]) {
+export function makeManager(records: unknown[], activity?: Map<string, unknown>) {
   return {
     listAgents: () => records,
+    getActivity: (id: string) => activity?.get(id),
     listTombstones: () => [],
     getRecord: (id: string) => records.find(r => (r as { id: string }).id === id),
     getMaxConcurrent: () => 4,
@@ -204,8 +205,7 @@ export function mountWidget(
   opts: { mode?: string; showCost?: boolean; showModel?: boolean } = {},
 ) {
   const widget = new Widget(
-    makeManager(records),
-    makeActivity(records as { id: string; toolUses: number }[]),
+    makeManager(records, makeActivity(records as { id: string; toolUses: number }[])),
     () => opts.mode ?? "all",
     () => opts.showCost ?? false,
     () => opts.showModel ?? false,
@@ -232,7 +232,7 @@ export function mountWidget(
 
 /** Drive `FleetList`: same idea, but its widget renders at an explicit width. */
 export function mountFleet(FleetList: any, records: unknown[]) {
-  const fleet = new FleetList(makeManager(records), makeActivity(records as { id: string; toolUses: number }[]));
+  const fleet = new FleetList(makeManager(records, makeActivity(records as { id: string; toolUses: number }[])));
   let factory: any;
   fleet.setUICtx({
     setWidget: (_key: string, content: any) => { factory = content; },

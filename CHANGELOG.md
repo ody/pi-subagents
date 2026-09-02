@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The agent UI is a tree, so nested agents are reachable.** FleetView, `/agents → Agents` (formerly `Running agents`) and the above-editor widget listed only top-level agents, so an agent spawned by another agent had no UI at all — nothing could watch, steer or stop it. All three now indent a child under its owner, at any depth, and a workflow's agents under their run.
+  - `←`/`→` collapse and expand a row that owns children. Workflow rows start collapsed.
+  - Selection follows the row rather than its index, so agents starting and settling mid-run no longer move the cursor.
+  - An agent whose owner is gone renders at the top level marked `↯` instead of disappearing.
+  - Ownership scoping is unchanged for tools, lifecycle events, RPC and `@handle` resolution. It keeps siblings and other extensions out of each other's agents, not the person running the session.
+- **`AgentManager` owns each agent's live activity state** (`getActivity(id)`), instead of the UI building it only on the `Agent`-tool path. Every spawn route — nested, workflow, mention, scheduler, RPC — now reports its active tool and turn count, which is what let nested rows render as more than `thinking…`.
+
 ### Changed
 
 - **BREAKING (fork): a `model` passed to the `Agent` tool now beats an agent file's `model:` pin.** A pin used to be absolute and a caller's value was dropped with no message, so there was no way to express "this agent's model unless the caller says otherwise". It now wins, for every agent, with no opt-in field. Local divergence from `tintinweb/pi-subagents`, which closed #106 as working-as-intended. Four consequences:

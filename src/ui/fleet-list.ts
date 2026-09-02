@@ -13,10 +13,11 @@
 
 import { Editor, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { hasAgentBadge, renderAgentName } from "../agent-color.js";
-import { type AgentManager, isTopLevelAgent } from "../agent-manager.js";
+import type { AgentManager } from "../agent-manager.js";
 import type { AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal } from "../usage.js";
-import { type AgentActivity, formatCost, type Theme } from "./agent-widget.js";
+import { type AgentTreeNode, agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey, workflowKey } from "./agent-tree.js";
+import { formatCost, type Theme } from "./agent-widget.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
 
 /** Widget key for the below-editor fleet list. */
@@ -64,10 +65,7 @@ export interface FleetWorkflow {
   tokens: number;
 }
 
-type MainEntry = { kind: "main" };
-type AgentEntry = { kind: "agent"; record: AgentRecord };
-type WorkflowEntry = { kind: "workflow"; workflow: FleetWorkflow };
-type FleetEntry = MainEntry | WorkflowEntry | AgentEntry;
+type FleetNode = AgentTreeNode<FleetWorkflow>;
 
 /** `11s` — integer seconds, no decimal/suffix (matches Claude Code, unlike formatMs). */
 export function formatFleetElapsed(ms: number): string {
@@ -106,8 +104,23 @@ export class FleetList {
   private enabled = true;
   /** Whether arrow keys currently navigate the list (vs. flow to the editor). */
   private active = false;
-  /** 0 = `main`, 1..N = subagents. */
-  private selectedIndex = 0;
+  /**
+   * The selected row's stable tree key, not its index. An index shifts the
+   * moment a nested child starts or a sibling settles, which moved the cursor
+   * out from under the user; a key survives every roster change.
+   */
+  private selectedKey: string = MAIN_KEY;
+  /** Node keys whose children are hidden. View state — never on the record. */
+  private collapsedKeys = new Set<string>();
+  /** Whether the current rows warrant the expand/collapse glyph column. */
+  private showGlyphs = false;
+  /**
+   * Runs whose default collapse state has already been applied. A workflow row
+   * starts collapsed (a legal run can hold 1,000 agents, which would bury the
+   * list), and this is what keeps re-expanding it from being undone on the next
+   * render.
+   */
+  private seenWorkflowIds = new Set<string>();
   /** Set while a conversation overlay is open; calling it closes the overlay. */
   private viewerClose: (() => void) | undefined;
   private viewingAgentId: string | undefined;
@@ -125,7 +138,6 @@ export class FleetList {
 
   constructor(
     private manager: AgentManager,
-    private agentActivity: Map<string, AgentActivity>,
     /**
      * Read live at render time. Whether each row shows an estimated cost after
      * its token count. Defaults to off — the extension supplies the user's
@@ -202,7 +214,7 @@ export class FleetList {
     // it is the thing the user opens to see what its children did. Read off the
     // roster for the same reason activation does: two counts of "is there
     // anything here" drifted apart once before.
-    const hasRows = this.enabled && this.roster().length > 1;
+    const hasRows = this.enabled && this.nodes().length > 1;
 
     if (!hasRows) {
       if (this.widgetRegistered) {
@@ -212,11 +224,11 @@ export class FleetList {
       }
       if (this.timer) { clearInterval(this.timer); this.timer = undefined; }
       this.active = false;
-      this.selectedIndex = 0;
+      this.selectedKey = MAIN_KEY;
       return;
     }
 
-    this.clampSelection();
+    this.reconcileSelection();
     this.ensureTimer(); // keep stats ticking whenever the list is shown (e.g. after a re-enable)
 
     if (!this.widgetRegistered) {
@@ -236,22 +248,20 @@ export class FleetList {
   // ---- Roster ----
 
   /**
-   * Agents shown in the list, ordered earliest-launched first so the ones you
-   * started sooner sit at the top. Every row is openable (has a session), so Enter
-   * never dead-ends. Included: running/queued, plus the agent currently being
-   * viewed, plus recently-finished ones (they linger briefly before dropping out).
-   * Pending agents with no session yet are hidden until they start.
-   * (`listAgents()` is newest-first, so we re-sort.)
+   * Which records earn a row of their own: running/queued, the one being viewed,
+   * or one that finished within the linger window. A record with no session yet
+   * is hidden until it starts, so Enter never dead-ends.
+   *
+   * Nesting is NOT filtered here any more. Nested and workflow-owned children
+   * used to be dropped by `isTopLevelAgent`, which made them unreachable — no
+   * way to watch, steer or stop one. `buildAgentTree` places them under their
+   * owner instead, and pulls in any ancestor this test rejects.
    */
-  private agentRecords(): AgentRecord[] {
-    const now = Date.now();
-    return this.manager.listAgents()
-      .filter(a => isTopLevelAgent(a) && a.session && (
-        a.status === "running" || a.status === "queued"
-        || a.id === this.viewingAgentId
-        || (a.completedAt != null && now - a.completedAt < FINISHED_LINGER_MS)
-      ))
-      .sort((a, b) => a.startedAt - b.startedAt);
+  private isEligible(record: AgentRecord, now: number): boolean {
+    if (!record.session) return false;
+    return record.status === "running" || record.status === "queued"
+      || record.id === this.viewingAgentId
+      || (record.completedAt != null && now - record.completedAt < FINISHED_LINGER_MS);
   }
 
   /**
@@ -284,22 +294,36 @@ export class FleetList {
   }
 
   /**
-   * Runs sit above the agents rather than interleaved by start time: a run owns
-   * most of the agents under it, so listing the container first is what makes
-   * the list read as a hierarchy rather than a shuffle.
+   * The visible rows: `main`, then each run with its children indented beneath
+   * it, then the top-level agents with theirs. Runs sit above the agents rather
+   * than interleaved by start time because a run owns most of the agents under
+   * it, so listing the container first is what makes the list read as a
+   * hierarchy rather than a shuffle.
    */
-  private roster(): FleetEntry[] {
-    return [
-      { kind: "main" },
-      ...this.workflows().map(workflow => ({ kind: "workflow" as const, workflow })),
-      ...this.agentRecords().map(record => ({ kind: "agent" as const, record })),
-    ];
+  private nodes(): FleetNode[] {
+    const now = Date.now();
+    const workflows = this.workflows();
+    for (const run of workflows) {
+      if (this.seenWorkflowIds.has(run.id)) continue;
+      this.seenWorkflowIds.add(run.id);
+      this.collapsedKeys.add(workflowKey(run.id));
+    }
+    return buildAgentTree<FleetWorkflow>({
+      records: this.manager.listAgents(),
+      workflows,
+      isEligible: record => this.isEligible(record, now),
+      collapsed: this.collapsedKeys,
+    });
   }
 
-  private clampSelection(): void {
-    const max = this.roster().length - 1;
-    if (this.selectedIndex > max) this.selectedIndex = Math.max(0, max);
-    if (this.selectedIndex < 0) this.selectedIndex = 0;
+  /** Re-resolve the selected key against the current rows (see `resolveSelectedKey`). */
+  private reconcileSelection(): void {
+    const nodes = this.nodes();
+    this.selectedKey = resolveSelectedKey(nodes, this.selectedKey, ancestorKeys(nodes, this.selectedKey)) ?? MAIN_KEY;
+  }
+
+  private selectedNode(nodes: readonly FleetNode[]): FleetNode | undefined {
+    return nodes.find(n => n.key === this.selectedKey);
   }
 
   // ---- Key handling ----
@@ -330,25 +354,39 @@ export class FleetList {
       // Gated on the roster, not the agents: a session whose only row is a
       // workflow run still has somewhere to go, and requiring an agent would
       // render the row but refuse to move into it.
-      if (isActivator && this.roster().length > 1 && this.ui.getEditorText() === "") {
+      if (isActivator && this.nodes().length > 1 && this.ui.getEditorText() === "") {
         this.active = true;
-        this.selectedIndex = 0;
+        this.selectedKey = MAIN_KEY;
         this.update();
         return { consume: true };
       }
       return undefined;
     }
 
-    // Active — arrows navigate, Enter opens, Esc / Up-past-top exits.
-    if (matchesKey(data, "down")) {
-      const max = this.roster().length - 1;
-      this.selectedIndex = Math.min(max, this.selectedIndex + 1);
+    // Active — arrows navigate the tree, Enter opens, Esc / Up-past-top exits.
+    if (matchesKey(data, "down") || matchesKey(data, "up")) {
+      const nodes = this.nodes();
+      const index = nodes.findIndex(n => n.key === this.selectedKey);
+      if (matchesKey(data, "up") && index <= 0) { this.deactivate(); return { consume: true }; }
+      const next = matchesKey(data, "down") ? Math.min(nodes.length - 1, index + 1) : index - 1;
+      const target = nodes[next];
+      if (target) this.selectedKey = target.key;
       this.update();
       return { consume: true };
     }
-    if (matchesKey(data, "up")) {
-      if (this.selectedIndex === 0) { this.deactivate(); return { consume: true }; }
-      this.selectedIndex -= 1;
+    if (matchesKey(data, "right")) {
+      const node = this.selectedNode(this.nodes());
+      if (node?.hasChildren && node.collapsed) {
+        this.collapsedKeys.delete(node.key);
+        this.update();
+      }
+      return { consume: true };
+    }
+    if (matchesKey(data, "left")) {
+      const nodes = this.nodes();
+      const node = this.selectedNode(nodes);
+      if (node?.hasChildren && !node.collapsed) this.collapsedKeys.add(node.key);
+      else if (node?.parentKey !== undefined) this.selectedKey = node.parentKey;
       this.update();
       return { consume: true };
     }
@@ -375,12 +413,12 @@ export class FleetList {
 
   private deactivate(): void {
     this.active = false;
-    this.selectedIndex = 0;
+    this.selectedKey = MAIN_KEY;
     this.update();
   }
 
   private openSelected(): void {
-    const entry = this.roster()[this.selectedIndex];
+    const entry = this.selectedNode(this.nodes());
     if (!entry || entry.kind === "main") {
       // `main` = return to the prompt; the native transcript is already shown.
       this.deactivate();
@@ -404,7 +442,7 @@ export class FleetList {
       return;
     }
     const session = record.session;
-    const activity = this.agentActivity.get(record.id);
+    const activity = this.manager.getActivity(record.id);
     this.viewingAgentId = record.id;
 
     void this.ui.custom<undefined>(
@@ -436,19 +474,11 @@ export class FleetList {
 
   /** Reset overlay state and return to the list (on close, auto-close, or error). */
   private clearViewer(): void {
-    // Keep the cursor on the agent we were viewing — re-resolve by id so it
-    // still feels natural if the list reordered (an earlier agent finished)
-    // while the overlay was open. If that agent is gone, leave the index for
-    // update()'s clamp to settle.
-    const viewed = this.viewingAgentId ?? this.viewingWorkflowId;
-    if (viewed !== undefined) {
-      const idx = this.roster().findIndex(e =>
-        e.kind === "agent" ? e.record.id === viewed
-        : e.kind === "workflow" ? e.workflow.id === viewed
-        : false,
-      );
-      if (idx >= 0) this.selectedIndex = idx;
-    }
+    // Keep the cursor on the agent we were viewing. Selection is keyed, so this
+    // survives the list reordering (an earlier agent finished) while the overlay
+    // was open; if that row is gone, reconcileSelection() settles it.
+    if (this.viewingAgentId !== undefined) this.selectedKey = agentKey(this.viewingAgentId);
+    else if (this.viewingWorkflowId !== undefined) this.selectedKey = workflowKey(this.viewingWorkflowId);
     this.viewerClose = undefined;
     this.viewingAgentId = undefined;
     this.viewingWorkflowId = undefined;
@@ -458,33 +488,40 @@ export class FleetList {
   // ---- Rendering ----
 
   private renderBar(width: number, theme: Theme): string[] {
-    const rows = this.roster().slice(1) as (WorkflowEntry | AgentEntry)[];
+    const nodes = this.nodes();
+    const main = nodes[0]?.kind === "main" ? nodes[0] : undefined;
+    const rows = main ? nodes.slice(1) : nodes;
     if (rows.length === 0) return [];
-    // Clamp locally so a render between a roster shrink and the next update()
-    // (e.g. on terminal resize) never loses the selection marker.
-    const sel = Math.min(this.selectedIndex, rows.length);
 
+    const selected = this.selectedKey;
+    const canCollapse = rows.some(row => row.hasChildren);
+    // Reserve the glyph column only once the list actually has a hierarchy, so a
+    // flat roster renders exactly as wide as it did before and loses no room
+    // for the description on a narrow terminal.
+    this.showGlyphs = canCollapse || rows.some(row => row.kind === "agent" && row.orphan);
     const hint = this.active
-      ? "↑↓ select · enter view · esc back"
+      ? canCollapse ? "↑↓ select · ←→ collapse · enter view · esc back" : "↑↓ select · enter view · esc back"
       : "esc to interrupt · ← for agents · ↓ to manage";
     const lines: string[] = [];
     lines.push(truncateToWidth("  " + theme.fg("dim", hint), width));
     lines.push("");
-    lines.push(truncateToWidth(`  ${this.bullet(0, sel, theme)} main`, width));
+    if (main) lines.push(truncateToWidth(`${this.gutter(main, selected, theme)}main`, width));
 
     // Window the rows so the selected one stays visible.
     const visible = Math.min(MAX_AGENT_ROWS, rows.length);
-    const selRow = Math.max(0, sel - 1);
+    const selRow = Math.max(0, rows.findIndex(row => row.key === selected));
     const start = selRow < visible ? 0 : selRow - visible + 1;
     const hiddenBelow = rows.length - (start + visible);
 
     if (start > 0) lines.push(rightAlign("", theme.fg("dim", `↑ ${start} more`), width));
     for (let a = start; a < start + visible; a++) {
       const row = rows[a];
+      if (!row) continue;
       lines.push(
         row.kind === "workflow" ?
-          this.renderWorkflowRow(a + 1, sel, row.workflow, width, theme)
-        : this.renderAgentRow(a + 1, sel, row.record, width, theme),
+          this.renderWorkflowRow(row, selected, width, theme)
+        : row.kind === "agent" ? this.renderAgentRow(row, selected, width, theme)
+        : truncateToWidth(`${this.gutter(row, selected, theme)}main`, width),
       );
     }
     if (hiddenBelow > 0) lines.push(rightAlign("", theme.fg("dim", `↓ ${hiddenBelow} more`), width));
@@ -492,8 +529,23 @@ export class FleetList {
     return lines;
   }
 
-  private bullet(rosterIndex: number, sel: number, theme: Theme): string {
-    return rosterIndex === sel ? theme.fg("accent", "●") : theme.fg("dim", "○");
+  /**
+   * The `  ▾● ` column, indented by depth. The glyph column is always present,
+   * even for a leaf, so a row does not shift sideways when a child appears
+   * under it. An orphan — a record whose owner is gone — gets `↯` there, since
+   * its indentation can no longer say where it came from.
+   */
+  private gutter(node: FleetNode, selected: string, theme: Theme): string {
+    const glyph =
+      node.kind === "agent" && node.orphan ? "↯"
+      : node.hasChildren ? (node.collapsed ? "▸" : "▾")
+      : " ";
+    const column = this.showGlyphs ? theme.fg("dim", glyph) : "";
+    return `  ${"  ".repeat(node.depth)}${column}${this.bullet(node.key, selected, theme)} `;
+  }
+
+  private bullet(key: string, selected: string, theme: Theme): string {
+    return key === selected ? theme.fg("accent", "●") : theme.fg("dim", "○");
   }
 
   /**
@@ -502,16 +554,16 @@ export class FleetList {
    * description and the same elapsed/token tail.
    */
   private renderWorkflowRow(
-    rosterIndex: number,
-    sel: number,
-    workflow: FleetWorkflow,
+    node: FleetNode & { kind: "workflow" },
+    selectedKey: string,
     width: number,
     theme: Theme,
   ): string {
-    const selected = rosterIndex === sel;
+    const workflow = node.workflow;
+    const selected = node.key === selectedKey;
     const kind = theme.fg(selected ? "text" : "muted", "workflow");
     const name = selected ? theme.fg("text", workflow.name) : workflow.name;
-    const left = `  ${this.bullet(rosterIndex, sel, theme)} ${kind}  ${name}`;
+    const left = `${this.gutter(node, selectedKey, theme)}${kind}  ${name}`;
     // Frozen once the run settles, exactly as an agent's clock is.
     const elapsed = (workflow.completedAt ?? Date.now()) - workflow.startedAt;
     const agents = `${workflow.doneCount}/${workflow.totalCount} agent${workflow.totalCount === 1 ? "" : "s"}`;
@@ -519,17 +571,18 @@ export class FleetList {
     return rightAlign(left, selected ? theme.fg("text", stats) : theme.fg("dim", stats), width);
   }
 
-  private renderAgentRow(rosterIndex: number, sel: number, record: AgentRecord, width: number, theme: Theme): string {
+  private renderAgentRow(node: FleetNode & { kind: "agent" }, selectedKey: string, width: number, theme: Theme): string {
     // The selected row renders in the theme's primary text color so it reads as
     // one selection (#230). A configured badge survives — Claude Code's FleetView
     // keeps the agent color on the selected row too and only bolds it — which also
     // keeps the row's width fixed as the selection moves.
-    const selected = rosterIndex === sel;
+    const record = node.record;
+    const selected = node.key === selectedKey;
     const name = renderAgentName(record.type, theme, selected
       ? { fallbackColor: "text", bold: hasAgentBadge(record.type) }
       : { fallbackColor: "muted" });
     const description = selected ? theme.fg("text", record.description) : record.description;
-    const left = `  ${this.bullet(rosterIndex, sel, theme)} ${name}  ${description}`;
+    const left = `${this.gutter(node, selectedKey, theme)}${name}  ${description}`;
     // The record, not the activity tracker — see the note in AgentWidget's
     // running line: only the record carries a nested child's spend, and only it
     // outlives the agent.

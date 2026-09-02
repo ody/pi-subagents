@@ -4,7 +4,7 @@
 
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { LifetimeUsage } from "./usage.js";
+import type { LifetimeUsage, SessionLike } from "./usage.js";
 
 export type { ThinkingLevel };
 
@@ -115,6 +115,24 @@ export type WidgetMode = 'all' | 'background' | 'off';
  *   it (#210's `ctx_execute`), accepting the rewrites above on ones that don't.
  */
 export type ViewerMarkdownMode = 'off' | 'assistant' | 'all';
+
+/**
+ * Per-agent live activity state: what the agent is doing right now, as opposed
+ * to the accounting `AgentRecord` keeps. Owned by `AgentManager` so every spawn
+ * path has one — nested and workflow-owned children never went through the
+ * Agent tool, which is where the UI used to build this, so their rows had no
+ * tool name and no turn count.
+ */
+export interface AgentActivity {
+  activeTools: Map<string, string>;
+  toolUses: number;
+  responseText: string;
+  session?: SessionLike;
+  /** Current turn count. */
+  turnCount: number;
+  /** Effective max turns for this agent (undefined = unlimited). */
+  maxTurns?: number;
+}
 
 /**
  * How `@handle message` starts an agent that is not already running.

@@ -2,8 +2,8 @@ import { Editor, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentManager } from "../src/agent-manager.js";
 import { registerAgents } from "../src/agent-types.js";
-import type { AgentConfig, AgentRecord, ViewerMarkdownMode } from "../src/types.js";
-import { type AgentActivity, getDisplayName } from "../src/ui/agent-widget.js";
+import type { AgentActivity, AgentConfig, AgentRecord, ViewerMarkdownMode } from "../src/types.js";
+import { getDisplayName } from "../src/ui/agent-widget.js";
 import {
   FleetList,
   type FleetUICtx,
@@ -65,9 +65,14 @@ function makeRecord(over: Partial<AgentRecord> = {}): AgentRecord {
 }
 
 /** Fake manager exposing only what FleetList touches. */
+function withActivity(manager: AgentManager, activity: Map<string, AgentActivity>): AgentManager {
+  return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as AgentManager;
+}
+
 function fakeManager(agents: AgentRecord[]): AgentManager {
   return {
     listAgents: () => agents,
+    getActivity: () => undefined,
     abort: () => true,
     steer: vi.fn(() => true),
   } as unknown as AgentManager;
@@ -147,7 +152,7 @@ function harness(
   };
 
   const manager = fakeManager(agents);
-  const fleet = new FleetList(manager, new Map(), undefined, opts.viewerMarkdown, opts.onViewerMarkdown);
+  const fleet = new FleetList(manager, undefined, opts.viewerMarkdown, opts.onViewerMarkdown);
   fleet.setUICtx(ui);
   let workflows: FleetWorkflow[] = [];
   const openedWorkflows: string[] = [];
@@ -204,14 +209,82 @@ describe("FleetList navigation", () => {
     expect(h.render()).toEqual([]);
   });
 
-  it("hides nested child records from the coordinator fleet", () => {
+  it("nests a child record under its parent, indented", () => {
     const h = harness([
       makeRecord({ id: "top", description: "top-level" }),
       makeRecord({ id: "nested", description: "nested-child", parentAgentId: "top" }),
     ]);
-    const output = h.render().join("\n");
-    expect(output).toContain("top-level");
-    expect(output).not.toContain("nested-child");
+    const rows = h.render();
+    const parent = rows.findIndex(l => l.includes("top-level"));
+    const child = rows.findIndex(l => l.includes("nested-child"));
+    expect(parent).toBeGreaterThan(0);
+    expect(child).toBe(parent + 1);
+    // The parent carries an expanded marker; the child sits one level in.
+    expect(rows[parent]).toContain("▾");
+    expect(plain(rows[child] ?? "").indexOf("○")).toBeGreaterThan(plain(rows[parent] ?? "").indexOf("▾"));
+  });
+
+  it("collapses and re-expands a parent with ← and →", () => {
+    const h = harness([
+      makeRecord({ id: "top", description: "top-level" }),
+      makeRecord({ id: "nested", description: "nested-child", parentAgentId: "top" }),
+    ]);
+    h.press(DOWN); // activate, main selected
+    h.press(DOWN); // the parent
+    expect(h.press(LEFT)).toEqual({ consume: true });
+    expect(h.render().join("\n")).not.toContain("nested-child");
+    expect(h.render().find(l => l.includes("top-level"))).toContain("▸");
+    expect(h.press(RIGHT)).toEqual({ consume: true });
+    expect(h.render().join("\n")).toContain("nested-child");
+  });
+
+  it("moves ← from a leaf child up to its parent", () => {
+    const h = harness([
+      makeRecord({ id: "top", description: "top-level" }),
+      makeRecord({ id: "nested", description: "nested-child", parentAgentId: "top" }),
+    ]);
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(DOWN); // the child
+    expect(h.render().find(l => l.includes("nested-child"))).toContain("●");
+    h.press(LEFT);
+    expect(h.render().find(l => l.includes("top-level"))).toContain("●");
+  });
+
+  it("keeps the selection on the same agent when a sibling appears", () => {
+    const agents = [
+      makeRecord({ id: "a1", description: "first", startedAt: 10 }),
+      makeRecord({ id: "a2", description: "second", startedAt: 20 }),
+    ];
+    const h = harness(agents);
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(DOWN); // "second"
+    expect(h.render().find(l => l.includes("second"))).toContain("●");
+    // A newly started agent sorts before it — an index would have drifted.
+    agents.push(makeRecord({ id: "a0", description: "earlier", startedAt: 1 }));
+    expect(h.render().find(l => l.includes("second"))).toContain("●");
+  });
+
+  it("opens a grandchild's own conversation, and steers that record", () => {
+    const h = harness([
+      makeRecord({ id: "top", description: "top-level" }),
+      makeRecord({ id: "mid", description: "middle", parentAgentId: "top" }),
+      makeRecord({ id: "deep", description: "grandchild", parentAgentId: "mid" }),
+    ]);
+    h.press(DOWN); // activate on main
+    h.press(DOWN); // top
+    h.press(DOWN); // mid
+    h.press(DOWN); // deep
+    expect(h.render().find(l => l.includes("grandchild"))).toContain("●");
+    h.press(ENTER);
+    expect(h.overlayOpened()).toBe(true);
+    h.fleet.dispose();
+  });
+
+  it("marks an agent whose parent is gone as detached", () => {
+    const h = harness([makeRecord({ id: "orphan", description: "lost", parentAgentId: "evicted" })]);
+    expect(h.render().find(l => l.includes("lost"))).toContain("↯");
   });
 
   it("activates on ↓ at an empty prompt, consuming the key", () => {
@@ -326,7 +399,7 @@ describe("FleetList navigation", () => {
   it("passes non-nav keys through and cancels navigation", () => {
     const h = harness([makeRecord()]);
     h.press(DOWN);
-    expect(h.press(RIGHT)).toBeUndefined();
+    expect(h.press("x")).toBeUndefined();
     expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
   });
 
@@ -343,7 +416,7 @@ describe("FleetList navigation", () => {
       const agents = [makeRecord({ id: "a1" })];
       const listAgents = vi.fn(() => agents);
       const manager = { listAgents, abort: () => true } as unknown as AgentManager;
-      const fleet = new FleetList(manager, new Map());
+      const fleet = new FleetList(manager);
       fleet.setUICtx({
         setWidget: () => {}, onTerminalInput: () => () => {}, getEditorText: () => "",
         notify: () => {}, custom: (() => new Promise<undefined>(() => {})) as FleetUICtx["custom"],
@@ -572,7 +645,7 @@ describe("FleetList cost display", () => {
 
   function row(showCost: boolean, cost: number, activity?: Map<string, AgentActivity>): string {
     const record = makeRecord({ lifetimeUsage: { input: 13100, output: 0, cacheWrite: 0, cost } });
-    const fleet = new FleetList(fakeManager([record]), activity ?? new Map(), () => showCost);
+    const fleet = new FleetList(withActivity(fakeManager([record]), activity ?? new Map()), () => showCost);
     let factory: any;
     fleet.setUICtx({
       setWidget: (_k: string, c: any) => { factory = c; },

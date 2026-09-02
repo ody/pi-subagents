@@ -68,7 +68,7 @@ A **card in the transcript**, updating as the run goes:
   ⎿  auditing 6 route files
 ```
 
-A **`workflow` row in FleetView**, above the agents, carrying its agent counts where a description would go. `⏎` on it opens the inspector rather than a conversation overlay.
+A **`workflow` row in FleetView**, above the agents, carrying its agent counts where a description would go. `⏎` on it opens the inspector rather than a conversation overlay. The row starts collapsed; `→` expands it to show the run's agents indented beneath, and their own nested children beneath those.
 
 Each row names the model the child *actually* ran on — read back from its session once pi has resolved its defaults, not the string the script asked for — so a fuzzy `model: "haiku"` reads as the model it resolved to, and an `agent()` that named no model still says what it inherited.
 
@@ -91,7 +91,9 @@ The fifth key only shows you something:
 
 Because it changes nothing, `c` works at both levels and on an agent that has already settled — which is the usual case, since reading what a child did is most of why the inspector gets opened. The dialog hides itself while the conversation is up and comes back when you close it. A row with no child behind it yet (queued, or replayed from the resume journal) has no conversation to open and does not offer the key.
 
-A run's own agents are not listed separately in the fleet list, the widget, the `/agents` menus or `@handle` resolution — they belong to the run, which reports for them. `c` in the inspector is the one way in to a child's conversation.
+A run's agents are not addressable as `@handle`s and do not surface to other extensions — they belong to the run, which reports for them. They are reachable by hand, though, and `c` is not the only way in: expanding the run's row in FleetView, or picking the agent out of `/agents → Agents`, opens the same conversation.
+
+The above-editor widget still reports for the run as a whole rather than listing its agents.
 
 ### 4. Edit and re-run
 
