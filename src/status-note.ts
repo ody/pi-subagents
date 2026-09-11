@@ -18,11 +18,20 @@ import type { AgentRecord } from "./types.js";
  * `stopped` (a human aborted it) is deliberately distinct from `aborted` (the
  * turn limit was hit) — the parent should treat human intervention differently
  * from a budget cutoff.
+ *
+ * `stoppedBy` narrows WHO stopped it, for the one status that can be stopped
+ * either way: unset or "user" keeps today's "STOPPED BY THE USER" string byte
+ * for byte (FleetView `x`, the conversation viewer, `/agents`, and
+ * `subagents:rpc:stop` never set the field), and "agent" is `stop_subagent` —
+ * the orchestrating model stopped its own child, not a human watching over its
+ * shoulder, and a human reading the note later should not conclude otherwise.
  */
-export function getStatusNote(status: string): string {
+export function getStatusNote(status: string, stoppedBy: "user" | "agent" = "user"): string {
   switch (status) {
     case "stopped":
-      return " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)";
+      return stoppedBy === "agent"
+        ? " (STOPPED BY THE ORCHESTRATING AGENT before completion — output is partial; the task was NOT finished)"
+        : " (STOPPED BY THE USER before completion — output is partial; the task was NOT finished)";
     case "aborted":
       return " (aborted — hit the turn limit before completion; output may be incomplete)";
     case "steered":
@@ -47,8 +56,9 @@ export function getStatusNote(status: string): string {
  *
  * Only the lead clause varies between the three, and each variation carries
  * information: `wrapped up` vs `aborted` tells the parent whether the output is
- * a considered final answer or a fragment, and `stopped` shouts because a human
- * intervening outranks everything else in the string. Only `steered` hedges on
+ * a considered final answer or a fragment, and `stopped` shouts because an
+ * intervention — human OR orchestrating agent, per `stoppedBy` — outranks
+ * everything else in the string. Only `steered` hedges on
  * completion — it was told to wrap up and did, so it may well have finished at
  * the limit; an aborted run blew through its grace turns while still working,
  * and `stopped` can only fire on a running agent, so neither ever delivered a
@@ -65,11 +75,16 @@ export function getStatusNote(status: string): string {
  * improves parent behavior, so removing a false cue (which cannot induce new
  * behavior) and adding an instruction (which can) are not equally safe bets.
  * Don't add either back without a way to measure it.
+ *
+ * `stoppedBy` carries the same "user" vs "agent" distinction as
+ * `getStatusNote`, for the same reason and with the same default.
  */
-export function getForegroundOutcomeNote(status: string): string {
+export function getForegroundOutcomeNote(status: string, stoppedBy: "user" | "agent" = "user"): string {
   switch (status) {
     case "stopped":
-      return " (STOPPED BY THE USER — everything the agent produced is above; the task is unfinished)";
+      return stoppedBy === "agent"
+        ? " (STOPPED BY THE ORCHESTRATING AGENT — everything the agent produced is above; the task is unfinished)"
+        : " (STOPPED BY THE USER — everything the agent produced is above; the task is unfinished)";
     case "aborted":
       return " (aborted at the turn limit — everything the agent produced is above; the task is unfinished)";
     case "steered":
