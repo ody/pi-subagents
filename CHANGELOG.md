@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - An agent whose owner is gone renders at the top level marked `↯` instead of disappearing.
   - Ownership scoping is unchanged for tools, lifecycle events, RPC and `@handle` resolution. It keeps siblings and other extensions out of each other's agents, not the person running the session.
 - **`AgentManager` owns each agent's live activity state** (`getActivity(id)`), instead of the UI building it only on the `Agent`-tool path. Every spawn route — nested, workflow, mention, scheduler, RPC — now reports its active tool and turn count, which is what let nested rows render as more than `thinking…`.
+- **A `stop_subagent` tool lets the orchestrating model end a running or queued background agent itself.** `steer_subagent` never reaches an agent wedged inside a tool call, and a stop otherwise needed a human or another extension's RPC call. An already-settled agent is reported as success, not an error, since the model's intent is already satisfied. It never marks the result consumed, so the full output still arrives through the normal completion notification. A nested mirror ships alongside `Agent`, `get_subagent_result`, and `steer_subagent`.
+
+### Fixed
+
+- **`abort()` on an agent wedged inside a tool call no longer leaks its concurrency slot or withholds its completion notification forever.** Releasing the slot, stopping nested children, flushing the output file, and notifying used to happen only once the run's own promise resolved — never, for a wedged agent. Three such stops could exhaust all ten background slots. A grace-period timer (5s) now forces the settle tail regardless. Shared by every caller of `AgentManager.abort()`: FleetView/the viewer/`/agents`'s `x`, and `subagents:rpc:stop`.
 
 ### Changed
 

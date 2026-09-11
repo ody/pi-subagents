@@ -192,6 +192,31 @@ export interface AgentRecord {
   status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
   result?: string;
   error?: string;
+  /**
+   * Who stopped a "stopped" record — the `stop_subagent` tool sets "agent";
+   * every other caller (FleetView `x`, the conversation viewer, `/agents`,
+   * `subagents:rpc:stop`) leaves it unset, which `getStatusNote` and
+   * `getForegroundOutcomeNote` read as "user". Undefined status-note callers
+   * must keep emitting today's "STOPPED BY THE USER" string byte for byte.
+   */
+  stoppedBy?: "user" | "agent";
+  /**
+   * Set once this record's settle tail has run — by `settleRun`'s normal path
+   * or by `AgentManager`'s forced settle on an `abort()`ed run that never
+   * settles on its own. Whichever runs first wins; the guard on both prevents
+   * a late real settle from releasing the same pool slot or firing the same
+   * completion notification twice.
+   */
+  settled?: boolean;
+  /**
+   * The concurrency pool this run was charged to at start time, or undefined
+   * for one charged to neither (nested children, detached non-background
+   * spawns). Stored rather than recomputed: `poolFor` reads
+   * `maxConcurrentForeground`, which is user-settable mid-run, so a forced
+   * settle recomputing it could release a slot this run never acquired, or
+   * skip releasing one it did.
+   */
+  pool?: "background" | "foreground";
   toolUses: number;
   startedAt: number;
   completedAt?: number;

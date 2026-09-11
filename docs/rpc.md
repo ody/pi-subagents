@@ -90,6 +90,12 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 | `Agent is not running` | stop — `:182`. The record exists, so it has already settled |
 | `Agent not found or still running` | consume — `:193` |
 
+**The in-session `stop_subagent` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check, but where the RPC channel throws `Agent is not running` for a record that has already settled, the tool reports its terminal status as a normal (non-error) result.
+
+The model's intent — "that agent should not be running" — is already true, and an `isError: true` result is the wrong signal for "nothing to do". An extension, by contrast, can and should branch on an error envelope.
+
+Don't mirror the tool's wording back into the RPC error string, or a caller that pattern-matches on `Agent is not running` silently stops seeing it.
+
 Three things the table cannot show:
 
 - **The failure that is not an error.** With `worktreeIsolation` off project-wide, `isolation: "worktree"` is dropped at `src/agent-manager.ts:712` with no error, no note on the record, and a success envelope on the wire. Your agent runs in the main tree. If you asked for isolation because two agents were going to write the same files, they now collide and nothing told you.
@@ -106,6 +112,10 @@ Two asymmetries to know about, stated as they are:
 - **Consume checks `parentAgentId` but not `workflowId`** (`src/index.ts:816`). A workflow-owned agent's result can be marked consumed over the bus even though the same agent cannot be stopped.
 
 The same predicate silently scopes the events. **Every lifecycle event is top-level only** — `subagents:started`, `:completed`, `:failed` and `:compacted` all return early for nested and workflow-owned agents (`src/index.ts:573`, `:615`, `:631`). A workflow's children are invisible on the bus: you will see the workflow's own agents come and go without a single event.
+
+**Stop no longer just fires the abort signal and stops there.** `manager.abort(id)` — the same call this channel makes — used to release the run's concurrency slot, stop its nested children, and notify only once the run's own promise settled, which for an agent wedged inside a tool call that never returns might never happen.
+
+A grace-period timer (5s) now forces that settle tail if the real one hasn't fired by then, so a `subagents:rpc:stop` call reliably frees its slot and fires `subagents:completed`/`:failed` within a few seconds even for a wedged agent, instead of leaking the slot and withholding the event forever. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
 
 ## The notification race
 

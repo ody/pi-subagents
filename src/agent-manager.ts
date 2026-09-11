@@ -339,6 +339,17 @@ interface ResumeOptions {
 const CHILD_SHUTDOWN_TIMEOUT_MS = 3_000;
 
 /**
+ * Grace period `abort()` gives a running record to settle on its own before
+ * forcing its settle tail — see `forceSettle`. A responsive agent settles
+ * through its own promise in microseconds, hitting `settleRun`'s `settled`
+ * guard well inside this window. Long enough for a child mid-stream to write
+ * its final chunk and for `cleanupWorktree`'s `git worktree remove` to finish;
+ * short enough that a leaked pool slot or a withheld notification returns
+ * before anyone notices. Same order of magnitude as `CHILD_SHUTDOWN_TIMEOUT_MS`.
+ */
+const FORCED_SETTLE_GRACE_MS = 5_000;
+
+/**
  * Close the extension lifecycle `runAgent` opened with `bindExtensions`, then dispose.
  *
  * `AgentSession.dispose()` only calls `ExtensionRunner.invalidate()` — pi emits the event
@@ -718,7 +729,15 @@ export class AgentManager {
     // every later blocking spawn queues forever). The two startup exits below
     // never reach `settleRun`, so they hand the slot back themselves.
     const pool = this.poolFor(record);
+    // Mirrored onto the record for `forceSettle`, which runs outside this
+    // closure and cannot see `pool` — see the field's doc comment.
+    record.pool = pool;
     const releaseSlot = () => {
+      // Marked here, not only decremented: a startup failure exits before
+      // this run ever gets a `promise` to settle, so if `abort()` armed the
+      // forced-settle timer during the awaited worktree copy, that timer must
+      // find the slot already gone rather than releasing it a second time.
+      record.settled = true;
       if (pool === "background") this.runningBackground--;
       else if (pool === "foreground") this.runningForeground--;
     };
@@ -991,9 +1010,10 @@ export class AgentManager {
    * The shared tail of both settle paths: release whatever pool slot the run
    * held, notify, and let the queue drain into the freed slot.
    *
-   * The decrement lives HERE and nowhere else. `abort()` on a running record
-   * only fires its controller and leaves the run to settle normally, so
-   * decrementing there too would double-free — permanently lifting the limit.
+   * The decrement lives HERE and in `forceSettle`'s call into this method —
+   * nowhere else. `abort()` itself only fires the controller and marks the
+   * record stopped; decrementing there too would double-free once the real
+   * or forced settle also ran — permanently lifting the limit.
    *
    * Foreground agents fire `onComplete` for lifecycle symmetry, with
    * `resultConsumed` set so the callback skips notifications the inline result
@@ -1006,6 +1026,11 @@ export class AgentManager {
    *   the release disagree with the acquire.
    */
   private settleRun(record: AgentRecord, guardCallback: boolean, pool: Pool | undefined): void {
+    // A forced settle (see `forceSettle`) may already have released this
+    // run's slot and notified — a late real settle arriving after that must
+    // be a no-op, or the pool decrements twice and the parent is notified twice.
+    if (record.settled) return;
+    record.settled = true;
     if (!record.isBackground) record.resultConsumed = true;
     if (pool === "background") this.runningBackground--;
     else if (pool === "foreground") this.runningForeground--;
@@ -1023,6 +1048,31 @@ export class AgentManager {
     // A drain with nothing freed is a no-op anyway, but "no-op" is a claim
     // about reachability, and matching the old condition needs no such claim.
     if (record.isBackground || pool !== undefined) this.drainQueue();
+  }
+
+  /**
+   * The settle tail for a record `abort()` fired but that never settles on
+   * its own within `FORCED_SETTLE_GRACE_MS` — an agent wedged inside a tool
+   * call whose `runAgent` promise may never resolve. Without this, `abort()`
+   * leaves the pool slot held, the completion notification undelivered, and
+   * any nested children running forever, none of which a wedged agent's own
+   * promise will ever fix.
+   *
+   * `abortOwnedChildren` and the output-file flush are ordinarily done by the
+   * real completion handler right before it calls `settleRun` (see the
+   * `.then`/`.catch` tails in `startAgent`) — that handler may never run here,
+   * so this does them itself. The release-and-notify tail is `settleRun`
+   * itself, shared with the real path via the `settled` guard: whichever of
+   * the two runs first wins, and the other is a no-op.
+   */
+  private forceSettle(record: AgentRecord): void {
+    if (record.settled) return;
+    this.abortOwnedChildren(record.id);
+    if (record.outputCleanup) {
+      try { record.outputCleanup(); } catch { /* ignore */ }
+      record.outputCleanup = undefined;
+    }
+    this.settleRun(record, true, record.pool);
   }
 
   /**
@@ -1189,6 +1239,9 @@ export class AgentManager {
       record.error = undefined;
       record.completedAt = undefined;
       record.status = "queued";
+      // A fresh run: the previous one's settle (real or forced) must not gate
+      // this one's — the guard is per-run, and `settled` outlives the record.
+      record.settled = false;
 
       const start = () => this.startResume(id, record, prompt, signal, options);
       if (occupiesPoolSlot(record) && !this.poolHasRoom("background")) {
@@ -1218,12 +1271,15 @@ export class AgentManager {
       return record;
     }
 
-    // Foreground resume: run inline and return the settled record.
+    // Foreground resume: run inline and return the settled record. Doesn't
+    // read or write the pool slot, but a later background resume of the SAME
+    // record must not inherit a stale latch from further back.
     record.status = "running";
     record.startedAt = Date.now();
     record.completedAt = undefined;
     record.result = undefined;
     record.error = undefined;
+    record.settled = false;
 
     try {
       const { text, failure } = await resumeAgent(record.session, prompt, {
@@ -1281,7 +1337,10 @@ export class AgentManager {
 
     record.status = "running";
     record.startedAt = Date.now();
-    if (occupiesPoolSlot(record)) this.runningBackground++;
+    // Stored, like `startAgent`'s, so a forced settle outside this closure
+    // can release the same slot it acquired.
+    record.pool = occupiesPoolSlot(record) ? "background" : undefined;
+    if (record.pool === "background") this.runningBackground++;
     this.onStart?.(record);
 
     // Fresh abort controller so /agents stop and steering target THIS run rather
@@ -1304,6 +1363,10 @@ export class AgentManager {
     try { options.onStarted?.(); } catch { /* ignore caller wiring errors */ }
 
     const settle = () => {
+      // Mirrors settleRun's guard: `forceSettle` may already have released
+      // this run's slot and notified if the resume never settled on its own.
+      if (record.settled) return;
+      record.settled = true;
       detachParentSignal?.();
       detachParentSignal = undefined;
       // Final flush of streaming output file
@@ -1313,7 +1376,7 @@ export class AgentManager {
       }
       // Children spawned during the resumed turn must not outlive it.
       this.abortOwnedChildren(id);
-      if (occupiesPoolSlot(record)) this.runningBackground--;
+      if (record.pool === "background") this.runningBackground--;
       try { this.onComplete?.(record); } catch { /* ignore completion side-effect errors */ }
       this.drainQueue();
     };
@@ -1499,6 +1562,13 @@ export class AgentManager {
     record.abortController?.abort();
     record.status = "stopped";
     record.completedAt = Date.now();
+    // A responsive agent settles through its own promise in microseconds,
+    // well inside this window, hitting `settleRun`'s `settled` guard before
+    // this fires — see `forceSettle`. Unref'd: a wedged agent nobody stops
+    // must not keep the process alive on its own, and this timer already only
+    // exists because something else did stop it.
+    const timer = setTimeout(() => this.forceSettle(record), FORCED_SETTLE_GRACE_MS);
+    timer.unref?.();
     return true;
   }
 

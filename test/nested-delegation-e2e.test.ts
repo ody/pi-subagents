@@ -169,6 +169,7 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
     expect(toolsSeen.get("orchestrator")).toContain("Agent");
     expect(toolsSeen.get("orchestrator")).toContain("get_subagent_result");
     expect(toolsSeen.get("orchestrator")).toContain("steer_subagent");
+    expect(toolsSeen.get("orchestrator")).toContain("stop_subagent");
 
     // The leaf never opted in, so it must not have them.
     expect(toolsSeen.get("worker")).toBeDefined();
