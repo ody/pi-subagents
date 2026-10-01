@@ -3012,12 +3012,13 @@ Terse command-style prompts produce shallow, generic work.
       return;
     }
 
-    // Source indicators: defaults unmarked, custom agents get • (project) or ◦ (global)
+    // Source indicators: defaults unmarked, custom agents get • (project), ◦ (global), or ▹ (skill)
     // Disabled agents get ✕ prefix
     const sourceIndicator = (cfg: AgentConfig | undefined) => {
       const disabled = cfg?.enabled === false;
       if (cfg?.source === "project") return disabled ? "✕• " : "•  ";
       if (cfg?.source === "global") return disabled ? "✕◦ " : "◦  ";
+      if (cfg?.source === "skill") return disabled ? "✕▹ " : "▹  ";
       if (disabled) return "✕  ";
       return "   ";
     };
@@ -3043,7 +3044,7 @@ Terse command-style prompts produce shallow, generic work.
     const hasCustom = allNames.some(n => { const c = getAgentConfig(n); return c && !c.isDefault && c.enabled !== false; });
     const hasDisabled = allNames.some(n => getAgentConfig(n)?.enabled === false);
     const legendParts: string[] = [];
-    if (hasCustom) legendParts.push("• = project  ◦ = global");
+    if (hasCustom) legendParts.push("• = project  ◦ = global  ▹ = skill");
     if (hasDisabled) legendParts.push("✕ = disabled");
 
     const selected = await ctx.ui.custom<string | undefined>((_tui, _theme, _kb, done) => {
@@ -3144,12 +3145,16 @@ Terse command-style prompts produce shallow, generic work.
       return;
     }
 
-    const file = locateAgentFile(name, cfg.sourcePath);
+    const file = locateUserAgentFile(name, cfg);
     const isDefault = cfg.isDefault === true;
     const disabled = cfg.enabled === false;
 
     let menuOptions: string[];
-    if (disabled && file) {
+    if (cfg.source === "skill") {
+      // The file belongs to the skill (often a read-only store path), so it is
+      // never edited in place: overriding it means writing a user file.
+      menuOptions = disabled ? ["Eject (export as .md)", "Back"] : ["Eject (export as .md)", "Disable", "Back"];
+    } else if (disabled && file) {
       // Disabled agent with a file — offer Enable
       menuOptions = isDefault
         ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
@@ -3202,7 +3207,16 @@ Terse command-style prompts produce shallow, generic work.
     }
   }
 
-  /** Eject a default agent: write its embedded config as a .md file. */
+  /**
+   * The user-owned .md behind an agent, if any. A skill-embedded agent's file
+   * belongs to the skill, so it reports none — Disable then writes a user
+   * stub that overrides it, the same as for a built-in default.
+   */
+  function locateUserAgentFile(name: string, cfg: AgentConfig | undefined) {
+    return cfg?.source === "skill" ? undefined : locateAgentFile(name, cfg?.sourcePath);
+  }
+
+  /** Eject a default or skill-embedded agent: write its config as a user .md file. */
   async function ejectAgent(ctx: ExtensionCommandContext, name: string, cfg: AgentConfig) {
     const location = await ctx.ui.select("Choose location", [
       "Project (.pi/agents/)",
@@ -3219,7 +3233,9 @@ Terse command-style prompts produce shallow, generic work.
       if (!overwrite) return;
     }
 
-    const content = serializeAgentFile(cfg);
+    // A skill agent has a real file, copied verbatim so no field the
+    // serializer does not cover is lost.
+    const content = cfg.source === "skill" && cfg.sourcePath ? readFileSync(cfg.sourcePath, "utf-8") : serializeAgentFile(cfg);
 
     const { writeFileSync } = await import("node:fs");
     writeFileSync(targetPath, content, "utf-8");
@@ -3229,7 +3245,7 @@ Terse command-style prompts produce shallow, generic work.
 
   /** Disable an agent: set enabled: false in its .md file, or create a stub for built-in defaults. */
   async function disableAgent(ctx: ExtensionCommandContext, name: string) {
-    const file = locateAgentFile(name, getAgentConfig(name)?.sourcePath);
+    const file = locateUserAgentFile(name, getAgentConfig(name));
     if (file) {
       // Existing file — set enabled: false in frontmatter (idempotent)
       const content = readFileSync(file.path, "utf-8");
@@ -3251,7 +3267,7 @@ Terse command-style prompts produce shallow, generic work.
       return;
     }
 
-    // No file (built-in default) — create a stub
+    // No user file (built-in default or skill agent) — create a stub
     const location = await ctx.ui.select("Choose location", [
       "Project (.pi/agents/)",
       `Personal (${personalAgentsDir()})`,
@@ -3270,7 +3286,7 @@ Terse command-style prompts produce shallow, generic work.
 
   /** Enable a disabled agent by removing enabled: false from its frontmatter. */
   async function enableAgent(ctx: ExtensionCommandContext, name: string) {
-    const file = locateAgentFile(name, getAgentConfig(name)?.sourcePath);
+    const file = locateUserAgentFile(name, getAgentConfig(name));
     if (!file) return;
 
     const content = readFileSync(file.path, "utf-8");

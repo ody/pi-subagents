@@ -1,8 +1,8 @@
 /**
- * custom-agents.ts — Load user-defined agents from project (.pi/agents/, plus the shared .agents/agents/ workspace) and global ($PI_CODING_AGENT_DIR/agents/, default ~/.pi/agent/agents/) locations.
+ * custom-agents.ts — Load user-defined agents from project (.pi/agents/, plus the shared .agents/agents/ workspace) and global ($PI_CODING_AGENT_DIR/agents/, default ~/.pi/agent/agents/) locations, and agents embedded in skills ($PI_CODING_AGENT_DIR/skills/<skill>/agents/).
  */
 
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES } from "./agent-types.js";
@@ -29,7 +29,11 @@ const RESERVED_IN_TYPE = ":";
  *   1. Project:   <cwd>/.pi/agents/*.md (authoritative — also where /agents writes)
  *   2. Workspace: <cwd>/.agents/agents/*.md (shared cross-tool .agents workspace, read-only)
  *   3. Global:    $PI_CODING_AGENT_DIR/agents/*.md (default: ~/.pi/agent/agents/*.md)
+ *   4. Skill:     $PI_CODING_AGENT_DIR/skills/.../<skill>/agents/*.md (shipped by a skill)
  *
+ * Skill-embedded agents sit below every user location, so a user file of the
+ * same name overrides one, and above the built-in defaults, which the registry
+ * lays down first (see buildAgentRegistry).
  * Project-level agents override global ones with the same name. On a name clash
  * between the two project locations, .pi/agents wins — .pi stays the project
  * authority; .agents/agents is an additional read location.
@@ -47,7 +51,8 @@ export function loadCustomAgents(cwd: string, strict = false): Map<string, Agent
   const projectDir = join(cwd, ".pi", "agents");
 
   const agents = new Map<string, AgentConfig>();
-  loadFromDir(globalDir, agents, "global", strict);            // lowest priority
+  loadSkillAgents(join(getAgentDir(), "skills"), agents, strict); // lowest priority
+  loadFromDir(globalDir, agents, "global", strict);
   loadFromDir(workspaceProjectDir, agents, "project", strict); // shared workspace
   loadFromDir(projectDir, agents, "project", strict);          // highest priority (overwrites)
 
@@ -56,8 +61,66 @@ export function loadCustomAgents(cwd: string, strict = false): Map<string, Agent
   return agents;
 }
 
+/**
+ * Load the agents every skill under `root` ships in its `agents/` directory.
+ *
+ * Skill discovery follows pi's: a directory containing `SKILL.md` is a skill,
+ * found at any depth; dot entries and `node_modules` are skipped; a skill
+ * directory is not searched for nested skills. Symlinks are followed, as pi
+ * does — skill trees installed by a package manager are commonly symlink
+ * farms — with a realpath set so a link cycle cannot loop.
+ *
+ * Two skills shipping the same agent name is a packaging accident, not an
+ * override, so the clash is reported. Traversal is sorted, so which one wins
+ * does not depend on directory order.
+ */
+function loadSkillAgents(root: string, agents: Map<string, AgentConfig>, strict: boolean): void {
+  const skillAgents = new Map<string, AgentConfig>();
+  const seen = new Set<string>();
+  const queue = [root];
+  while (queue.length > 0) {
+    const dir = queue.shift() as string;
+    let real: string;
+    try {
+      real = realpathSync(dir);
+    } catch {
+      continue;
+    }
+    if (seen.has(real)) continue;
+    seen.add(real);
+
+    if (dir !== root && existsSync(join(dir, "SKILL.md"))) {
+      const loaded = new Map<string, AgentConfig>();
+      loadFromDir(join(dir, "agents"), loaded, "skill", strict);
+      for (const [name, cfg] of loaded) {
+        const prior = skillAgents.get(name);
+        if (prior) warnIfNew(`Agent "${name}" is shipped by two skills; ${cfg.sourcePath} overrides ${prior.sourcePath}`);
+        skillAgents.set(name, cfg);
+      }
+      continue;
+    }
+
+    let entries: string[];
+    try {
+      entries = readdirSync(dir).sort();
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.startsWith(".") || entry === "node_modules") continue;
+      const path = join(dir, entry);
+      try {
+        if (statSync(path).isDirectory()) queue.push(path);
+      } catch {
+        // Dangling symlink or unreadable entry — not a skill.
+      }
+    }
+  }
+  for (const [name, cfg] of skillAgents) agents.set(name, cfg);
+}
+
 /** Load agent configs from a directory into the map. */
-function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "project" | "global", strict: boolean): void {
+function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "project" | "global" | "skill", strict: boolean): void {
   if (!existsSync(dir)) return;
 
   let files: string[];
