@@ -291,15 +291,22 @@ Default agents can be **ejected** (`/agents` → select agent → Eject) to expo
 
 Define custom agent types by creating `.md` files. The frontmatter `name:` is the `subagent_type` and dispatch identity, falling back to the filename when absent; `display_name` only changes the UI label. Claiming a default agent's name overrides it.
 
-Agents are discovered from three locations (higher priority wins):
+Agents are discovered from four locations (higher priority wins). Built-in defaults sit below all of them:
 
 | Priority | Location | Scope |
-|----------|----------|-------|
+| --- | --- | --- |
 | 1 (highest) | `.pi/agents/<name>.md` | Project — pi's config dir; authoritative, and where `/agents` writes |
 | 2 | `.agents/agents/<name>.md` | Project — the shared cross-tool `.agents` workspace (same convention as `.agents/skills/`) |
 | 3 | `$PI_CODING_AGENT_DIR/agents/<name>.md` (default `~/.pi/agent/agents/<name>.md`) | Global — available everywhere |
+| 4 (lowest) | `$PI_CODING_AGENT_DIR/skills/.../<skill>/agents/<name>.md` | Skill — agents a skill ships for its own use |
 
 Project-level agents override global ones with the same name, so you can customize a global agent for a specific project. If both project locations define the same name, **`.pi/agents/` wins** — `.pi` stays the project authority; `.agents/agents/` is an additional read location for projects that keep their agent assets in the `.agents` workspace. The global location follows the upstream `PI_CODING_AGENT_DIR` env var — set it to relocate all pi-coding-agent state (agents, skills, settings) to a custom directory. An agent's name is its frontmatter `name:`, falling back to the filename, so two files can now claim the same one — the later load wins, and the warning below names the file that took over.
+
+A skill can ship agents in an `agents/` directory next to its `SKILL.md`, so it can dispatch work into a clean context without asking the user to install agent files. Skills are found the way pi finds them: any directory under `$PI_CODING_AGENT_DIR/skills/` that holds a `SKILL.md`, at any depth, following symlinks. Rules for skill agents:
+
+- Any user location overrides a skill agent of the same name; a skill agent overrides a built-in default.
+- Two skills shipping the same name log a warning. The skill found later wins: the walk is breadth-first, sorted by name at each level.
+- `/agents` never edits a skill's file. **Eject** copies it to a user location, and **Disable** writes a user stub that shadows it.
 
 An unreadable or unparseable agent file is skipped, not fatal — a warning names the file and the error. If it was overriding a same-named agent, a second line names the file that loads instead. Set `strictAgentFiles: true` in `subagents.json` (or `/agents → Settings → Strict agent files`) to fail startup on a broken file instead; mid-session reloads still only warn.
 
@@ -604,7 +611,7 @@ Settings                                    ← max concurrency (background + fo
   - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `steer_subagent` tool. `Esc`, or an empty submit, returns.
   - `x` (then `x` again to confirm) stops or aborts it, **background** agents included — a global Esc can't unambiguously target those, and still stops a blocking foreground `Agent` call instead. A stopped agent reports its partial output flagged as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot and fires its completion notification within a few seconds, rather than holding both forever.
   - `m` cycles how much of the transcript renders as Markdown — see [Viewer markdown](#persistent-settings).
-- **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `✕` (disabled). Each row shows the agent's model, and the highlighted agent's full description appears below the list. The model column flags `(unavailable, fallback: inherit)` when a configured model can't be resolved (it would silently inherit the parent model), and shows `(→ provider/id)` when it resolves to a different provider or version than configured. Select an agent to manage it:
+- **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model, and the highlighted agent's full description appears below the list. The model column flags `(unavailable, fallback: inherit)` when a configured model can't be resolved (it would silently inherit the parent model), and shows `(→ provider/id)` when it resolves to a different provider or version than configured. Select an agent to manage it:
   - **Default agents** (no override): Eject (export as `.md`), Disable
   - **Default agents** (ejected/overridden): Edit, Disable, Reset to default, Delete
   - **Custom agents**: Edit, Disable, Delete
@@ -1018,7 +1025,7 @@ src/
 
   # Agent registry
   default-agents.ts   # Embedded default agent configs (general-purpose, Explore, Plan)
-  custom-agents.ts    # Load user-defined agents from .pi/agents/, .agents/agents/, and global agents
+  custom-agents.ts    # Load user-defined agents from .pi/agents/, .agents/agents/, global agents, and skill-embedded agents
   agent-types.ts      # Unified agent registry (defaults + user), tool name resolution
   agent-file-toggle.ts # Locate/edit an agent's .md: enabled: toggle, eject to frontmatter
   agent-color.ts      # Claude Code/Agency Agents name color parsing and badge rendering

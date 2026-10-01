@@ -85,7 +85,7 @@ export interface AgentConfig {
   /** false = agent is hidden from the registry */
   enabled?: boolean;
   /** Where this agent was loaded from */
-  source?: "default" | "project" | "global";
+  source?: "default" | "project" | "global" | "skill";
   /** Path of the .md it was loaded from. Unset for embedded defaults. */
   sourcePath?: string;
 }

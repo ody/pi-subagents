@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { serializeAgentFile } from "../src/agent-file-toggle.js";
-import { BUILTIN_TOOL_NAMES } from "../src/agent-types.js";
+import { BUILTIN_TOOL_NAMES, buildAgentRegistry } from "../src/agent-types.js";
 import { loadCustomAgents } from "../src/custom-agents.js";
 import type { AgentConfig } from "../src/types.js";
 
@@ -1162,5 +1162,105 @@ Good body.`);
       // Serialized via JSON.stringify precisely so YAML doesn't split on the colon.
       expect(roundTrip({ description: "Scout: find things" }).description).toBe("Scout: find things");
     });
+  });
+});
+
+describe("loadCustomAgents — skill-embedded agents", () => {
+  let tmpDir: string;
+  let skillsDir: string;
+  let originalHome: string | undefined;
+  let originalAgentDir: string | undefined;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "pi-test-"));
+    originalHome = process.env.HOME;
+    originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.HOME = tmpDir;
+    delete process.env.PI_CODING_AGENT_DIR;
+    skillsDir = join(tmpDir, ".pi", "agent", "skills");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    if (originalHome == null) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = originalAgentDir;
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const agentMd = (description: string) => `---\ndescription: ${description}\n---\n\n${description} prompt.`;
+
+  /** Create a skill at `rel` under the skills root, shipping the given agents. */
+  function writeSkill(rel: string, agents: Record<string, string>) {
+    const dir = join(skillsDir, rel);
+    mkdirSync(join(dir, "agents"), { recursive: true });
+    writeFileSync(join(dir, "SKILL.md"), `---\nname: ${rel}\ndescription: test skill\n---\n`);
+    for (const [file, content] of Object.entries(agents)) writeFileSync(join(dir, "agents", `${file}.md`), content);
+    return dir;
+  }
+
+  it("loads agents from a skill's agents/ directory at any depth, tagged source skill", () => {
+    writeSkill("adr/adr-review", { "adr-reviewer": agentMd("Reviewer") });
+    writeSkill("solo", { helper: agentMd("Helper") });
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.get("adr-reviewer")?.description).toBe("Reviewer");
+    expect(result.get("adr-reviewer")?.source).toBe("skill");
+    expect(result.get("adr-reviewer")?.sourcePath).toBe(join(skillsDir, "adr/adr-review/agents/adr-reviewer.md"));
+    expect(result.get("helper")?.source).toBe("skill");
+  });
+
+  it("ignores agents/ directories outside a skill, inside dot dirs, and in nested skills", () => {
+    mkdirSync(join(skillsDir, "not-a-skill", "agents"), { recursive: true });
+    writeFileSync(join(skillsDir, "not-a-skill", "agents", "stray.md"), agentMd("Stray"));
+    writeSkill(".hidden/skill", { hidden: agentMd("Hidden") });
+    writeSkill("node_modules/pkg", { vendored: agentMd("Vendored") });
+    writeSkill("outer", {});
+    writeSkill("outer/inner", { inner: agentMd("Inner") });
+
+    expect([...loadCustomAgents(tmpDir).keys()]).toEqual([]);
+  });
+
+  it("a user agent overrides a skill agent of the same name", () => {
+    writeSkill("s", { dupe: agentMd("From skill") });
+    mkdirSync(join(tmpDir, ".pi", "agent", "agents"), { recursive: true });
+    writeFileSync(join(tmpDir, ".pi", "agent", "agents", "dupe.md"), agentMd("From global"));
+    writeFileSync(join(tmpDir, ".pi", "agent", "agents", "stub.md"), "---\nenabled: false\n---\n");
+    writeSkill("t", { stub: agentMd("Disabled by user stub") });
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.get("dupe")?.description).toBe("From global");
+    expect(result.get("dupe")?.source).toBe("global");
+    expect(result.get("stub")?.enabled).toBe(false);
+  });
+
+  it("a skill agent overrides a built-in default", () => {
+    writeSkill("s", { Explore: agentMd("Skill Explore") });
+    const registry = buildAgentRegistry(loadCustomAgents(tmpDir));
+    expect(registry.get("Explore")?.description).toBe("Skill Explore");
+    expect(registry.get("Explore")?.source).toBe("skill");
+  });
+
+  it("follows symlinked skill directories and agent files without looping on a cycle", () => {
+    const real = join(tmpDir, "store", "linked");
+    mkdirSync(join(real, "agents"), { recursive: true });
+    writeFileSync(join(real, "SKILL.md"), "---\nname: linked\ndescription: x\n---\n");
+    writeFileSync(join(tmpDir, "store", "agent.md"), agentMd("Linked"));
+    symlinkSync(join(tmpDir, "store", "agent.md"), join(real, "agents", "linked-agent.md"));
+    mkdirSync(skillsDir, { recursive: true });
+    symlinkSync(real, join(skillsDir, "linked"));
+    symlinkSync(skillsDir, join(skillsDir, "loop"));
+
+    expect(loadCustomAgents(tmpDir).get("linked-agent")?.description).toBe("Linked");
+  });
+
+  it("warns when two skills ship the same agent name; the later path wins", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writeSkill("a", { shared: agentMd("From a") });
+    writeSkill("b", { shared: agentMd("From b") });
+
+    expect(loadCustomAgents(tmpDir).get("shared")?.description).toBe("From b");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Agent "shared" is shipped by two skills'));
   });
 });
