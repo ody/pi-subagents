@@ -139,6 +139,7 @@ import {
   setGraceTurns,
   setRememberAgents,
 } from "../src/agent-runner.js";
+import { buildAgentPrompt } from "../src/prompts.js";
 import { compileJsonSchema } from "../src/workflow/json-schema.js";
 
 /** The most recent session built by `createSession` — read by `lastToolsPassed()`. */
@@ -216,6 +217,50 @@ beforeEach(() => {
   vi.mocked(createNestedSubagentTools).mockClear();
   loaderExtensionsRef.current = { extensions: [], errors: [], runtime: {} };
   lastSession = undefined;
+});
+
+// A cross-extension spawn can carry its agent definition inline (the advisor
+// extension does). That definition must govern the run outright: the registry
+// lookup for `type` is never consulted, so a same-named or missing registry
+// entry cannot change the child's prompt or tools.
+describe("agent-runner inline agentConfig", () => {
+  const inline = {
+    name: "advisor",
+    description: "Reviews the executor's work",
+    systemPrompt: "You are the advisor.",
+    builtinToolNames: [] as string[],
+    extensions: false as const,
+    skills: false as const,
+    promptMode: "replace" as const,
+    maxTurns: 1,
+  };
+
+  it("builds the prompt from the inline config and gives the child no tools", async () => {
+    const { session } = createSession("ADVICE");
+    createAgentSession.mockResolvedValue({ session });
+    vi.mocked(getAgentConfig).mockClear();
+    vi.mocked(getConfig).mockClear();
+    vi.mocked(getToolNamesForType).mockClear();
+
+    const result = await runAgent(ctx, "advisor", "Review this", { pi, agentConfig: inline });
+
+    expect(result.responseText).toBe("ADVICE");
+    expect(vi.mocked(buildAgentPrompt).mock.lastCall![0]).toBe(inline);
+    const opts = createAgentSession.mock.calls[0][0];
+    expect(opts.tools).toEqual([]);
+    expect(opts.customTools).toEqual([]);
+    expect(defaultResourceLoaderCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ noExtensions: true, noSkills: true }),
+    );
+    expect(session.setSessionName).toHaveBeenCalledWith("advisor");
+    expect(getAgentConfig).not.toHaveBeenCalled();
+    expect(getConfig).not.toHaveBeenCalled();
+    expect(getToolNamesForType).not.toHaveBeenCalled();
+  });
+
+  it("takes the turn limit from the inline config", () => {
+    expect(resolveEffectiveMaxTurns("advisor", undefined, inline)).toBe(1);
+  });
 });
 
 describe("agent-runner final output capture", () => {

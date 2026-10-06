@@ -16,7 +16,7 @@
 import { isTopLevelAgent } from "./agent-manager.js";
 import { type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { checkModelScope } from "./model-scope.js";
-import type { AgentRecord } from "./types.js";
+import type { AgentConfig, AgentRecord } from "./types.js";
 
 /** Minimal event bus interface needed by the RPC handlers. */
 export interface EventBus {
@@ -64,6 +64,29 @@ export interface RpcHandle {
   unsubSpawn: () => void;
   unsubStop: () => void;
   unsubConsume: () => void;
+}
+
+/**
+ * Complete a caller's inline agent definition. Only `systemPrompt` is required;
+ * every other field defaults the way an agent file's omitted frontmatter does,
+ * so an inline agent and the same agent written as `.md` behave alike. `type`
+ * names the run, so it becomes the definition's `name`.
+ */
+export function normalizeInlineAgentConfig(type: unknown, raw: unknown, description?: string): AgentConfig {
+  if (typeof type !== "string" || !type.trim()) throw new Error("Inline agentConfig requires a type to name the run");
+  const given = (raw ?? {}) as Partial<AgentConfig>;
+  if (typeof raw !== "object" || typeof given.systemPrompt !== "string") {
+    throw new Error("Inline agentConfig requires a systemPrompt string");
+  }
+  return {
+    ...given,
+    name: type,
+    description: given.description ?? description ?? type,
+    systemPrompt: given.systemPrompt,
+    extensions: given.extensions ?? true,
+    skills: given.skills ?? true,
+    promptMode: given.promptMode ?? "replace",
+  };
 }
 
 /**
@@ -153,6 +176,14 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
           modelInput: label,
         });
         if (verdict.kind === "error") throw new Error(verdict.message);
+      }
+
+      // `!= null` for the same reason as `model` above.
+      if (normalizedOptions.agentConfig != null) {
+        normalizedOptions = {
+          ...normalizedOptions,
+          agentConfig: normalizeInlineAgentConfig(type, normalizedOptions.agentConfig, normalizedOptions.description),
+        };
       }
 
       const id = manager.spawn(pi, ctx, type, prompt, normalizedOptions);

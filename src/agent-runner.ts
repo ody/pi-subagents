@@ -27,7 +27,7 @@ import { createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills } from "./skill-loader.js";
 import { createStructuredCapture, createStructuredOutputTool, structuredRetryPrompt } from "./structured-output.js";
-import type { SubagentType, ThinkingLevel } from "./types.js";
+import type { AgentConfig, SubagentType, ThinkingLevel } from "./types.js";
 import type { LifetimeUsage } from "./usage.js";
 import type { CompiledSchema } from "./workflow/json-schema.js";
 
@@ -330,10 +330,15 @@ export function setDefaultMaxTurns(n: number | undefined): void { defaultMaxTurn
  *
  * Exported because the widget's turn counter (`↻3≤20`) has to predict this
  * before the run starts, and a second copy of the expression would drift from
- * the one below that enforces it.
+ * the one below that enforces it. `agentConfig` defaults to the registry entry
+ * for `type`; an inline-config spawn passes its own.
  */
-export function resolveEffectiveMaxTurns(type: string, explicit?: number): number | undefined {
-  return normalizeMaxTurns(explicit ?? getAgentConfig(type)?.maxTurns ?? defaultMaxTurns);
+export function resolveEffectiveMaxTurns(
+  type: string,
+  explicit?: number,
+  agentConfig: AgentConfig | undefined = getAgentConfig(type),
+): number | undefined {
+  return normalizeMaxTurns(explicit ?? agentConfig?.maxTurns ?? defaultMaxTurns);
 }
 
 /**
@@ -406,6 +411,12 @@ export interface RunOptions {
   isolated?: boolean;
   inheritContext?: boolean;
   thinkingLevel?: ThinkingLevel;
+  /**
+   * Run under this definition instead of the registry entry for `type`. Set by
+   * a cross-extension spawn that carries its agent inline; `type` then only
+   * names the run.
+   */
+  agentConfig?: AgentConfig;
   /**
    * Reopen this pi session file rather than starting an empty conversation.
    * `createAgentSession` seeds itself from whatever its SessionManager holds,
@@ -614,8 +625,9 @@ export async function runAgent(
   prompt: string,
   options: RunOptions,
 ): Promise<RunResult> {
-  const config = getConfig(type);
-  const agentConfig = getAgentConfig(type);
+  const inline = options.agentConfig;
+  const config = inline ?? getConfig(type);
+  const agentConfig = inline ?? getAgentConfig(type);
 
   // Resolve working directory: worktree override > parent cwd
   const effectiveCwd = options.cwd ?? ctx.cwd;
@@ -648,7 +660,7 @@ export async function runAgent(
     }
   }
 
-  let toolNames = getToolNamesForType(type);
+  let toolNames = inline ? (inline.builtinToolNames ?? [...BUILTIN_TOOL_NAMES]) : getToolNamesForType(type);
 
   // Persistent memory: detect write capability and branch accordingly.
   // Account for disallowedTools — a tool in the base set but on the denylist is not truly available.
@@ -1047,7 +1059,7 @@ export async function runAgent(
 
   // Track turns for graceful max_turns enforcement
   let turnCount = 0;
-  const maxTurns = resolveEffectiveMaxTurns(type, options.maxTurns);
+  const maxTurns = resolveEffectiveMaxTurns(type, options.maxTurns, agentConfig);
   let softLimitReached = false;
   let aborted = false;
 

@@ -109,6 +109,68 @@ describe("cross-extension RPC", () => {
       );
     });
 
+    it("forwards an inline agentConfig, completed with agent-file defaults", async () => {
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("subagents:rpc:spawn:reply:req-inline", reply);
+      events.emit("subagents:rpc:spawn", {
+        requestId: "req-inline", type: "advisor", prompt: "review",
+        options: {
+          description: "Advisor review",
+          agentConfig: {
+            systemPrompt: "You are the advisor.",
+            builtinToolNames: [],
+            extensions: false,
+            skills: false,
+          },
+        },
+      });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
+      expect(manager.spawn).toHaveBeenCalledWith(deps.pi, ctx, "advisor", "review", {
+        description: "Advisor review",
+        agentConfig: {
+          name: "advisor",
+          description: "Advisor review",
+          systemPrompt: "You are the advisor.",
+          builtinToolNames: [],
+          extensions: false,
+          skills: false,
+          promptMode: "replace",
+        },
+      });
+    });
+
+    it("ignores a null agentConfig, as a JSON-forwarding caller sends for unset", async () => {
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("subagents:rpc:spawn:reply:req-inline-null", reply);
+      events.emit("subagents:rpc:spawn", {
+        requestId: "req-inline-null", type: "Explore", prompt: "x", options: { agentConfig: null },
+      });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(manager.spawn).toHaveBeenCalledWith(deps.pi, ctx, "Explore", "x", { agentConfig: null });
+    });
+
+    it.each([
+      ["no systemPrompt", "advisor", { builtinToolNames: [] }, "Inline agentConfig requires a systemPrompt string"],
+      ["a non-object config", "advisor", "You are the advisor.", "Inline agentConfig requires a systemPrompt string"],
+      ["no type", "", { systemPrompt: "p" }, "Inline agentConfig requires a type to name the run"],
+    ])("rejects an inline agentConfig with %s", async (_label, type, agentConfig, error) => {
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("subagents:rpc:spawn:reply:req-inline-bad", reply);
+      events.emit("subagents:rpc:spawn", {
+        requestId: "req-inline-bad", type, prompt: "x", options: { agentConfig },
+      });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(reply).toHaveBeenCalledWith({ success: false, error });
+      expect(manager.spawn).not.toHaveBeenCalled();
+    });
+
     it("returns error when no active session", async () => {
       ctx = undefined;
       registerRpcHandlers(deps);
