@@ -22,7 +22,7 @@ import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-wor
 import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
 import { assignHandle, handleBase } from "./mention.js";
 import { describeModel } from "./model-resolver.js";
-import type { AgentActivity, AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel } from "./types.js";
+import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel } from "./types.js";
 import { addUsage, type LifetimeUsage } from "./usage.js";
 import type { CompiledSchema } from "./workflow/json-schema.js";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled, pruneWorktrees, } from "./worktree.js";
@@ -193,6 +193,12 @@ interface SpawnOptions {
    * `spawnTopLevel` strips it from anything a caller sends.
    */
   reclaim?: { handle: string; alias?: string };
+  /**
+   * Run under this definition instead of the registry entry for `type`, which
+   * then only names the run (handle, session name, record). Never added to the
+   * registry, so it is invisible to the `Agent` tool and `/agents`.
+   */
+  agentConfig?: AgentConfig;
   model?: Model<any>;
   maxTurns?: number;
   isolated?: boolean;
@@ -806,6 +812,7 @@ export class AgentManager {
     const promise = runAgent(ctx, type, prompt, {
       pi,
       agentId: id,
+      agentConfig: options.agentConfig,
       model: options.model,
       maxTurns: options.maxTurns,
       isolated: options.isolated,

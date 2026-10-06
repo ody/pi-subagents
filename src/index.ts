@@ -633,6 +633,15 @@ export default function (pi: ExtensionAPI) {
    * either be in-process or have gone through `spawnTopLevel` first.
    */
   const spawnResolved = (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => {
+    // An inline definition is the caller's whole agent: there is no type to
+    // resolve, and the fallback below would hand it general-purpose instead.
+    const inline: AgentConfig | undefined = options?.agentConfig;
+    if (inline) {
+      return manager.spawn(piRef, ctxRef, type, prompt, {
+        ...options,
+        maxTurns: resolveEffectiveMaxTurns(type, options.maxTurns, inline),
+      });
+    }
     // Cross-extension callers get the same dispatch contract as the LLM (#183).
     // The RPC layer already throws for an unresolvable model rather than falling
     // back silently; a bad agent type should not be quieter. Throws become error

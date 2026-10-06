@@ -15,6 +15,7 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 | Field | Type | Notes |
 |---|---|---|
 | `description` | string | What the agent is doing. Shown in the widget, FleetView and the completion notification |
+| `agentConfig` | `Partial<AgentConfig>` with `systemPrompt` | Runs this definition instead of the registered `type`. See [Inline agent definitions](#inline-agent-definitions) |
 | `name` | string | A memorable second handle (`@auth-audit`). Slugged, never validated — anything unusable degrades rather than failing the spawn |
 | `model` | `Model` **or** `"provider/modelId"` | Strings are resolved at the RPC boundary against `ctx.modelRegistry`. `null` means inherit, not override. Resolution is fuzzy — see [Model Scope](../README.md#model-scope) |
 | `maxTurns` | number | Turn ceiling for the run |
@@ -52,6 +53,44 @@ Four things that are not obvious from the tables:
 - **`structuredOutput` is documented "set only by the workflow host"** (`src/agent-manager.ts:231-234`) and is also not stripped.
 - **`signal` and the `on*` callbacks are function values.** They work only because the bus is in-process. A caller that genuinely serializes its payload cannot use them, and they arrive as `undefined` rather than failing.
 
+### Inline agent definitions
+
+`options.agentConfig` lets an extension ship its agent with the spawn instead of installing an agent file. The definition is used for that one run and is never added to the registry, so the `Agent` tool and `/agents` never offer it.
+
+The shape is `AgentConfig` from `src/types.ts`, using its field names rather than frontmatter spellings. The RPC boundary completes it:
+
+- `systemPrompt` is required.
+- `name` is always set to `type`, which names the run (handle, session name, record) and is never resolved, so `fallbackSubagent` does not apply.
+- `description` defaults to `options.description`, then `type`.
+- `extensions` and `skills` default to `true`, and `promptMode` to `"replace"`, like omitted frontmatter.
+- `builtinToolNames` omitted means all built-ins. `[]` means none.
+
+A no-tool agent with no extensions or skills:
+
+```typescript
+pi.events.emit("subagents:rpc:spawn", {
+  requestId,
+  type: "advisor",
+  prompt: renderedTranscript,
+  options: {
+    description: "Advisor review",
+    agentConfig: {
+      systemPrompt: "You review another agent's work.",
+      builtinToolNames: [],
+      extensions: false,
+      skills: false,
+      persistSession: false,
+    },
+  },
+});
+```
+
+Three things to know:
+
+- **Sessions persist by default.** `rememberAgents` writes top-level agent sessions to disk. Set `persistSession: false` for a one-shot agent whose transcript nobody will reopen.
+- **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders as the fallback agent's name next to its `description`.
+- **An evicted inline agent cannot be reopened by `@handle`.** Reopening resolves the type against the registry and refuses when nothing is registered under that name. A registered agent with the same name would be reopened instead, so pick a type no agent file uses. A live record whose session still exists resumes normally, under the tools it was created with.
+
 ### Names that look right and are not
 
 One of these already shipped as a bug in this project's own README example, so it is worth reading the table even if you are sure.
@@ -75,6 +114,8 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 |---|---|
 | `No active session` | `src/cross-extension-rpc.ts:107` — called before the first bound `session_start`, or in a session that excludes pi-subagents |
 | `Model override "<label>" provided but ctx.modelRegistry is unavailable` | `src/cross-extension-rpc.ts:126` |
+| `Inline agentConfig requires a systemPrompt string` | `src/cross-extension-rpc.ts` — `agentConfig` is not an object, or has no string `systemPrompt` |
+| `Inline agentConfig requires a type to name the run` | `src/cross-extension-rpc.ts` — `agentConfig` set with an empty or non-string `type` |
 | `Model not found: "<input>".` + available models | `src/model-resolver.ts:117` |
 | `Model not in scope: "<input>".` + allowed models | `src/model-scope.ts:62` — only with `scopeModels` on, and checked against the *resolved* model |
 | `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agent-types.ts:187` — only under `fallbackSubagent: none` |
@@ -181,6 +222,7 @@ This document has no test of its own, so it is worth knowing which claims are ac
 | `test/cross-extension-rpc.test.ts` | Mocked `SpawnCapable` | Envelope shape, per-channel error strings, model resolution and scope enforcement |
 | `test/rpc-lifecycle-gating.test.ts` | Real extension factory | Nothing wired at factory time, everything once at `session_start`, and live widget activity for RPC spawns ([#142](https://github.com/tintinweb/pi-subagents/issues/142)/[#181](https://github.com/tintinweb/pi-subagents/pull/181)) |
 | `test/rpc-result-consumption.test.ts` | Real delivery path | The notification firing, and not firing, around `consume` |
+| `test/rpc-inline-agent.test.ts` | Real extension factory | An inline `agentConfig` skips type resolution, reaches `runAgent`, and stays out of the registry |
 
 Not pinned anywhere, so treat them as descriptions rather than contracts: the `SpawnOptions.cwd` error strings, `subagents:ready`'s `{}` payload, consume's handle resolution, and its missing `workflowId` check.
 
