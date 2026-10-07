@@ -10,7 +10,7 @@
 // count and run times, produce byte-identical labels — and `labels.indexOf`
 // then resolves to the FIRST of them regardless of which the user picked.
 //
-// CHANGELOG 0.10.0 states the menu "lets you cancel any one of them", so this
+// The menu is documented as letting you cancel any one scheduled job, so this
 // contradicts documented intent rather than merely being unspecified.
 
 import { mkdtempSync, rmSync } from "node:fs";

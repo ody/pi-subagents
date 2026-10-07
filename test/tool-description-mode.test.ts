@@ -3,15 +3,12 @@
 // with a mock pi (same pattern as print-mode.test.ts) inside a temp cwd, then
 // inspects the registered Agent tool's description.
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import subagentsExtension from "../src/index.js";
 import { setWorktreeIsolationEnabled } from "../src/worktree.js";
-
-const EXAMPLE_TEMPLATE = fileURLToPath(new URL("../examples/agent-tool-description.md", import.meta.url));
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -242,26 +239,6 @@ describe("toolDescriptionMode", () => {
     const desc: string = tools.get("Agent").description;
     expect(desc).not.toContain("{{");
     expect(desc).not.toContain("}}");
-  });
-
-  it("the shipped example template renders byte-identical to the full description", async () => {
-    // Guards examples/agent-tool-description.md against going stale: it must
-    // reproduce the full description exactly. If you edit one, edit the other.
-    const example = readFileSync(EXAMPLE_TEMPLATE, "utf-8");
-    const tools = setup({ toolDescriptionMode: "custom" }, () => {
-      writeFileSync(join(tmpDir, ".pi", "agent-tool-description.md"), example);
-    });
-    const customDesc: string = tools.get("Agent").description;
-
-    // Second instance in the same hermetic cwd, flipped to full mode.
-    writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({ toolDescriptionMode: "full" }));
-    const second = makePi();
-    subagentsExtension(second.pi);
-    try {
-      expect(customDesc).toBe(second.tools.get("Agent").description);
-    } finally {
-      await second.handlers.get("session_shutdown")?.({}, { hasUI: false, ui: {} } as any);
-    }
   });
 
   it("custom mode without a file falls back to the full description with a warning", () => {

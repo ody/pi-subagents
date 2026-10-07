@@ -1153,7 +1153,7 @@ export default function (pi: ExtensionAPI) {
   // param schema reflects the persisted setting. Runtime toggles via /agents
   // → Settings short-circuit the menu entry + the execute-time addJob path
   // immediately, but the schema-level removal only takes effect on next
-  // extension load (next pi session). Documented in CHANGELOG/README.
+  // extension load (next pi session). Documented in README.
   let schedulingEnabled = true;
   function isSchedulingEnabled(): boolean { return schedulingEnabled; }
   function setSchedulingEnabled(b: boolean) { schedulingEnabled = b; }
