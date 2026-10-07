@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Hard fork from tintinweb/pi-subagents as @ody/pi-subagents
+# 0002. Hard fork from tintinweb/pi-subagents as @ody/pi-subagents
 
 ## Context
 

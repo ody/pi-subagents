@@ -6,6 +6,12 @@
 - Format, drafts, and superseding: [ADR 0001](docs/decisions/0001-decision-records.md).
 - Backlog: GitHub issues at `github.com/ody/pi-subagents`, driven with `gh` and the `gh` skill. Labels: `task`, `bug`, `chore`.
 
+## Rules index
+
+Each entry: the rule an agent must not break, and its ADR.
+
+- **Upstream.** Hard fork as `@ody/pi-subagents`: never merge, rebase onto, cherry-pick from, or add a remote for `tintinweb/pi-subagents`, and never keep code, docs, or tests for upstream compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
+
 ## Code Quality
 
 - Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Do not rely on search snippets for broad changes.
