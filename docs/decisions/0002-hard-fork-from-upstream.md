@@ -6,7 +6,7 @@ This repo began as a soft fork of `tintinweb/pi-subagents` 0.19.0 with local com
 
 ## Decision
 
-This repo is a hard fork. It never merges, rebases onto, or cherry-picks from `tintinweb/pi-subagents`, and never adds it as a git remote. Upstream compatibility is not a reason to keep code, docs, or behavior.
+This repo is a hard fork. It never merges, rebases onto, or cherry-picks from `tintinweb/pi-subagents`, and never adds it as a git remote. Neither upstream compatibility nor Claude Code compatibility is a reason to keep or shape code, docs, or behavior. Existing Claude Code-compatible features stay until a later ADR removes or changes them.
 
 Identity in `package.json`:
 
@@ -33,7 +33,7 @@ The only Markdown kept outside test fixtures is `AGENTS.md`, `README.md`, `docs/
 
 Rebuild `AGENTS.md` and `README.md` for the fork:
 
-- `AGENTS.md` drops the `Changelog` section and the `CONTRIBUTING.md` and `SECURITY.md` rows. The Claude Code-compatibility rule stays until an ADR changes it.
+- `AGENTS.md` drops the `Changelog` section, the `CONTRIBUTING.md` and `SECURITY.md` rows, and the rule to respect Claude Code-compatible tool names, calling conventions, and UI patterns.
 - `README.md` drops upstream install instructions, links, issue references, and media, and documents git or local install.
 - `docs/rpc.md` and `docs/workflows.md` drop upstream issue and PR links.
 

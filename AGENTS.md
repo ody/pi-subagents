@@ -10,7 +10,7 @@
 
 Each entry: the rule an agent must not break, and its ADR.
 
-- **Upstream.** Hard fork as `@ody/pi-subagents`: never merge, rebase onto, cherry-pick from, or add a remote for `tintinweb/pi-subagents`, and never keep code, docs, or tests for upstream compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
+- **Upstream.** Hard fork as `@ody/pi-subagents`: never merge, rebase onto, cherry-pick from, or add a remote for `tintinweb/pi-subagents`, and never keep or shape code, docs, or tests for upstream or Claude Code compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
 
 ## Code Quality
 
@@ -23,7 +23,6 @@ Each entry: the rule an agent must not break, and its ADR.
 - Match the surrounding code style — it is enforced by biome (`biome.json`).
 - Always ask before removing functionality or code that appears intentional.
 - Do not preserve backward compatibility unless the user asks for it.
-- This is a pi extension. Respect the Claude Code-compatible tool names, calling conventions, and UI patterns the extension deliberately mirrors; don't diverge from them without a stated reason.
 - When reviewing a diff, favor solutions that are elegant, not overengineered — flag needless abstraction, layering, or defensive code that the change doesn't warrant.
 
 ## Documentation
