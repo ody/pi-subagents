@@ -1,14 +1,6 @@
-# @tintinweb/pi-subagents
+# @ody/pi-subagents
 
 A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-agents and workflow orchestration** to pi. Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level. Run them in the background (the default) or block on them, steer them mid-run, resume completed sessions, and define your own custom agent types. When the orchestration shouldn't be improvised, hand a deterministic JavaScript script to the `SubagentWorkflow` tool — `agent()`, `parallel()`, `pipeline()` — and scripts written for Claude Code's `Workflow` tool run here unchanged.
-
-<img width="600" alt="pi-subagents screenshot" src="https://github.com/tintinweb/pi-subagents/raw/master/media/screenshot.png" />
-
-
-https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
-
-<img width="600" alt="pi-color-badges-white" src="https://github.com/user-attachments/assets/555dcae4-333e-4ff0-b420-7b3369c018a4" />
-
 
 ## Features
 
@@ -19,8 +11,19 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steer a running agent inline by pressing `Enter` to open a composer, typing, then `Enter` to send (`Esc` or an empty submit returns) — the message appears as a user message and redirects the agent after its current tool. Stop a still-running agent by pressing `x` (then `x` again to confirm) — both work for background agents too. Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings))
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally, with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
 - **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `Agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. The allowlist is a privilege boundary — a child runs with its own tools, so pick it as carefully as `tools:` itself
-- **Agent mentions** — subagents are first-class: type `@explore also check the RPC path` at the prompt and it goes to that agent instead of the main model, without a word of it entering the chat. One syntax covers the whole lifecycle — message it while it runs, resume it once it has finished, reopen its session from disk long after that, or start it if it never ran. Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation, so it gets Claude Code's context-written prompt and a real `Agent` tool call without a word of it reaching the chat; `direct` mode starts it here from your text instead, with no model call at all. The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too. `@` completes live agents, resumable ones, and startable types alongside pi's file completion; `@main` forces text back to the main model. Toggle via `/agents → Settings → Agent mentions`
-- **Scripted workflows** — a `SubagentWorkflow` tool that runs a deterministic JavaScript script orchestrating many subagents: `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()` and `args`, with a pure-literal `meta` block declaring the phases. `pipeline()` has no barrier between stages, so one item can be in a later stage while another is still in the first — unlike `parallel()`, which idles every fast agent until the slowest finishes. Runs in the background with a live card, inspectable via `/agents → Workflows` or by selecting the run in FleetView. `agent()` also takes `gate: "npm test"` to verify a child by running a command (inside its worktree, when isolated) rather than asking another model, and `resume: "<label>"` to continue a child instead of re-paying its context. Scripts run in a `node:vm` sandbox on a worker thread where `Date.now()`, `Math.random()` and `eval` throw. On by default, but it stands down for company: if another extension already provides a `Workflow` or `SubagentWorkflow` tool, this one warns and disables itself for the session rather than offering the model two orchestrators. Pin it either way with `"workflowsEnabled"` in `subagents.json` or `/agents → Settings → Workflows`. A script written for Claude Code's `Workflow` tool runs here unchanged: same globals, `schema` returns a validated object exactly as it does there, `budget` is present and always reports no token target (pi has no such directive) so its `budget.total`-guarded patterns still take the branch they were written for, and nested `workflow()` composes saved workflows one level deep. **[Full guide](https://github.com/tintinweb/pi-subagents/blob/master/docs/workflows.md)**
+- **Agent mentions** — subagents are first-class: type `@explore also check the RPC path` at the prompt and it goes to that agent instead of the main model, without a word of it entering the chat. Toggle via `/agents → Settings → Agent mentions`.
+  - One syntax covers the whole lifecycle: message it while it runs, resume it once it has finished, reopen its session from disk long after that, or start it if it never ran.
+  - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation, so it gets Claude Code's context-written prompt and a real `Agent` tool call without a word of it reaching the chat. `direct` mode starts it here from your text instead, with no model call at all.
+  - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too.
+  - `@` completes live agents, resumable ones, and startable types alongside pi's file completion. `@main` forces text back to the main model.
+- **Scripted workflows** — a `SubagentWorkflow` tool that runs a deterministic JavaScript script orchestrating many subagents. **[Full guide](docs/workflows.md)**
+  - API: `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()` and `args`, with a pure-literal `meta` block declaring the phases.
+  - `pipeline()` has no barrier between stages, so one item can be in a later stage while another is still in the first — unlike `parallel()`, which idles every fast agent until the slowest finishes.
+  - Runs in the background with a live card, inspectable via `/agents → Workflows` or by selecting the run in FleetView.
+  - `agent()` also takes `gate: "npm test"` to verify a child by running a command (inside its worktree, when isolated) rather than asking another model, and `resume: "<label>"` to continue a child instead of re-paying its context.
+  - Scripts run in a `node:vm` sandbox on a worker thread where `Date.now()`, `Math.random()` and `eval` throw.
+  - On by default, but it stands down for company: if another extension already provides a `Workflow` or `SubagentWorkflow` tool, this one warns and disables itself for the session rather than offering the model two orchestrators. Pin it either way with `"workflowsEnabled"` in `subagents.json` or `/agents → Settings → Workflows`.
+  - Claude Code compatibility: a script written for Claude Code's `Workflow` tool runs here unchanged. Same globals. `schema` returns a validated object exactly as it does there. `budget` is present and always reports no token target (pi has no such directive), so its `budget.total`-guarded patterns still take the branch they were written for. Nested `workflow()` composes saved workflows one level deep.
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context. Resumes detached by default and notifies you on completion, just like a fresh spawn; pass `run_in_background: false` to block and get the result inline
 - **Graceful turn limits** — agents get a "wrap up" warning before hard abort, producing clean partial results instead of cut-off output
@@ -33,17 +36,25 @@ https://github.com/user-attachments/assets/8685261b-9338-4fea-8dfe-1c590d5df543
 - **Tool denylist** — block specific tools via `disallowed_tools` frontmatter
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
 - **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
-- **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`, `subagents:rpc:consume`). Standardized reply envelopes with protocol versioning. Emits `subagents:ready` on session start. **[Full reference](https://github.com/tintinweb/pi-subagents/blob/master/docs/rpc.md)**
+- **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`, `subagents:rpc:consume`). Standardized reply envelopes with protocol versioning. Emits `subagents:ready` on session start. **[Full reference](docs/rpc.md)**
 - **Schedule subagents** — pass `schedule` to the `Agent` tool to fire on cron / interval / one-shot. Session-scoped jobs with PID-locked persistence; results land via the same `subagent-notification` followUp path as manual background completions; manage via `/agents → Scheduled jobs`
 - **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (sourced from `/scoped-models`, with both global and project-local pi settings honored). Caller-supplied out-of-scope → hard error to orchestrator; frontmatter-pinned out-of-scope → warning + runs anyway (frontmatter authoritative). Toggle via `/agents → Settings → Scope models`
 
 ## Install
 
+Install from git:
+
 ```bash
-pi install npm:@tintinweb/pi-subagents
+pi install git:github.com/ody/pi-subagents
 ```
 
-Or load directly for development:
+Or load a local checkout directly:
+
+```bash
+pi install /path/to/pi-subagents
+```
+
+Or load the extension entry for development:
 
 ```bash
 pi -e ./src/index.ts
@@ -57,13 +68,13 @@ This extension is developed and tested against [pi](https://pi.dev).
 
 Third-party adapters report running it elsewhere. These are maintained independently of this project: not tested here, not covered by our CI, and compatibility may break with any release.
 
-- **DeepSeek Harness (`dsh`)** — via an adapter that maps pi's host API onto native DSH agents. Details and reports: [#258](https://github.com/tintinweb/pi-subagents/issues/258)
+- **DeepSeek Harness (`dsh`)** — via an adapter that maps pi's host API onto native DSH agents. Details and reports: the adapter's issue tracker.
 
 ## Quick Start
 
 The parent agent spawns sub-agents using the `Agent` tool:
 
-```
+```js
 Agent({
   subagent_type: "Explore",
   prompt: "Find all files that handle authentication",
@@ -78,7 +89,7 @@ Agents run in the background by default: the call returns an ID immediately and 
 
 Add a `schedule` field to register the agent to fire later instead of running now:
 
-```
+```js
 Agent({
   subagent_type: "Explore",
   prompt: "Look at recent commits and summarize what changed since last week",
@@ -101,6 +112,7 @@ Schedules are **session-scoped**: they reset on `/new` and restore on `/resume`.
 **Disable the feature entirely**: `/agents → Settings → Scheduling → disabled` removes `schedule` from the `Agent` tool spec (no LLM-context cost), hides the menu entry, and stops any active scheduler. The schema-level removal takes effect on the next pi session; the runtime kill is immediate. Re-enable from the same menu.
 
 Restrictions:
+
 - `schedule` cannot be combined with `inherit_context` (no parent conversation exists at fire time) or `resume` (schedules create fresh agents).
 - `run_in_background: false` is refused — scheduled jobs always run in the background. Omitting it, or passing `true`, is fine.
 - Scheduled fires bypass the `maxConcurrent` queue so a 5-minute interval cannot be deferred behind long-running manual agents.
@@ -110,7 +122,7 @@ Restrictions:
 
 The extension renders a persistent widget above the editor showing active agents. By default it shows background runs only (`widgetMode: background`) — foreground agents already render inline as the `Agent` tool result, so the widget would otherwise double-render them. Switch to `all` (every agent) or `off` (hide the widget) via `/agents → Settings → Widget`:
 
-```
+```text
 ● Agents
 ├─ ⠹ Agent  Refactor auth module · ↻5≤30 · 5 tool uses · 33.8k token (62%) · 12.3s
 │    ⎿  editing 2 files…
@@ -122,6 +134,7 @@ The extension renders a persistent widget above the editor showing active agents
 ```
 
 The token field is annotated with two optional signals inside parens:
+
 - **`NN%`** — context-window utilization (color-coded: <70% dim, 70–85% warning, ≥85% error). Omitted when the model has no declared `contextWindow`, or briefly right after compaction.
 - **`⇊N`** — number of times the session has compacted, when > 0. Stays dim; the percent's color carries urgency.
 
@@ -172,7 +185,7 @@ A viewer stays open when its agent finishes so you can read the final output, an
 
 Subagents are addressable. Every agent has a typeable handle — the agent type, lowercased, numbered when instances collide (`explore`, `explore-2`) — and `@handle <message>` at the prompt talks to that agent, whatever state it happens to be in. Type `@` to pick one:
 
-```
+```text
 ❯ @
   @auth-audit     send message · Explore · running · audit the auth flow
   @explore-2      send message · running · find flaky tests
@@ -185,7 +198,7 @@ Subagents are addressable. Every agent has a typeable handle — the agent type,
 The handle names the **agent**, not one process, so a single syntax covers its whole lifecycle:
 
 | State | `@explore fix the flaky test` does |
-|-------|-----------------------------------|
+| --- | --- |
 | running or queued | sends the message into its conversation, exactly as `steer_subagent` would |
 | finished | **resumes** it in the background from its existing session, continuing where it left off |
 | finished long ago, record gone | **reopens** its session from disk and continues there |
@@ -199,17 +212,17 @@ Claude Code does not start a mentioned agent itself. `@agent-<type>` becomes an 
 
 The cost is a visible turn — the model's reasoning and its tool block, narrating a decision you already made by typing the handle. This extension keeps the mechanism and moves it off-screen. The conversation is copied into a throwaway in-memory session, that clone takes the turn holding only the `Agent` tool, and what it starts is an ordinary top-level agent:
 
-```
+```text
 @cyan whats your favorite color        →  (nothing in the chat)
   └─ clone of this conversation, off-screen
        └─ Agent(subagent_type: "cyan", prompt: …)
             ▸ Cyan Agent   favorite color        ← widget, fleet row, handle
 ```
 
-It is a literal clone — the session's own entries and the same system prompt, not [`inherit_context`](#agent-frontmatter)'s text rendering of them — taken from memory and compaction-aware, so what the copy reads is what the main model is working from. The clone gets one tool and one job; it cannot read, write or run anything, because an invisible turn with the full toolset could do invisible work. The agent it starts is attributed to the *real* session, so its transcript and `rootSessionId` land where they would have anyway, and it carries no `tool-use-id` — the main conversation never issued one.
+It is a literal clone — the session's own entries and the same system prompt, not [`inherit_context`](#frontmatter-fields)'s text rendering of them — taken from memory and compaction-aware, so what the copy reads is what the main model is working from. The clone gets one tool and one job; it cannot read, write or run anything, because an invisible turn with the full toolset could do invisible work. The agent it starts is attributed to the *real* session, so its transcript and `rootSessionId` land where they would have anyway, and it carries no `tool-use-id` — the main conversation never issued one.
 
 | Mode | `@plan sketch the migration`, with no Plan agent running |
-|------|----------------------------------------------------------|
+| --- | --- |
 | `model` (default) | a clone of this conversation takes the turn off-screen and calls `Agent`, so the agent starts with a prompt **written from the conversation**. Nothing reaches the chat but a `Prompting @plan…` toast — the wording marks the wait for that turn, where `direct`'s `Started @plan` means it is already running |
 | `direct` | the agent starts here, immediately, with your message verbatim as its prompt. No model call at all, so no latency before it begins |
 | `off` | `@` means only "attach a file" again |
@@ -224,15 +237,21 @@ Two things to weigh against `direct`: the clone re-sends the whole conversation,
 
 Both names share one namespace — an alias can never shadow a live handle or the reverse — and the popup shows one row per agent, under its alias, with the type moved into the description. `steer_subagent`, `get_subagent_result`, and `stop_subagent` accept a handle too, so you and the model address agents the same way.
 
-**Resuming much later.** Because subagent sessions are persisted by default ([`rememberAgents`](#persistent-settings)), a handle keeps working after the agent's in-memory record is evicted: `@explore anything else?` reopens the conversation from disk. Only the *definition* is re-resolved, so a continuation runs under the agent type's current frontmatter, not the one the first run used. If the type has since been deleted or disabled, the resume is refused rather than falling back to another agent — re-enable it and the handle works again. Names from an evicted agent stay reserved, so a later Explore becomes `explore-2` rather than shadowing something you can still reach; the 100 most recent are kept, and all of them are forgotten on `/new` and session switch. A resumed agent takes those names back, so `@explore` keeps meaning the same conversation. An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead; if the session file has since been deleted, the mention says so and frees the handle rather than silently sending your message to a new agent.
+**Resuming much later.** Because subagent sessions are persisted by default ([`rememberAgents`](#persistent-settings)), a handle keeps working after the agent's in-memory record is evicted: `@explore anything else?` reopens the conversation from disk.
+
+- Only the *definition* is re-resolved, so a continuation runs under the agent type's current frontmatter, not the one the first run used.
+- If the type has since been deleted or disabled, the resume is refused rather than falling back to another agent. Re-enable it and the handle works again.
+- Names from an evicted agent stay reserved, so a later Explore becomes `explore-2` rather than shadowing something you can still reach. The 100 most recent are kept, and all of them are forgotten on `/new` and session switch. A resumed agent takes those names back, so `@explore` keeps meaning the same conversation.
+- An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead.
+- If the session file has since been deleted, the mention says so and frees the handle rather than silently sending your message to a new agent.
 
 The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets swallowed by accident:
 
 | Input | Goes to |
-|-------|---------|
+| --- | --- |
 | `@explore fix the flaky test` | the `explore` agent |
 | `@agent-explore fix the flaky test` | the same agent — Claude Code's manual spelling, accepted as a synonym |
-| `@main @explore is not a mention` | the main model, with `@main ` stripped — the escape hatch |
+| `@main @explore is not a mention` | the main model, with the leading `@main` and its trailing space stripped — the escape hatch |
 | `@explore` (no message) | the main model — a bare handle is never a send |
 | `hey @explore look at this` | the main model — only a **leading** mention is routed |
 | `@src/index.ts summarize this` | the main model, with pi's normal file attachment |
@@ -254,7 +273,7 @@ A `direct`-mode start takes the non-tool spawn path shared with the scheduler an
 Individual agent results render Claude Code-style in the conversation:
 
 | State | Example |
-|-------|---------|
+| --- | --- |
 | **Running** | `⠹ ↻3≤30 · 3 tool uses · 12.4k token (8%)` / `⎿ searching, reading 3 files…` |
 | **Completed** | `✓ ↻8 · 5 tool uses · 33.8k token (62%) · 12.3s` / `⎿ Done` |
 | **Wrapped up** | `✓ ↻50≤50 · 50 tool uses · 89.1k token (84% · ⇊2) · 45.2s` / `⎿ Wrapped up (turn limit)` |
@@ -266,7 +285,7 @@ Completed results can be expanded (ctrl+o in pi) to show the full agent output i
 
 By default, foreground and background agents each stream their full conversation to a per-subagent transcript — a JSON-lines file at `<os-tmpdir>/pi-subagents-<uid>/<cwd>/<session>/tasks/<agent-id>.output` (owner-only `0700`, cleared on reboot). Set `output_transcript: false` on a custom agent to write no transcript path or file for it, or set `outputTranscript: false` in `subagents.json` to make transcripts opt-in for the whole project (frontmatter overrides the project default). This governs **only** the transcript: it is independent of `persist_session` (the pi session on disk), and it does not affect `isolation: worktree` (which commits the agent's work to a git branch) or `memory:` (durable files) — set those accordingly if the goal is to keep a run off disk entirely. Background agent completion notifications render as styled boxes:
 
-```
+```text
 ✓ Find auth files completed
   ↻3 · 3 tool uses · 12.4k token · 4.1s
   ⎿  Found 5 files related to authentication...
@@ -278,7 +297,7 @@ Group completions render each agent as a separate block. The LLM receives struct
 ## Default Agent Types
 
 | Type | Tools | Model | Prompt Mode | Description |
-|------|-------|-------|-------------|-------------|
+| --- | --- | --- | --- | --- |
 | `general-purpose` | all 7 | inherit | `append` (parent twin) | Inherits the parent's full system prompt — same rules, CLAUDE.md, project conventions |
 | `Explore` | read, bash, grep, find, ls | haiku (falls back to inherit) | `replace` (standalone) | Fast codebase exploration (read-only) |
 | `Plan` | read, bash, grep, find, ls | inherit | `replace` (standalone) | Software architect for implementation planning (read-only) |
@@ -333,7 +352,7 @@ Report findings with file paths, line numbers, severity, and remediation advice.
 
 Then spawn it like any built-in type:
 
-```
+```js
 Agent({ subagent_type: "auditor", prompt: "Review the auth module", description: "Security audit" })
 ```
 
@@ -342,7 +361,7 @@ Agent({ subagent_type: "auditor", prompt: "Review the auth module", description:
 All fields are optional — sensible defaults for everything.
 
 | Field | Default | Description |
-|-------|---------|-------------|
+| --- | --- | --- |
 | `description` | filename | Agent description shown in tool listings |
 | `name` | filename | **The agent's type** — what `subagent_type` and `@handle` address. Claude Code's rule: the filename doesn't have to match, so `blubb.md` with `name: code-review` dispatches as `code-review`. Omit it and the filename is used. Any value works except one containing `:`, which Claude Code reserves for plugin-scoped identifiers — such a file is skipped with a warning. Two files may declare the same name; the later load wins, as a filename clash always did |
 | `display_name` | the type | Label shown in the UI (widget, agent list, badges) — cosmetic only, and independent of `name`. Claude Code has no equivalent; a file that sets only `name` badges as its type, unchanged |
@@ -456,7 +475,7 @@ A few rules the examples don't make obvious:
 **How an agent's scope is advertised.** The Agent tool description lists every available agent with a `(Tools: …)` suffix, and that suffix is what the orchestrator reads when deciding where to route work. It describes **built-in scope only** — extension tools are resolved when the agent runs (extensions may register lazily, see above), so they can't be enumerated when the description is built:
 
 | `tools:` | suffix |
-|---|---|
+| --- | --- |
 | omitted, `*`, or `all` | `*` |
 | a list of built-ins | that list, e.g. `read, grep` |
 | `none` with `isolated: true` or `extensions: false` | `none` |
@@ -471,7 +490,7 @@ The last two rows are separate because zero built-ins is not zero tools: `tools:
 Launch a sub-agent.
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --- | --- | --- | --- |
 | `prompt` | string | yes | The task for the agent |
 | `description` | string | yes | Short 3-5 word summary (shown in UI) |
 | `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `steer_subagent`/`get_subagent_result`/`stop_subagent`. Additive — the type-derived handle is still assigned |
@@ -490,7 +509,7 @@ Launch a sub-agent.
 Run a deterministic script that orchestrates many subagents. Returns a task id immediately; the run continues in the background and notifies on completion.
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --- | --- | --- | --- |
 | `script` | string | no | The workflow source. Must begin with `export const meta = { name, description }` |
 | `scriptPath` | string | no | Path to a script file. Takes precedence over `script` and `name` |
 | `name` | string | no | A saved workflow — `<name>.js` in `.pi/workflows/`, `.agents/workflows/` or `<agent dir>/workflows/`, carrying an `export const meta` declaration |
@@ -522,14 +541,14 @@ return await pipeline(
 
 Concurrency is capped at `max(1, min(16, cpus - 2))` — the run's own limit, independent of the session's `maxConcurrent` pool, which its agents do not enter. There are 1000 agents per run and 4096 items per `parallel`/`pipeline` call.
 
-**Full guide:** [`docs/workflows.md`](https://github.com/tintinweb/pi-subagents/blob/master/docs/workflows.md) — how the model writes the script for you, how to edit and re-run it, how to save one as a reusable named workflow, plus the complete `agent()` option reference, recipes and troubleshooting.
+**Full guide:** [`docs/workflows.md`](docs/workflows.md) — how the model writes the script for you, how to edit and re-run it, how to save one as a reusable named workflow, plus the complete `agent()` option reference, recipes and troubleshooting.
 
 ### `get_subagent_result`
 
 Check status and retrieve results from a background agent.
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --- | --- | --- | --- |
 | `agent_id` | string | yes | Agent ID to check |
 | `wait` | boolean | no | Wait for completion |
 | `verbose` | boolean | no | Include full conversation log |
@@ -541,7 +560,7 @@ Cancelling a `wait: true` call (for example, with `Esc`) stops only the wait. Th
 Send a steering message to a running agent. The message interrupts after the current tool execution.
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --- | --- | --- | --- |
 | `agent_id` | string | yes | Agent ID to steer |
 | `message` | string | yes | Message to inject into agent conversation |
 
@@ -550,7 +569,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 Stop a running or queued background agent. This is the model's own lever to end a run — the same action a human takes with `x` in FleetView, the conversation viewer, or `/agents`, and that `subagents:rpc:stop` gives another extension. There is no Claude Code equivalent; this tool is a deliberate divergence from the tool-name parity described in [Features](#features).
 
 | Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
+| --- | --- | --- | --- |
 | `agent_id` | string | yes | Agent ID to stop. A handle or alias works too |
 
 An already-completed, errored, or otherwise terminal agent reports its status and that the result is still available — this is success, not an error, since the model's intent ("that agent should not be running") is already true. The reply carries whatever assistant text the agent had streamed before the stop; an agent stopped before it produced any says so instead of showing an empty block. The full result still arrives later through the ordinary completion notification — stopping does **not** mark the result consumed, because at stop time `get_subagent_result`'s data (`record.result`) does not exist yet.
@@ -558,12 +577,12 @@ An already-completed, errored, or otherwise terminal agent reports its status an
 ## Commands
 
 | Command | Description |
-|---------|-------------|
+| --- | --- |
 | `/agents` | Interactive agent management menu — agent types, running agents, scheduled jobs, workflow runs, settings |
 
 `/agents → Workflows` (shown only when [workflows](#persistent-settings) are on) opens a framed two-pane inspector over a run, with two levels of depth:
 
-```
+```text
  audit-src
  Dynamically discover files under src/ and audit each …                    1/3 agents · 32s
 
@@ -581,7 +600,7 @@ The overview puts the phases on the left (a phase shows its number until it fini
 The run itself takes five keys, and the footer offers each only while it can actually do something:
 
 | Key | What it does |
-|-----|--------------|
+| --- | --- |
 | `x` | Stop the run. Live runs only — a settled one has nothing left to stop |
 | `p` | Pause / resume. Pausing stops *starting* agents; ones already running are left to finish, because killing model work mid-turn throws away everything it has spent. Held time is subtracted from the run's elapsed clock |
 | `s` | Skip the selected agent: its `agent()` call returns `null`, exactly as a terminal failure does, and the row renders skipped. Offered while the agent is queued or running |
@@ -593,14 +612,14 @@ Skipping is immediate for a running agent and for one held at a pause; an agent 
 ### CLI flags
 
 | Flag | Description |
-|------|-------------|
+| --- | --- |
 | `--subagents-workflow-file=<path>` | Run a workflow script at session start |
 
 Use the `=` form. The bare `--flag value` spelling consumes the next argument, so `pi --subagents-workflow-file review.js "do the thing"` would take the prompt as the flag's value. Composes with headless mode: `pi -p --subagents-workflow-file=review.js`. With no tool call to attach to, the run renders as a session entry and its result is handed to the model as context for its next turn.
 
 The `/agents` command opens an interactive menu:
 
-```
+```text
 Agents (4) — 2 running, 2 done              ← the whole tree, nested included
 Agent types (6)                             ← unified list: defaults + custom
 Create new agent                            ← manual wizard or AI-generated
@@ -630,7 +649,7 @@ Instead of hard-aborting at the turn limit, agents get a graceful shutdown:
 3. Hard abort only after the grace period
 
 | Status | Meaning | Icon |
-|--------|---------|------|
+| --- | --- | --- |
 | `completed` | Finished naturally | `✓` green |
 | `steered` | Hit limit, wrapped up in time | `✓` yellow |
 | `aborted` | Grace period exceeded | `✗` red |
@@ -642,7 +661,7 @@ There are two independent pools.
 
 **Background** (`maxConcurrent`, default 10). Excess agents are automatically queued and start as running agents complete. The widget shows queued agents as a collapsed count. Since agents run in the background by default, nearly every spawn takes a slot; the limit was raised from 4 so that ordinary parallel fan-outs don't queue.
 
-**Foreground** (`maxConcurrentForeground`, default `0` = unlimited). Off by default, so nothing changes unless you set it. pi dispatches a message's tool calls through `Promise.all`, so several `Agent` calls with `run_in_background: false` in one message have always started at once — this bounds that. Useful mainly with local models, where parallel agents thrash the prompt cache ([#253](https://github.com/tintinweb/pi-subagents/issues/253)). A queued foreground agent appears in `/agents → Running agents` as `queued` and can be stopped there; its `Agent` call says so while it waits and then returns its result normally.
+**Foreground** (`maxConcurrentForeground`, default `0` = unlimited). Off by default, so nothing changes unless you set it. pi dispatches a message's tool calls through `Promise.all`, so several `Agent` calls with `run_in_background: false` in one message have always started at once — this bounds that. Useful mainly with local models, where parallel agents thrash the prompt cache. A queued foreground agent appears in `/agents → Running agents` as `queued` and can be stopped there; its `Agent` call says so while it waits and then returns its result normally.
 
 The two are deliberately **not** one limit. A foreground agent blocks the parent anyway — the parent could have done that work itself without paying a slot — so charging it to the background pool would let a saturated pool starve the main session.
 
@@ -655,7 +674,7 @@ Nested children and a [workflow](#subagentworkflow)'s agents are outside the poo
 When background agents complete, they notify the main agent. The **join mode** controls how these notifications are delivered. It applies only to background agents.
 
 | Mode | Behavior |
-|------|----------|
+| --- | --- |
 | `smart` (default) | 2+ background agents spawned in the same turn are auto-grouped into a single consolidated notification. Solo agents notify individually. |
 | `async` | Each agent sends its own notification on completion (original behavior). Best when results need incremental processing. |
 | `group` | Force grouping even when spawning a single agent. Useful when you know more agents will follow. |
@@ -663,6 +682,7 @@ When background agents complete, they notify the main agent. The **join mode** c
 **Timeout behavior:** When agents are grouped, a 30-second timeout starts after the first agent completes. If not all agents finish in time, a partial notification is sent with completed results and remaining agents continue with a shorter 15-second re-batch window for stragglers.
 
 **Configuration:**
+
 - Configure join mode in `/agents` → Settings → Join mode
 
 ## Model Scope
@@ -674,7 +694,7 @@ When on, each subagent spawn's effective model is validated against pi's own `en
 **Out-of-scope handling depends on source:**
 
 | Model source | Out-of-scope behavior |
-|---|---|
+| --- | --- |
 | Caller-supplied via `Agent({ model: "..." })` | Hard error returned to the orchestrator, listing allowed models |
 | Caller-supplied via cross-extension RPC (`subagents:rpc:spawn`, e.g. pi-tasks `TaskExecute`) | Hard error returned to the calling extension, listing allowed models |
 | Pinned in agent frontmatter, with no caller `model` | Warning toast + the pinned model runs (frontmatter is authoritative) |
@@ -699,7 +719,14 @@ Runtime tuning values set via `/agents` → Settings (max concurrency, max foreg
 
 **Nested depth** (`maxSubagentDepth`, default `2`): the hard ceiling on [nested delegation](#nested-subagents), counted from the main session (main = 0, its subagents = 1). `0` or `1` disables nesting project-wide regardless of any agent's `allowed_subagents`. Read when a subagent session is built, so a change applies to agents started after it.
 
-**Fallback agent** (`fallbackSubagent`, default `general-purpose`): the agent used when a caller-supplied `subagent_type` doesn't resolve to exactly one enabled agent — unknown, disabled, or ambiguous because two agents differ only by case. Name any enabled agent to route those calls there instead, or set `none` for **strict**, fail-closed dispatch: the call is refused with an error listing the available types, and nothing spawns. Strict mode matters most for background and scheduled calls, which would otherwise start executing a substituted agent before the caller learns anything. Also settable from `/agents → Settings → Fallback agent`. The boolean `false` is accepted as a spelling of `none`, because it would otherwise be dropped as the wrong type and silently leave the permissive default in place. Every other value is read as an agent name, so a mistaken `off` fails loudly at dispatch rather than meaning one thing in the settings file and another in the resolver. A fallback agent that is itself unknown or disabled is a misconfiguration and is reported rather than quietly replaced. Note the default is unchanged and stays permissive by design: with `disableDefaultAgents` and no `general-purpose` of your own, an unresolvable type still resolves to a built-in config carrying *all* tools — set `none` (or name one of your own agents) to close that.
+**Fallback agent** (`fallbackSubagent`, default `general-purpose`): the agent used when a caller-supplied `subagent_type` doesn't resolve to exactly one enabled agent — unknown, disabled, or ambiguous because two agents differ only by case. Also settable from `/agents → Settings → Fallback agent`.
+
+- Name any enabled agent to route those calls there instead.
+- Set `none` for **strict**, fail-closed dispatch: the call is refused with an error listing the available types, and nothing spawns. Strict mode matters most for background and scheduled calls, which would otherwise start executing a substituted agent before the caller learns anything.
+- The boolean `false` is accepted as a spelling of `none`, because it would otherwise be dropped as the wrong type and silently leave the permissive default in place.
+- Every other value is read as an agent name, so a mistaken `off` fails loudly at dispatch rather than meaning one thing in the settings file and another in the resolver.
+- A fallback agent that is itself unknown or disabled is a misconfiguration and is reported rather than quietly replaced.
+- The default stays permissive by design: with `disableDefaultAgents` and no `general-purpose` of your own, an unresolvable type still resolves to a built-in config carrying *all* tools. Set `none` (or name one of your own agents) to close that.
 
 **Strict agent files** (`strictAgentFiles`, default `false`): when on, an unreadable or unparseable [agent file](#custom-agents) aborts extension load at startup and names the file, instead of being skipped with a warning — so a checked-in `.pi/agents/` can't silently fall through to a same-named agent from another location. Startup only: the mid-session reload that runs on each `Agent` call keeps warning either way, since a bad edit shouldn't kill a session on an unrelated spawn. Also settable from `/agents → Settings → Strict agent files`.
 
@@ -719,7 +746,13 @@ Runtime tuning values set via `/agents` → Settings (max concurrency, max foreg
 
 Subagents run in their own pi sessions, so by default pi's footer, statusline and `/cost` count only what the main model spent — a session that delegated most of its work reads as nearly free. Turn it on and each `Agent` / `get_subagent_result` / `steer_subagent` / `stop_subagent` result carries the spend accumulated since the last one, folded into `getSessionStats()`. `/cost` attributes it to the **Tools/summaries** bucket. Toggle via `/agents → Settings → Report usage to session`. Applied live.
 
-Three things worth knowing about the numbers. Every token component is reported, `cacheRead` included — the cached prefix genuinely is re-read and re-billed on every call, and pi counts it the same way for the session's own messages, so withholding it would make a subagent's rows count differently from every other row in one total. (The extension's *own* token displays still leave it out, which is a different question: there it inflates a reading of how much work was done.) Cost is pi's own per-message figure, priced from the model's listed rates; a model pi has no rates for contributes zero rather than an estimate. And the context-window percentage is untouched: pi derives it from assistant messages alone, so a delegating session's context doesn't appear to fill up faster. Agents that finish in the background have no tool result of their own to ride on, so their spend is carried by the next one you make — the footer catches up on the following call, not the moment they finish.
+Three things to know about the numbers:
+
+- Every token component is reported, `cacheRead` included. The cached prefix genuinely is re-read and re-billed on every call, and pi counts it the same way for the session's own messages, so withholding it would make a subagent's rows count differently from every other row in one total. The extension's *own* token displays still leave it out, which is a different question: there it inflates a reading of how much work was done.
+- Cost is pi's own per-message figure, priced from the model's listed rates. A model pi has no rates for contributes zero rather than an estimate.
+- The context-window percentage is untouched: pi derives it from assistant messages alone, so a delegating session's context doesn't appear to fill up faster.
+
+Agents that finish in the background have no tool result of their own to ride on, so their spend is carried by the next one you make — the footer catches up on the following call, not the moment they finish.
 
 **Show cost** (`showCost`, default `false`): whether the subagent surfaces print an estimated cost beside their token counts — the widget (running *and* finished lines), [FleetView](#fleetview), the conversation viewer, foreground results, `get_subagent_result`, and completion notifications:
 
@@ -781,9 +814,7 @@ Launch an autonomous agent. Available types:
 Custom agents live in .pi/agents/ or {{agentDir}}/agents/.
 ```
 
-Placeholders: `{{typeList}}` (full per-agent descriptions), `{{compactTypeList}}` (first sentence each), `{{agentDir}}`, `{{isolationGuideline}}` and `{{scheduleGuideline}}` (each expands with its own leading newline + `- ` bullet when the matching feature is on — place them directly after your last rule line; empty when [worktree isolation](#turning-worktrees-off) / scheduling is off). Unknown placeholders are left verbatim with a stderr warning; a missing or empty file falls back to `"full"` with a warning. Note the usual trust umbrella: a project-level file shapes the orchestrator's prompt, same as project agents and extensions do.
-
-**Starting point:** copy [`examples/agent-tool-description.md`](examples/agent-tool-description.md) — it reproduces the default full description exactly (a CI test keeps it in sync), so you can trim from a known-good baseline instead of writing from scratch.
+Placeholders: `{{typeList}}` (full per-agent descriptions), `{{compactTypeList}}` (first sentence each), `{{agentDir}}`, `{{isolationGuideline}}` and `{{scheduleGuideline}}` (each expands with its own leading newline and a `-` bullet marker when the matching feature is on — place them directly after your last rule line; empty when [worktree isolation](#turning-worktrees-off) / scheduling is off). Unknown placeholders are left verbatim with a stderr warning; a missing or empty file falls back to `"full"` with a warning. Note the usual trust umbrella: a project-level file shapes the orchestrator's prompt, same as project agents and extensions do.
 
 **Example — global defaults for a beefy machine:**
 
@@ -799,14 +830,19 @@ EOF
 
 Every project now starts with concurrency 16 and grace 10, without ever touching the menu. Individual projects can still override via `/agents` → Settings.
 
-**Failure behavior:** missing file is silent; malformed JSON logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr; invalid/out-of-range field values are dropped per-field; write failures downgrade the `/agents` toast to a warning with `(session only; failed to persist)`.
+**Failure behavior:**
+
+- Missing file: silent.
+- Malformed JSON: logs a `[pi-subagents] Ignoring malformed settings at …` warning to stderr.
+- Invalid or out-of-range field values: dropped per-field.
+- Write failures: downgrade the `/agents` toast to a warning with `(session only; failed to persist)`.
 
 ## Events
 
 Agent lifecycle events are emitted via `pi.events.emit()` so other extensions can react:
 
 | Event | When | Key fields |
-|-------|------|------------|
+| --- | --- | --- |
 | `subagents:created` | `Agent`-tool background spawn, or a detached resume — **not** cross-extension RPC, scheduler, or `@handle` spawns, which are first seen at `subagents:started` | `id`, `type`, `description`, `isBackground` (always `true`) |
 | `subagents:started` | Agent transitions to running (including queued→running) | `id`, `type`, `description` |
 | `subagents:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`: token components including `cacheRead`, plus `cost.total` in USD; absent when nothing was spent), `toolUses`, `result` |
@@ -831,7 +867,7 @@ Other pi extensions can spawn and stop subagents programmatically via the `pi.ev
 
 All RPC replies use a standardized envelope: `{ success: true, data?: T }` on success, `{ success: false, error: string }` on failure.
 
-**Full reference:** [`docs/rpc.md`](https://github.com/tintinweb/pi-subagents/blob/master/docs/rpc.md) — the complete spawn-option surface (including the fields that are silently stripped), every error string, the completion-notification race, the `Symbol.for("pi-subagents:manager")` registry, and what protocol version `2` does and does not promise. [`tintinweb/pi-tasks`](https://github.com/tintinweb/pi-tasks) is the reference implementation.
+**Full reference:** [`docs/rpc.md`](docs/rpc.md) — the complete spawn-option surface (including the fields that are silently stripped), every error string, the completion-notification race, the `Symbol.for("pi-subagents:manager")` registry, and what protocol version `2` does and does not promise.
 
 ### Discovery
 
@@ -926,7 +962,7 @@ memory: project   # project | local | user
 ```
 
 | Scope | Location | Use case |
-|-------|----------|----------|
+| --- | --- | --- |
 | `project` | `.pi/agent-memory/<name>/` | Shared across the team (committed) |
 | `local` | `.pi/agent-memory-local/<name>/` | Machine-specific (gitignored) |
 | `user` | `<agentDir>/agent-memory/<name>/` (default `~/.pi/agent/agent-memory/`, honors `PI_CODING_AGENT_DIR`) | Global personal memory |
@@ -941,11 +977,12 @@ The `disallowed_tools` field is respected when determining write capability — 
 
 Set `isolation: worktree` to run an agent in a temporary git worktree:
 
-```
+```js
 Agent({ subagent_type: "refactor", prompt: "...", isolation: "worktree" })
 ```
 
 The agent gets a full, isolated copy of the repository. The worktree directory is removed on completion either way — what differs is whether a branch is left behind:
+
 - **No changes:** worktree is cleaned up automatically, no branch
 - **Changes made:** changes are committed to a new branch (`pi-agent-<id>`), and the result names the branch and the `git merge` command for it. The branch is the only artifact — the worktree path is gone, so nothing points into it
 - **Agent committed its own work:** the branch is created at the agent's HEAD, preserving its commits (uncommitted leftovers are committed on top first)
@@ -981,7 +1018,7 @@ skills: api-conventions, error-handling
 **Discovery roots** (checked in this order, first match wins):
 
 | Scope | Path | Source |
-|---|---|---|
+| --- | --- | --- |
 | Project | `<cwd>/.pi/skills/` | Pi-standard |
 | Project | `<cwd>/.agents/skills/` | [Agent Skills spec](https://agentskills.io/integrate-skills) |
 | User | `$PI_CODING_AGENT_DIR/skills/` (default `~/.pi/agent/skills/`) | Pi-standard |
@@ -1013,13 +1050,12 @@ This is useful for creating agents that inherit extension tools but should not h
 
 ## Architecture
 
-```
-docs/                 # Long-form guides (shipped to npm; README links out to them)
+```text
+docs/                 # Long-form guides (README links out to them)
   workflows.md        # SubagentWorkflow: writing, editing, saving and re-running scripts
   rpc.md              # Cross-extension integration: pi.events, subagents:rpc:*, manager registry
 examples/
   workflows/          # Runnable examples, executed by test/workflow-examples.test.ts
-  agent-tool-description.md
 test/                 # vitest suite; e2e/ and perf/ subdirectories
 src/
   index.ts            # Extension entry: tool/command registration, /agents menu, rendering
@@ -1088,4 +1124,4 @@ src/
 
 ## License
 
-MIT — [tintinweb](https://github.com/tintinweb)
+MIT — see [LICENSE](LICENSE).

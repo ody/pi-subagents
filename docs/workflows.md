@@ -21,7 +21,7 @@ Use the `Agent` tool for one delegated task, or a handful you can name up front.
 There is no `/workflows` command. The tool is model-invoked, so you get a workflow by asking for one in the prompt — the same way you ask for anything else. What you say shapes what you get:
 
 | What you say | What you get |
-|---|---|
+| --- | --- |
 | "audit every route file for missing auth checks" | A discovery agent, then a fan-out over what it found |
 | "review the changed files for bugs, and verify each finding before reporting it" | Two stages, the second trying to refute the first |
 | "fix the failing test, and don't tell me it's done until `npm test` passes" | A `gate` on the fix agent, and a retry loop around it |
@@ -75,7 +75,7 @@ Each row names the model the child *actually* ran on — read back from its sess
 The **inspector**, at `/agents → Workflows` — two panes, two levels: phases on the left, that phase's agents on the right, and `⏎` to descend into one agent's prompt, activity and outcome. The detail pane has room for the canonical `provider/model-id` and the thinking level, including a level pi clamped (`thinking: low (asked max)`). The full key table is in [the README](../README.md#commands); the four that change the run rather than the view are:
 
 | Key | |
-|---|---|
+| --- | --- |
 | `x` | Stop the run |
 | `p` | Pause — running agents finish, no new ones start, and held time comes off the clock |
 | `s` | **Skip** the selected agent: its `agent()` call returns `null` in the script |
@@ -86,7 +86,7 @@ The **inspector**, at `/agents → Workflows` — two panes, two levels: phases 
 The fifth key only shows you something:
 
 | Key | |
-|---|---|
+| --- | --- |
 | `c` | Open the selected agent's **conversation** — the same viewer a fleet-list row opens, over the dialog |
 
 Because it changes nothing, `c` works at both levels and on an agent that has already settled — which is the usual case, since reading what a child did is most of why the inspector gets opened. The dialog hides itself while the conversation is up and comes back when you close it. A row with no child behind it yet (queued, or replayed from the resume journal) has no conversation to open and does not offer the key.
@@ -119,7 +119,7 @@ Replayed rows are annotated `from resume journal` on the card and in the inspect
 A script you will run more than once belongs somewhere durable. Copy it out of the temp directory into one of these, named `<name>.js`:
 
 | Location | Scope |
-|---|---|
+| --- | --- |
 | `<project>/.pi/workflows/<name>.js` | This project. Checked in, if you want it shared |
 | `<project>/.agents/workflows/<name>.js` | This project, in the tool-agnostic directory |
 | `<agent dir>/workflows/<name>.js` | You, everywhere — follows you across projects |
@@ -220,7 +220,7 @@ export const meta = {
 ### Tool parameters
 
 | Parameter | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `script` | string | Inline source. Must begin with `export const meta = { name, description }` |
 | `scriptPath` | string | A script file, absolute or project-relative. **Takes precedence over `script`** — this is how an edited workflow is re-run |
 | `name` | string | A saved workflow — `<name>.js` in one of the three directories above. Lowest precedence |
@@ -237,7 +237,7 @@ Spawns one subagent and resolves to its final text — or, with `schema`, to a v
 **Returns `null` if the agent failed terminally *or* if you skipped it from the inspector**, indistinguishably. Filter with `.filter(Boolean)` when a `null` would break a later stage, and be careful with in-script retry loops: retrying on `null` will re-run something you deliberately skipped.
 
 | Option | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `label` | string | Display name in the progress tree. Also the handle `resume` addresses |
 | `phase` | string | Put this agent in a named group, overriding the ambient `phase()`. **Use it inside `pipeline`/`parallel` stages**, where the ambient phase races |
 | `agentType` | string | Which agent definition to use. Defaults to `general-purpose`; built-ins are `general-purpose`, `Explore`, `Plan`, plus your custom agents |
@@ -283,7 +283,7 @@ The child runs in the *same* worker and vm context under its own globals, so it 
 ### Where files live
 
 | What | Where |
-|---|---|
+| --- | --- |
 | An inline script, as run | `<tmp>/pi-subagents-<uid>/<encoded-cwd>/<session>/tasks/<run id>.workflow.js` |
 | The resume journal | the same directory, `<run id>.workflow.jsonl` |
 | Saved workflows | `.pi/workflows/` → `.agents/workflows/` → `<agent dir>/workflows/`, first hit wins |
@@ -293,7 +293,7 @@ The first two are scratch: temp storage, wiped by a reboot or a temp sweep. Only
 ### Limits and caps
 
 | Limit | Value |
-|---|---|
+| --- | --- |
 | Agents running at once | `max(1, min(16, cpus - 2))` — 6 on an 8-core machine |
 | Agents per run, total | 1000 |
 | Items per `parallel`/`pipeline` **call** | 4096 |
@@ -376,7 +376,7 @@ The script called `Date.now()`, `new Date()` or `Math.random()`. A script that v
 A typo, or an option from a different tool. The supported set is `label`, `phase`, `model`, `agentType`, `isolation`, `gate`, `resume`, `effort`, `schema`.
 
 **An agent ran as the wrong type and nothing said so.**
-An `agentType` that names no known agent falls back to `general-purpose` **silently** — unlike the `Agent` tool, which tells you. Option *keys* are validated; option *values* are not. Check the spelling against `/agents`; matching is case-insensitive, and a disabled agent does not count.
+An `agentType` that names no known agent falls back to `general-purpose` **silently** — unlike the `Agent` tool, which tells you. Option *keys* are validated, but option *values* are not. Check the spelling against `/agents`. Matching is case-insensitive, and a disabled agent does not count.
 
 **`agent()` returned `null`.**
 The agent failed terminally, or you skipped it with `s` in the inspector. These are indistinguishable to the script. With `schema`, it also covers a child that never produced a payload matching the schema.
@@ -413,7 +413,13 @@ The sandbox is a determinism and accident boundary, not a defence against a deli
 
 This is a port of Claude Code's `Workflow` tool down to its state model, so **a script written for Claude Code runs here unchanged.** `test/workflow-claude-code-compat.test.ts` runs the canonical `review-changes` example from that tool's own description, verbatim.
 
-Identical: `agent()`, `pipeline()`, `parallel()`, `workflow()`, `phase()`, `log()`, `args`, `budget`; the `meta` block; `schema` returning a validated object; one-level `workflow()` nesting; the determinism throws.
+Identical:
+
+- `agent()`, `pipeline()`, `parallel()`, `workflow()`, `phase()`, `log()`, `args`, `budget`
+- the `meta` block
+- `schema` returning a validated object
+- one-level `workflow()` nesting
+- the determinism throws
 
 Different:
 
@@ -429,7 +435,7 @@ Additions on this side: `gate`, `resume`, `effort`, journal-backed `resumeFromRu
 Every file below is executed by `test/workflow-examples.test.ts` against a stub host on each CI run, so none of them can silently rot.
 
 | File | Demonstrates | Runs as-is? |
-|---|---|---|
+| --- | --- | --- |
 | [`fan-out-audit.js`](../examples/workflows/fan-out-audit.js) | Runtime fan-out, `pipeline`, `label`, per-stage `phase` | Yes — takes `args.root` |
 | [`structured-findings.js`](../examples/workflows/structured-findings.js) | `schema` on both stages, objects instead of prose | Yes |
 | [`gated-fix.js`](../examples/workflows/gated-fix.js) | `gate`, `isolation: "worktree"`, `resume` retry loop | Needs a real test command |
