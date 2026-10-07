@@ -1,0 +1,4 @@
+# Marksman language server config.
+# This file doubles as the workspace root marker for the LSP.
+[[index]]
+roots = ["."]

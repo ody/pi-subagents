@@ -1,5 +1,11 @@
 # Development Rules
 
+## Decision records and backlog
+
+- `docs/decisions/*.md` is current truth. Follow it. Ignore `docs/decisions/drafts/` unless asked to work on a draft.
+- Format, drafts, and superseding: [ADR 0001](docs/decisions/0001-decision-records.md).
+- Backlog: GitHub issues at `github.com/ody/pi-subagents`, driven with `gh` and the `gh` skill. Labels: `task`, `bug`, `chore`.
+
 ## Code Quality
 
 - Read files in full before wide-ranging changes, before editing files you have not fully inspected, and when asked to investigate or audit. Do not rely on search snippets for broad changes.
