@@ -33,7 +33,7 @@ The only Markdown kept outside test fixtures is `AGENTS.md`, `README.md`, `docs/
 
 Rebuild `AGENTS.md` and `README.md` for the fork:
 
-- `AGENTS.md` drops the `Changelog` section, the `CONTRIBUTING.md` and `SECURITY.md` rows, and the rule to respect Claude Code-compatible tool names, calling conventions, and UI patterns.
+- `AGENTS.md` is rewritten as a short agent guide that keeps only what an agent cannot infer from the code: the decision-records and backlog pointers, the rules index, commands, non-default style rules, test gotchas, and which doc to update. It drops the `Changelog` section, the `CONTRIBUTING.md` and `SECURITY.md` rows, the Claude Code compatibility rule, the long rule list, and the user-override section.
 - `README.md` drops upstream install instructions, links, issue references, and media, and documents git or local install.
 - `docs/rpc.md` and `docs/workflows.md` drop upstream issue and PR links.
 
