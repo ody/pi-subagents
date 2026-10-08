@@ -29,7 +29,7 @@
  * arrived in 0.80.5 — where this one has been exported unchanged from before
  * the declared peer floor, and is the same code path (`byId` is only an index
  * cache, so passing it or not cannot change the result). Keeping the floor
- * honest costs nothing here: see the `compat-floor-pi` job.
+ * honest costs nothing here.
  *
  * Its `thinkingLevel` is NOT used, and is the one place the newer API would be
  * better. `getSessionContextSettings` starts at "off" and moves only on an
