@@ -13,6 +13,7 @@ pi extension providing sub-agents (`Agent` tool, `/agents` menu) and scripted wo
 Each entry: the rule an agent must not break, and its ADR.
 
 - **Upstream.** Hard fork: never merge, rebase onto, cherry-pick from, or add a remote for the upstream repository, and never keep or shape code, docs, or tests for upstream or Claude Code compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
+- **No workflows.** Never add workflow orchestration to this repo, and never change `subagents:rpc:*` channels or lifecycle events for top-level agents while removing it. [ADR 0003](docs/decisions/0003-no-workflow-orchestration.md)
 
 ## Commands
 

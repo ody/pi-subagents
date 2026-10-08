@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. No workflow orchestration in pi-subagents
+# 0003. No workflow orchestration in pi-subagents
 
 ## Context
 
