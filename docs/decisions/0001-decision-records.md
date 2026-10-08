@@ -10,6 +10,7 @@ Non-obvious rationale lives in Nygard-style decision records at `docs/decisions/
 
 - `docs/decisions/*.md` is current truth. An agent working in this repo must follow it.
 - Every ADR has the sections `Context`, `Decision`, and `Consequences`, from `docs/decisions/0000-template.md`.
+- `Decision` holds standing rules and a pass/fail done check. One-time work to reach the decided state goes to the backlog. Incidental inventories and forecasts about later ADRs stay out, since the next change makes them false.
 - `docs/decisions/drafts/` holds unnumbered drafts, hidden from recursive search by the root `.ignore` file. Ignore drafts unless asked to work on one. Every draft opens with `> DRAFT: not accepted, not current truth.`; acceptance removes the line.
 - Accepting a draft is `git mv docs/decisions/drafts/<slug>.md docs/decisions/NNNN-<slug>.md`, assigning the number then. Abandoning a draft is deleting it.
 - Numbers are never reused, so superseding or deleting leaves a gap in the sequence.

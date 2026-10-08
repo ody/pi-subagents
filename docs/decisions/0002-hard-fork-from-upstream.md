@@ -6,7 +6,7 @@ This repo began as a soft fork of `tintinweb/pi-subagents` 0.19.0 with local com
 
 ## Decision
 
-This repo is a hard fork. It never merges, rebases onto, or cherry-picks from `tintinweb/pi-subagents`, and never adds it as a git remote. Neither upstream compatibility nor Claude Code compatibility is a reason to keep or shape code, docs, or behavior. Existing Claude Code-compatible features stay until a later ADR removes or changes them.
+This repo is a hard fork. It never merges, rebases onto, or cherry-picks from `tintinweb/pi-subagents`, and never adds it as a git remote. Neither upstream compatibility nor Claude Code compatibility is a reason to keep or shape code, docs, or behavior.
 
 Identity in `package.json`:
 
@@ -29,13 +29,11 @@ Delete these tracked files:
 
 A test that breaks or loses its purpose because of these changes is deleted, not adapted to keep the old behavior. Tests that only change because of the rename, such as the `@tintinweb/pi-subagents` fixture strings in `test/agent-runner.test.ts`, are updated to `@ody/pi-subagents`.
 
-The only Markdown kept outside test fixtures is `AGENTS.md`, `README.md`, `docs/rpc.md`, `docs/workflows.md`, and `docs/decisions/`.
-
 Rebuild `AGENTS.md` and `README.md` for the fork:
 
 - `AGENTS.md` is rewritten as a short agent guide that keeps only what an agent cannot infer from the code: the decision-records and backlog pointers, the rules index, commands, non-default style rules, test gotchas, and which doc to update. It drops the `Changelog` section, the `CONTRIBUTING.md` and `SECURITY.md` rows, the Claude Code compatibility rule, the long rule list, and the user-override section.
 - `README.md` drops upstream install instructions, links, issue references, and media, and documents git or local install.
-- `docs/rpc.md` and `docs/workflows.md` drop upstream issue and PR links.
+- Other docs drop upstream issue and PR links.
 
 The fork is complete when `git grep -n -i -E 'tintinweb/pi-subagents|@tintinweb/' -- ':!LICENSE' ':!docs/decisions'` prints nothing and `npm run lint`, `npm run typecheck`, and `npm test` pass.
 
