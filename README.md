@@ -1002,6 +1002,7 @@ src/
   prompts.ts          # Config-driven system prompt builder
   context.ts          # Parent conversation context for inherit_context
   settings.ts         # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
+  runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
   env.ts              # Environment detection (git, platform)
 
   ui/
