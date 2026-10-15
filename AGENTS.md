@@ -27,7 +27,8 @@ Each entry: the rule an agent must not break, and its ADR.
 
 ## Code style
 
-- Biome's formatter is off. Match the surrounding code; biome lint is the only style enforcement; file size is enforced by `test/file-size.test.ts` ([ADR 0004](docs/decisions/0004-source-file-structure.md)).
+- Biome's formatter is off. Match the surrounding code. Biome lint is the only style enforcement.
+- File size is enforced by `test/file-size.test.ts`. [ADR 0004](docs/decisions/0004-source-file-structure.md)
 - No `any` unless unavoidable.
 - Top-level imports only. No `await import()` and no `import("pkg").Type`.
 - Inline single-line helpers that have only one call site.
