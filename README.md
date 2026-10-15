@@ -983,6 +983,8 @@ src/
   agent-manager.ts    # Agent lifecycle, concurrency queue, completion notifications
   agent-start.ts      # Agent startup, worktree setup, and run settlement
   agent-spawn.ts      # Spawn records and the inline spawn contract
+  agent-resume.ts     # Inline and detached agent-session resumes
+  agent-retention.ts  # Completed record eviction and resumable handles
   agent-manager-rules.ts # Spawn eligibility and spawn input validation
   agent-session-shutdown.ts # Graceful shutdown of a child AgentSession
   nested-tools.ts     # Delegation tools handed to subagents (nested spawn/collect/steer)
