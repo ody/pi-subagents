@@ -999,6 +999,8 @@ src/
   agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
   agent-tool-description.ts # Agent tool description text sent to the model (full, compact, custom)
   agent-tool-render.ts   # Agent tool call/result rendering and the running-status block
+  agent-tool.ts       # Agent tool definition: schema, rendering hooks, execute dispatch
+  agent-tool-foreground.ts # Foreground Agent run: blocking spawn with streamed progress
 
   # Invocation surface
   invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
