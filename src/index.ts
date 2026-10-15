@@ -22,6 +22,7 @@ import { buildNewAgentFile, disableInContent, enableInContent, isEmptyStub, loca
 import { AgentManager, isTopLevelAgent } from "./agent-manager.js";
 import { getAgentConversation, getDefaultMaxTurns, getGraceTurns, getRememberAgents, normalizeMaxTurns, SUBAGENT_TOOL_NAMES, setDefaultMaxTurns, setGraceTurns, setRememberAgents, steerAgent } from "./agent-runner.js";
 import { BUILTIN_TOOL_NAMES, getAgentConfig, getAllTypes, getAvailableTypes, getConfig, getFallbackSubagent, isDefaultsDisabled, NO_FALLBACK, registerAgents, resolveSpawnType, resolveType, setDefaultsDisabled, setFallbackSubagent } from "./agent-types.js";
+import { createBackgroundResume } from "./background-resume.js";
 import { inChildSessionContext } from "./child-context.js";
 import { CompletionNotifier, QUEUE_WAIT_POLL_MS } from "./completion-notifier.js";
 import { type RpcHandle, registerRpcHandlers } from "./cross-extension-rpc.js";
@@ -33,7 +34,7 @@ import { runMentionClone } from "./mention-clone.js";
 import { describeModel, type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "./model-scope.js";
 import { getMaxSubagentDepth, setMaxSubagentDepth } from "./nested-tools.js";
-import { createOutputFilePath, ensureOutputFile, getOutputTranscriptDefault, setOutputTranscriptDefault, streamToOutputFile, writeInitialEntry } from "./output-file.js";
+import { createOutputFilePath, getOutputTranscriptDefault, setOutputTranscriptDefault, streamToOutputFile, writeInitialEntry } from "./output-file.js";
 import { createSettingsPersistence } from "./runtime-settings.js";
 import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
@@ -754,94 +755,7 @@ export default function (pi: ExtensionAPI) {
   function getToolDescriptionMode(): ToolDescriptionMode { return settings.toolDescriptionMode; }
   function setToolDescriptionMode(mode: ToolDescriptionMode): void { settings.setToolDescMode(mode); }
 
-  /**
-   * Launch a detached resume of an existing agent and wire everything a
-   * re-running agent needs: transcript anchoring, activity tracking, join-mode
-   * batching, the widget/fleet refresh, and the `subagents:created` event.
-   *
-   * Shared by the Agent tool's `resume` + `run_in_background` branch and the
-   * `@handle message` prompt mention — they differ only in how they report the
-   * outcome. Returns the record, or undefined when the manager refused because
-   * the agent is still running (see AgentManager.resume).
-   *
-   * Callers must have already established that the record has a session.
-   */
-  async function startBackgroundResume(
-    ctx: ExtensionContext,
-    existing: AgentRecord,
-    prompt: string,
-    opts: { outputTranscript: boolean; maxTurns?: number; toolCallId?: string },
-  ): Promise<AgentRecord | undefined> {
-    const id = existing.id;
-    const joinMode = resolveJoinMode(settings.defaultJoinMode, true);
-    // Assigned unconditionally: the completion notification carries this as
-    // `<tool-use-id>`, so a mention-resume (which passes none) has to CLEAR the
-    // id left by the spawn that created the record. Keeping it would point the
-    // orchestrator's new result at a tool call that was answered runs ago.
-    existing.toolCallId = opts.toolCallId;
-    if (joinMode) existing.joinMode = joinMode;
-    // Reuse the agent's transcript rather than starting a fresh one: the
-    // path is deterministic per agent+session, so writing an initial entry
-    // would truncate the previous run's turns (see ensureOutputFile).
-    if (opts.outputTranscript) {
-      existing.outputFile = createOutputFilePath(ctx.cwd, id, ctx.sessionManager.getSessionId());
-      ensureOutputFile(existing.outputFile);
-    }
-    // Anchor streaming past the turns already on disk, captured BEFORE the
-    // run starts. The resumed prompt lands as an ordinary user message at
-    // this index, so it is written exactly once.
-    const transcriptAnchor = existing.session?.messages.length ?? 0;
-
-    const bgCallbacks = createActivityTracker();
-
-    // No `signal`: a background spawn deliberately omits it, and a detached
-    // resume must behave the same. Passing it would abort this agent when
-    // the parent turn is interrupted (user Esc), while agents started with
-    // run_in_background in that same turn keep going.
-    const record = await manager.resume(id, prompt, undefined, {
-      isBackground: true,
-      maxTurns: opts.maxTurns,
-      onToolActivity: bgCallbacks.onToolActivity,
-      onAssistantUsage: bgCallbacks.onAssistantUsage,
-      // Fires when the run actually starts — immediately, or on queue
-      // drain. Wiring it here (rather than after resume() returns) means a
-      // resume stopped while still queued never started streaming, so
-      // there is no subscription left behind for a later run to trip over.
-      onStarted: () => {
-        const rec = manager.getRecord(id);
-        if (rec?.session && rec.outputFile) {
-          rec.outputCleanup = streamToOutputFile(rec.session, rec.outputFile, id, ctx.cwd, transcriptAnchor);
-        }
-      },
-    });
-    if (!record) return undefined;
-
-    if (joinMode != null && joinMode !== 'async') {
-      notifier.addToBatch(id, joinMode);
-    }
-
-    // This agent already finished once, so the widget holds a finished-age
-    // for it that is past the linger limit — without clearing it, the
-    // resumed run's ✓/✗ line never renders and the agent just vanishes.
-    widget.markRunning(id);
-    widget.ensureTimer();
-    widget.update();
-    fleet.ensureTimer();
-    fleet.update();
-
-    // Resume ignores subagent_type (the record keeps the type it was
-    // spawned with), so report the record's own identity — a "created"
-    // event carrying the caller's type would re-register the agent under
-    // the wrong one in cross-extension mirrors keyed by id.
-    pi.events.emit("subagents:created", {
-      id,
-      type: existing.type,
-      description: existing.description,
-      isBackground: true,
-    });
-
-    return record;
-  }
+  const startBackgroundResume = createBackgroundResume({ pi, manager, notifier, widget, fleet, settings });
 
   // Grab UI context from first tool execution + clear lingering widget on new turn
   pi.on("tool_execution_start", async (_event, ctx) => {
