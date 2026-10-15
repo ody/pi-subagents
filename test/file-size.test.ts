@@ -21,9 +21,8 @@ const MAX_BYTES = 40 * 1024;
 const HEADER_SCAN_LINES = 30;
 
 const ALLOWLIST: Record<string, { lines: number; bytes: number }> = {
-  "src/index.ts": { lines: 3504, bytes: 169617 },
+  "src/index.ts": { lines: 3507, bytes: 169731 },
   "src/agent-manager.ts": { lines: 1679, bytes: 76336 },
-  "src/agent-runner.ts": { lines: 1179, bytes: 52093 },
   "src/ui/agent-widget.ts": { lines: 684, bytes: 28403 },
   "src/ui/conversation-viewer.ts": { lines: 589, bytes: 24896 },
   "src/settings.ts": { lines: 561, bytes: 27151 },
