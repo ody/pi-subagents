@@ -106,7 +106,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       // Mark result as consumed — suppresses the completion notification
       if (record.status !== "running" && record.status !== "queued") {
         record.resultConsumed = true;
-        notifier.cancelNudge(params.agent_id);
+        notifier.cancelNudge(record.id);
       }
 
       // Verbose: include full conversation
