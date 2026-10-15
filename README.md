@@ -1031,6 +1031,7 @@ src/
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
     schedule-menu.ts      # /agents → Scheduled jobs submenu
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
+    settings-menu.ts      # /agents → Settings menu
 ```
 
 ## License
