@@ -1033,6 +1033,7 @@ src/
     schedule-menu.ts      # /agents → Scheduled jobs submenu
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
     settings-menu.ts      # /agents → Settings menu
+    agents-menu.ts        # /agents command: menu, agent lists and detail, eject/disable/enable
     create-agent-wizard.ts # /agents → Create new agent (generate or manual)
 ```
 
