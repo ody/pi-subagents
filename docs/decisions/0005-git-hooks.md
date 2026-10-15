@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Tracked git hooks run fast structure checks
+# 0005. Tracked git hooks run fast structure checks
 
 ## Context
 

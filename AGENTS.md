@@ -14,6 +14,8 @@ Each entry: the rule an agent must not break, and its ADR.
 
 - **Upstream.** Hard fork: never merge, rebase onto, cherry-pick from, or add a remote for the upstream repository, and never keep or shape code, docs, or tests for upstream or Claude Code compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
 - **No workflows.** Never add workflow orchestration to this repo, and never change `subagents:rpc:*` channels or lifecycle events for top-level agents while removing it. [ADR 0003](docs/decisions/0003-no-workflow-orchestration.md)
+- **File structure.** Split source files along cohesion seams, never to hit a number. Over 500 lines needs a `Size:` header reason, and 800 lines or 40 KB is the cap. Never create `utils.ts`, `part2.ts` or one-caller fragments, and never compress code to fit. [ADR 0004](docs/decisions/0004-source-file-structure.md)
+- **Git hooks.** Pre-commit checks live in tracked `.githooks/` and stay fast. Never run the full suite in the hook, skip it with `--no-verify`, or edit git config. [ADR 0005](docs/decisions/0005-git-hooks.md)
 
 ## Commands
 
@@ -25,7 +27,7 @@ Each entry: the rule an agent must not break, and its ADR.
 
 ## Code style
 
-- Biome's formatter is off. Match the surrounding code; biome lint is the only enforcement.
+- Biome's formatter is off. Match the surrounding code; biome lint is the only style enforcement; file size is enforced by `test/file-size.test.ts` ([ADR 0004](docs/decisions/0004-source-file-structure.md)).
 - No `any` unless unavoidable.
 - Top-level imports only. No `await import()` and no `import("pkg").Type`.
 - Inline single-line helpers that have only one call site.
