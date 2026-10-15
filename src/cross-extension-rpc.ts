@@ -13,7 +13,7 @@
  * completion-notification race, and what protocol version 2 does not promise.
  */
 
-import { isTopLevelAgent } from "./agent-manager.js";
+import { isTopLevelAgent } from "./agent-manager-rules.js";
 import { type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { checkModelScope } from "./model-scope.js";
 import type { AgentConfig, AgentRecord } from "./types.js";

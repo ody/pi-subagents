@@ -15,11 +15,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { statSync } from "node:fs";
-import { isAbsolute } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { assertValidSpawnCwd, DEFAULT_MAX_CONCURRENT, DEFAULT_MAX_CONCURRENT_FOREGROUND, isTopLevelAgent, occupiesForegroundSlot, occupiesPoolSlot, type Pool } from "./agent-manager-rules.js";
 import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
+import { shutdownChildSession } from "./agent-session-shutdown.js";
 import { assignHandle, handleBase } from "./mention.js";
 import { describeModel } from "./model-resolver.js";
 import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel } from "./types.js";
@@ -42,114 +42,11 @@ export type OnAgentUsage = (record: AgentRecord, usage: LifetimeUsage) => void;
 export type CompactionInfo = { reason: "manual" | "threshold" | "overflow"; tokensBefore: number };
 
 /**
- * Default max concurrent background agents.
- *
- * Raised from 4 when top-level spawns started defaulting to background
- * (`backgroundByDefault`): foreground agents bypass this pool entirely, so
- * while foreground was the default a fan-out of six ran six. With background
- * as the default every top-level agent takes a slot, and a limit of 4 would
- * have silently queued the tail of exactly the parallel fan-outs the `Agent`
- * tool description tells the model to send.
- */
-const DEFAULT_MAX_CONCURRENT = 10;
-
-/**
- * Default max concurrent foreground (blocking) agents — `0` = unlimited, the
- * extension's existing convention for "no ceiling" (`defaultMaxTurns`).
- *
- * Off by default because nothing here ever bounded foreground work, and pi
- * dispatches a message's tool calls through `Promise.all`, so an unqualified
- * fan-out of blocking `Agent` calls has always run all at once. Users who want
- * it bounded — chiefly local models, where parallel agents thrash the prompt
- * cache (#253) — opt in; everyone else keeps today's behaviour exactly.
- */
-const DEFAULT_MAX_CONCURRENT_FOREGROUND = 0;
-
-/**
  * How many evicted agents stay addressable by name. Only a bound on memory —
  * a session that spawns hundreds of agents shouldn't retain every one — and
  * far above the handful anyone keeps in their head.
  */
 const MAX_TOMBSTONES = 100;
-
-/**
- * Validate a caller-supplied SpawnOptions.cwd. `undefined`/`null` mean "unset"
- * (parent cwd). Anything else must be an absolute path to an existing
- * directory — curated errors instead of TypeErrors from path/fs internals
- * (RPC callers send arbitrary JSON: null, numbers, file paths).
- */
-function assertValidSpawnCwd(cwd: unknown): asserts cwd is string | undefined | null {
-  if (cwd == null) return;
-  if (typeof cwd !== "string" || !isAbsolute(cwd)) {
-    throw new Error(`SpawnOptions.cwd must be an absolute path: "${String(cwd)}"`);
-  }
-  let isDirectory = false;
-  try {
-    isDirectory = statSync(cwd).isDirectory();
-  } catch {
-    throw new Error(`SpawnOptions.cwd does not exist: "${cwd}"`);
-  }
-  if (!isDirectory) {
-    throw new Error(`SpawnOptions.cwd is not a directory: "${cwd}"`);
-  }
-}
-
-/**
- * Whether a record occupies one of the `maxConcurrent` background slots.
- * Nested children don't: their parent already holds a slot, so counting (and
- * therefore queueing) them would deadlock a parent that waits on its own child.
- *
- * Note this bounds nothing horizontally — the depth cap limits how DEEP nesting
- * goes, not how WIDE. A parent's only limit on concurrent children is that each
- * spawn costs it a turn, which is unbounded when max turns is unlimited.
- */
-function occupiesPoolSlot(
-  record: Pick<AgentRecord, "isBackground" | "parentAgentId">,
-): boolean {
-  return !!record.isBackground && isTopLevelAgent(record);
-}
-
-/**
- * Whether a record is one of the session's own agents, rather than something
- * another agent owns.
- *
- * The single definition behind every user-facing surface — the fleet list, the
- * widget, the `/agents` menus, `@handle` resolution, and the completion events
- * and session entries. An owned child reports through its owner, so surfacing
- * it separately would double-count the same work in the places a person reads.
- */
-export function isTopLevelAgent(
-  record: Pick<AgentRecord, "parentAgentId">,
-): boolean {
-  return record.parentAgentId === undefined;
-}
-
-/**
- * Whether a record occupies one of the `maxConcurrentForeground` slots.
- *
- * Keyed on `blocking` — a caller awaiting this record inline — rather than on
- * `isBackground === false`, because `spawn()` is also the funnel for DETACHED
- * starts (cross-extension RPC, `@handle` mentions, the registry) that may pass
- * `isBackground: false` and are documented to run immediately regardless. Those
- * block nobody, so bounding them buys nothing and would park a record with no
- * one waiting to release it.
- *
- * Nested children are excluded for the same reason as `occupiesPoolSlot`, and
- * more sharply: their parent is blocked *awaiting them*, so queueing a child
- * behind its own parent is a guaranteed deadlock rather than a possible one.
- * Enforced here rather than at the call site so no caller can reintroduce it.
- *
- * Like the background pool this bounds width at the top level only — a parent's
- * own fan-out is limited by nothing but its turn budget.
- */
-function occupiesForegroundSlot(
-  record: Pick<AgentRecord, "blocking" | "parentAgentId">,
-): boolean {
-  return !!record.blocking && isTopLevelAgent(record);
-}
-
-/** Which concurrency pool a spawn is charged to, if any. */
-type Pool = "background" | "foreground";
 
 interface SpawnArgs {
   pi: ExtensionAPI;
@@ -303,9 +200,6 @@ interface ResumeOptions {
   maxTurns?: number;
 }
 
-/** Best-effort ceiling on one child's shutdown handlers, so teardown can't strand a quit. */
-const CHILD_SHUTDOWN_TIMEOUT_MS = 3_000;
-
 /**
  * Grace period `abort()` gives a running record to settle on its own before
  * forcing its settle tail — see `forceSettle`. A responsive agent settles
@@ -316,34 +210,6 @@ const CHILD_SHUTDOWN_TIMEOUT_MS = 3_000;
  * before anyone notices. Same order of magnitude as `CHILD_SHUTDOWN_TIMEOUT_MS`.
  */
 const FORCED_SETTLE_GRACE_MS = 5_000;
-
-/**
- * Close the extension lifecycle `runAgent` opened with `bindExtensions`, then dispose.
- *
- * `AgentSession.dispose()` only calls `ExtensionRunner.invalidate()` — pi emits the event
- * itself in `AgentSessionRuntime.dispose()` beforehand, and this is the one place that binds
- * extensions onto a session without going through that path. Without the emit, everything an
- * extension armed in `session_start` leaks once per spawn, and its next tick throws
- * `assertActive()` from a bare timer callback — an uncaughtException that kills pi (#242).
- */
-async function shutdownChildSession(session: AgentSession | undefined): Promise<void> {
-  try {
-    const runner = session?.extensionRunner;
-    // Optional all the way down: on a pi without the getter, or a stubbed session from a
-    // partial `onSessionCreated`, skip the emit — the same degrade as before this fix.
-    if (runner?.hasHandlers?.("session_shutdown")) {
-      // Raced, not awaited outright. `emit` runs every handler serially with no timeout of
-      // its own, and dispose() is reached from pi's own `session_shutdown` with the TUI
-      // already torn down — one hung handler would leave a dead terminal.
-      await Promise.race([
-        runner.emit({ type: "session_shutdown", reason: "quit" }),
-        new Promise<void>(resolve => setTimeout(resolve, CHILD_SHUTDOWN_TIMEOUT_MS).unref()),
-      ]);
-    }
-  } catch { /* a partial session must degrade, not take the teardown down with it */ }
-  // Always, even on timeout: disposal is what this function ultimately exists to do.
-  try { session?.dispose?.(); } catch { /* ignore */ }
-}
 
 export class AgentManager {
   private agents = new Map<string, AgentRecord>();
