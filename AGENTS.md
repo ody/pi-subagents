@@ -33,6 +33,14 @@ Each entry: the rule an agent must not break, and its ADR.
 - If a type error comes from an outdated dependency, upgrade it. Do not remove or downgrade code to make it compile.
 - Do not preserve backward compatibility unless asked.
 
+## Dependencies
+
+- Packages pi provides at runtime (`@earendil-works/pi-*`, `typebox`, `@sinclair/typebox`) go in `peerDependencies`, never `dependencies`. A copy under `dependencies` can load a second runtime module and break schema and `instanceof` checks.
+- `typebox` and `@sinclair/typebox` peers use `"*"`. `@earendil-works/pi-*` peers use `>=1.0.0`.
+- The pi floor is `>=1.0.0` by choice: nothing older is tested. Never add shims, version gates, or comments for pi below it. Revisit when CI returns.
+- Pinned copies for typecheck and tests go in `devDependencies`, at or above the floor.
+- Third-party runtime packages pi does not provide stay in `dependencies`.
+
 ## Testing
 
 - Add or update tests for the behavior you change.
