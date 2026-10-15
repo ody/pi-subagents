@@ -996,6 +996,7 @@ src/
   status-note.ts      # Honest status note + salvaged partial output for non-normal outcomes
   usage.ts            # Token usage shapes, accumulators, session-stats readers, withUsageReporting
   agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
+  agent-tool-description.ts # Agent tool description text sent to the model (full, compact, custom)
 
   # Invocation surface
   invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
