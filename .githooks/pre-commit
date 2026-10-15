@@ -1,0 +1,11 @@
+#!/bin/sh
+# Fast pre-commit checks. ADR 0005: docs/decisions/0005-git-hooks.md
+# Never add the full test suite here; `npm run check` is the full gate.
+set -e
+
+# File-size ratchet (ADR 0004). Fails the commit on a violation.
+npx vitest run test/file-size.test.ts
+
+# Cognitive complexity reports for staged files. Informational only.
+npx biome lint --staged --no-errors-on-unmatched \
+	--only=complexity/noExcessiveCognitiveComplexity || true
