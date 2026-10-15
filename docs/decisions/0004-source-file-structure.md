@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Source files are split along cohesion seams, with size as a trigger
+# 0004. Source files are split along cohesion seams, with size as a trigger
 
 ## Context
 
