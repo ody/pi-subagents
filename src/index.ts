@@ -15,16 +15,15 @@ import { join } from "node:path";
 import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Container, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
-import { abortable } from "./abortable.js";
 import { createActivityTracker } from "./activity-tracker.js";
 import { hasAgentBadge, renderAgentName } from "./agent-color.js";
+import { registerAgentControlTools } from "./agent-control-tools.js";
 import { AgentManager } from "./agent-manager.js";
 import { isTopLevelAgent } from "./agent-manager-rules.js";
-import { steerAgent } from "./agent-runner.js";
 import { BUILTIN_TOOL_NAMES, getAgentConfig, getAvailableTypes, getConfig, registerAgents, resolveSpawnType, resolveType, setDefaultsDisabled, setFallbackSubagent } from "./agent-types.js";
 import { createBackgroundResume } from "./background-resume.js";
 import { inChildSessionContext } from "./child-context.js";
-import { CompletionNotifier, QUEUE_WAIT_POLL_MS } from "./completion-notifier.js";
+import { CompletionNotifier } from "./completion-notifier.js";
 import { type RpcHandle, registerRpcHandlers } from "./cross-extension-rpc.js";
 import { loadCustomAgents } from "./custom-agents.js";
 import { SUBAGENT_TOOL_NAMES } from "./extension-scope.js";
@@ -40,10 +39,9 @@ import { getDefaultMaxTurns, normalizeMaxTurns, setDefaultMaxTurns, setGraceTurn
 import { createSettingsPersistence } from "./runtime-settings.js";
 import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
-import { getAgentConversation } from "./session-text.js";
 import { applyAndEmitLoaded, loadSettings, type SettingsAppliers, type ToolDescriptionMode } from "./settings.js";
 import { createSpawnFunnel } from "./spawn-funnel.js";
-import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
+import { getForegroundOutcomeNote, partialOutputSuffix } from "./status-note.js";
 import { THINKING_LEVELS } from "./thinking-levels.js";
 import { buildDetails, formatLifetimeTokens, textResult } from "./tool-result.js";
 import { type AgentActivity, type AgentConfig, type AgentInvocation, type AgentMentionMode, type AgentRecord, type JoinMode, type SubagentType, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
@@ -55,7 +53,6 @@ import {
   describeActivity,
   fgPreservingNestedStyles,
   formatCost,
-  formatDuration,
   formatMs,
   formatTurns,
   getDisplayName,
@@ -69,7 +66,7 @@ import { showCreateWizard } from "./ui/create-agent-wizard.js";
 import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
-import { getLifetimeCost, getSessionContextPercent, PendingUsagePool } from "./usage.js";
+import { getLifetimeCost, PendingUsagePool, withUsageReporting } from "./usage.js";
 import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "./worktree.js";
 
 // ---- Shared helpers ----
@@ -1654,246 +1651,15 @@ Terse command-style prompts produce shallow, generic work.
       );
     },
   });
-  /**
-   * Wrap a tool so its results carry back whatever subagent spend the parent
-   * session has not been told about yet (see `PendingUsagePool`).
-   *
-   * Pi copies `AgentToolResult.usage` onto the persisted tool-result message and
-   * folds it into `getSessionStats()`, which is what the footer, the statusline
-   * and `/cost` read — so this is the whole of "report usage to the parent".
-   *
-   * Nothing is attached to a call with no tool-call id. That is the `@handle`
-   * mention path (`mention-clone.ts`), which invokes this tool from a fork of the
-   * conversation that is discarded moments later: the result never becomes a
-   * message in the real session, so usage hung on it would be spend the user paid
-   * for and nobody counted. Skipping leaves it pending for the next real result.
-   */
-  function withUsageReporting<T extends { execute: (...args: any[]) => any }>(tool: T): T {
-    return {
-      ...tool,
-      execute: async (toolCallId: string | undefined, ...rest: any[]) => {
-        const result = await tool.execute(toolCallId, ...rest);
-        if (!settings.reportUsage || !toolCallId) return result;
-        const usage = pendingUsage.drain();
-        return usage ? { ...result, usage } : result;
-      },
-    };
-  }
-  function registerToolReportingUsage(tool: any): void {
-    pi.registerTool(withUsageReporting(tool));
-  }
+
+  const usageReporting = { settings, pendingUsage };
 
   // The mention path is handed THIS object, not the bare `agentTool` — see the
   // mention-clone header on why the clone must call the registered tool.
-  const registeredAgentTool = withUsageReporting(agentTool);
+  const registeredAgentTool = withUsageReporting(agentTool, usageReporting);
   pi.registerTool(registeredAgentTool);
 
-  // ---- get_subagent_result tool ----
-
-  registerToolReportingUsage(defineTool({
-    name: SUBAGENT_TOOL_NAMES.GET_RESULT,
-    label: "Get Agent Result",
-    description:
-      "Check status and retrieve a background agent's full result — its completion notification carries only a preview. Use the agent ID returned by Agent.",
-    promptSnippet: "Check status and retrieve results from a background agent",
-    parameters: Type.Object({
-      agent_id: Type.String({
-        description: "The agent ID to check. The agent's handle also works — its `name` if you gave it one, otherwise its type (`explore`, `explore-2`).",
-      }),
-      wait: Type.Optional(
-        Type.Boolean({
-          description: "If true, wait for the agent to complete before returning. Default: false.",
-        }),
-      ),
-      verbose: Type.Optional(
-        Type.Boolean({
-          description: "If true, include the agent's full conversation (messages + tool calls). Default: false.",
-        }),
-      ),
-    }),
-    execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {
-      const record = resolveAgentRef(params.agent_id);
-      if (!record || !isTopLevelAgent(record)) {
-        return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
-      }
-
-      // Wait for completion if requested. Cancellation stops only this tool
-      // call; the background agent keeps running and remains unconsumed so its
-      // completion notification can still be delivered.
-      // Queued agents have no promise yet (it's created when the queue starts
-      // them), so poll until they leave the queue, then await like a running one.
-      if (params.wait && (record.status === "running" || record.status === "queued")) {
-        while (record.status === "queued") {
-          await abortable(
-            new Promise<void>((resolve) => setTimeout(resolve, QUEUE_WAIT_POLL_MS)),
-            signal,
-          );
-        }
-        if (record.promise) await abortable(record.promise, signal);
-      }
-
-      const displayName = getDisplayName(record.type);
-      const duration = formatDuration(record.startedAt, record.completedAt);
-      const tokens = formatLifetimeTokens(record);
-      const contextPercent = getSessionContextPercent(record.session);
-      const statsParts = [`Tool uses: ${record.toolUses}`];
-      if (tokens) statsParts.push(tokens);
-      if (settings.showCost) {
-        const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
-        if (costText) statsParts.push(`Cost: ${costText}`);
-      }
-      if (contextPercent !== null) statsParts.push(`Context: ${Math.round(contextPercent)}%`);
-      if (record.compactionCount) statsParts.push(`Compactions: ${record.compactionCount}`);
-      statsParts.push(`Duration: ${duration}`);
-
-      let output =
-        `Agent: ${record.id}\n` +
-        `Type: ${displayName} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${statsParts.join(" | ")}\n` +
-        `Description: ${record.description}\n\n`;
-
-      if (record.status === "running") {
-        output += "Agent is still running. Use wait: true or check back later.";
-      } else if (record.status === "error") {
-        output += `Error: ${record.error}${partialOutputSuffix(record)}`;
-      } else {
-        output += record.result?.trim() || "No output.";
-      }
-
-      // Mark result as consumed — suppresses the completion notification
-      if (record.status !== "running" && record.status !== "queued") {
-        record.resultConsumed = true;
-        notifier.cancelNudge(params.agent_id);
-      }
-
-      // Verbose: include full conversation
-      if (params.verbose && record.session) {
-        const conversation = getAgentConversation(record.session);
-        if (conversation) {
-          output += `\n\n--- Agent Conversation ---\n${conversation}`;
-        }
-      }
-
-      return textResult(output);
-    },
-  }));
-
-  // ---- steer_subagent tool ----
-
-  registerToolReportingUsage(defineTool({
-    name: SUBAGENT_TOOL_NAMES.STEER,
-    label: "Steer Agent",
-    description:
-      "Send a steering message to a running agent. The message will interrupt the agent after its current tool execution " +
-      "and be injected into its conversation, allowing you to redirect its work mid-run. Only works on running agents.",
-    promptSnippet: "Send a steering message to redirect a running background agent",
-    parameters: Type.Object({
-      agent_id: Type.String({
-        description: "The agent ID to steer (must be currently running). The agent's handle also works — its `name` if you gave it one, otherwise its type (`explore`, `explore-2`).",
-      }),
-      message: Type.String({
-        description: "The steering message to send. This will appear as a user message in the agent's conversation.",
-      }),
-    }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
-      const record = resolveAgentRef(params.agent_id);
-      if (!record || !isTopLevelAgent(record)) {
-        return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
-      }
-      if (record.status !== "running") {
-        return textResult(`Agent "${params.agent_id}" is not running (status: ${record.status}). Cannot steer a non-running agent.`);
-      }
-      if (!record.session) {
-        // Session not ready yet — queue the steer for delivery once initialized
-        if (!record.pendingSteers) record.pendingSteers = [];
-        record.pendingSteers.push(params.message);
-        pi.events.emit("subagents:steered", { id: record.id, message: params.message });
-        return textResult(`Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`);
-      }
-
-      try {
-        await steerAgent(record.session, params.message);
-        pi.events.emit("subagents:steered", { id: record.id, message: params.message });
-        const tokens = formatLifetimeTokens(record);
-        const contextPercent = getSessionContextPercent(record.session);
-        const stateParts: string[] = [];
-        if (tokens) stateParts.push(tokens);
-        if (settings.showCost) {
-          const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
-          if (costText) stateParts.push(costText);
-        }
-        stateParts.push(`${record.toolUses} tool ${record.toolUses === 1 ? "use" : "uses"}`);
-        if (contextPercent !== null) stateParts.push(`context ${Math.round(contextPercent)}% full`);
-        if (record.compactionCount) stateParts.push(`${record.compactionCount} compaction${record.compactionCount === 1 ? "" : "s"}`);
-        return textResult(
-          `Steering message sent to agent ${record.id}. The agent will process it after its current tool execution.\n` +
-          `Current state: ${stateParts.join(" · ")}`,
-        );
-      } catch (err) {
-        return textResult(`Failed to steer agent: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    },
-  }));
-
-  // ---- stop_subagent tool ----
-
-  registerToolReportingUsage(defineTool({
-    name: SUBAGENT_TOOL_NAMES.STOP,
-    label: "Stop Agent",
-    description:
-      "Stop a running or queued background agent. Fires its abort signal immediately; the tool result carries whatever " +
-      "partial output the agent had streamed so far, and the full result still arrives via the usual completion notification.",
-    promptSnippet: "Stop a running or queued background agent",
-    parameters: Type.Object({
-      agent_id: Type.String({
-        description: "The agent ID to stop. The agent's handle also works — its `name` if you gave it one, otherwise its type (`explore`, `explore-2`).",
-      }),
-    }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, _ctx) => {
-      const record = resolveAgentRef(params.agent_id);
-      if (!record || !isTopLevelAgent(record)) {
-        return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
-      }
-
-      if (record.status !== "running" && record.status !== "queued") {
-        // Already terminal: the model's intent — that agent is not running —
-        // is already satisfied. Success, not an error; the result is still there.
-        return textResult(
-          `Agent ${record.id} is not running (status: ${record.status}${getStatusNote(record.status, record.stoppedBy)}). ` +
-          `Its result is still available — use get_subagent_result.`,
-        );
-      }
-
-      const wasRunning = record.status === "running";
-      const displayName = getDisplayName(record.type);
-      // Before abort(): the forced-settle path (agent-manager.ts) reads this
-      // off the record when it fires the completion notification, which for a
-      // wedged agent may be the first time anything reads it.
-      record.stoppedBy = "agent";
-      manager.abort(record.id);
-
-      if (!wasRunning) {
-        return textResult(`Agent ${record.id} (${displayName}) stopped before it started running. No output was produced.`);
-      }
-
-      // The only partial output available synchronously — record.result isn't
-      // written until the settle path runs, which for a wedged agent this tool
-      // exists to interrupt hasn't happened yet.
-      const partial = manager.getActivity(record.id)?.responseText?.trim();
-      const preview = partial ? (partial.length > 500 ? `${partial.slice(0, 500)}…` : partial) : undefined;
-
-      // Deliberately does NOT set resultConsumed or cancel the pending nudge:
-      // record.result doesn't exist yet, so suppressing the notification here
-      // would silently lose the full output for a model that doesn't think to
-      // fetch it with get_subagent_result.
-      return textResult(
-        `Agent ${record.id} (${displayName}) stopped. Previous status: running.\n\n` +
-        (preview
-          ? `Partial output before the stop:\n${preview}`
-          : "No partial output — the agent had not produced any assistant text yet.") +
-        `\n\nThe full result will still arrive via the usual completion notification.`,
-      );
-    },
-  }));
+  registerAgentControlTools(pi, { manager, notifier, settings, resolveAgentRef, usageReporting });
 
   registerAgentsCommand(pi, {
     manager,
