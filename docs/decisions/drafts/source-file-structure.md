@@ -14,7 +14,8 @@ Size limits are triggers to look at a file, never targets to hit. The goal is th
 
 - A `src/` file over 500 lines needs a reason in one sentence in its header comment, or a split.
 - A `src/` file must stay under 800 lines and 40 KB. `test/file-size.test.ts` enforces this, with an allowlist of existing offenders pinned at their current line count. An entry may shrink or be removed, never grow.
-- A function over about 80 lines is a prompt to check nesting and the number of things in scope. A long flat sequence, such as a list of registrations, is fine. Deeply nested closures are not.
+- Function size is judged by nesting and the number of things in scope, not by lines. A long flat sequence, such as a list of registrations, is fine. Deeply nested closures are not.
+- Biome's `complexity/noExcessiveCognitiveComplexity` at its default of 15 is the trigger. It is enabled at `info` severity, so it reports and never fails `npm run check`. A report means read the function and decide, not shorten it to silence the rule.
 
 Split along a seam that already exists, and only when the new module passes these checks:
 
@@ -33,9 +34,16 @@ Never do these to meet a limit:
 
 A split changes no behavior. It moves code, updates imports and moves the matching tests, in one commit with no other change. `index.ts` ends up as wiring: it builds shared state and calls `registerX(pi, deps)` from per-concern modules.
 
-Done check: `npm run check` passes, including `test/file-size.test.ts`.
+A tracked `.githooks/pre-commit` runs only the structure checks, never the full test suite:
 
-Rejected: a hard function-length lint rule, because it rewards fragmenting. Rejected: guidance in `AGENTS.md` alone, because nothing enforces it.
+- `npx vitest run test/file-size.test.ts`, which fails the commit on a size violation.
+- `biome lint --only=complexity/noExcessiveCognitiveComplexity` on the staged `src/` files, which prints its `info` reports and never fails the commit.
+
+A `prepare` script in `package.json` sets `core.hooksPath` to `.githooks`. Agents never edit git config or skip the hook with `--no-verify`.
+
+Done check: `npm run check` passes, including `test/file-size.test.ts`, and `npx vitest run test/file-size.test.ts` passes alone.
+
+Rejected: Biome's `noExcessiveLinesPerFunction`, because it rewards fragmenting. Rejected: making the complexity rule an error, because it would fail on existing functions. Rejected: guidance in `AGENTS.md` alone, because nothing enforces it. Rejected: running the full suite or CI-style checks in the hook, because the hook is scoped to structure and a slow hook gets bypassed.
 
 ## Consequences
 
