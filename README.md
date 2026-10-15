@@ -1013,6 +1013,7 @@ src/
     agent-widget.ts       # Persistent widget: spinners, activity, status icons, theming
     agent-tree.ts         # Pure projection: records → flat pre-order rows with depth
     fleet-list.ts         # FleetView: navigable agent tree below the editor
+    notification-renderer.ts # How the subagent-notification message block renders
     conversation-viewer.ts # Live conversation overlay for viewing agent sessions
     viewer-keys.ts        # Viewer scroll keys resolved through user keybindings
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
