@@ -961,7 +961,8 @@ docs/                 # Long-form guides (README links out to them)
   rpc.md              # Cross-extension integration: pi.events, subagents:rpc:*, manager registry
 test/                 # vitest suite; e2e/ and perf/ subdirectories
 src/
-  index.ts            # Extension entry: tool/command registration, /agents menu, rendering
+  index.ts            # Extension entry: builds shared state and wires the feature modules
+  mention-input.ts    # `@handle message` input hook: steer, resume or start the named agent
   tool-result.ts      # Tool result text shape and AgentDetails building
   activity-tracker.ts # Spawn callbacks that only repaint
   notification-format.ts # Task-notification XML and notification details
