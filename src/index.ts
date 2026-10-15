@@ -16,6 +16,7 @@ import { defineTool, type ExtensionAPI, type ExtensionCommandContext, type Exten
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { abortable } from "./abortable.js";
+import { createActivityTracker } from "./activity-tracker.js";
 import { hasAgentBadge, renderAgentName } from "./agent-color.js";
 import { buildNewAgentFile, disableInContent, enableInContent, isEmptyStub, locateAgentFile, personalAgentsDir, projectAgentsDir, serializeAgentFile } from "./agent-file-toggle.js";
 import { AgentManager, isTopLevelAgent } from "./agent-manager.js";
@@ -26,17 +27,20 @@ import { type RpcHandle, registerRpcHandlers } from "./cross-extension-rpc.js";
 import { loadCustomAgents } from "./custom-agents.js";
 import { GroupJoinManager } from "./group-join.js";
 import { isolationParam, resolveAgentInvocationConfig, resolveJoinMode } from "./invocation-config.js";
+import { buildEventData } from "./lifecycle-events.js";
 import { describeMention, handleBase, isReservedHandle, parseMention, resolveHandleToType, stripAgentPrefix } from "./mention.js";
 import { runMentionClone } from "./mention-clone.js";
 import { describeModel, type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "./model-scope.js";
 import { getMaxSubagentDepth, setMaxSubagentDepth } from "./nested-tools.js";
+import { buildNotificationDetails, formatTaskNotification } from "./notification-format.js";
 import { createOutputFilePath, ensureOutputFile, getOutputTranscriptDefault, setOutputTranscriptDefault, streamToOutputFile, writeInitialEntry } from "./output-file.js";
 import { createSettingsPersistence } from "./runtime-settings.js";
 import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
-import { applyAndEmitLoaded, loadSettings, type SubagentsSettings, type ToolDescriptionMode } from "./settings.js";
+import { applyAndEmitLoaded, loadSettings, type ToolDescriptionMode } from "./settings.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
+import { buildDetails, formatLifetimeTokens, textResult } from "./tool-result.js";
 import { type AgentActivity, type AgentConfig, type AgentInvocation, type AgentMentionMode, type AgentRecord, type JoinMode, type NotificationDetails, type SubagentType, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import { buildAgentTree } from "./ui/agent-tree.js";
@@ -60,16 +64,10 @@ import {
 import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { showSchedulesMenu } from "./ui/schedule-menu.js";
 import { selectItem } from "./ui/select-item.js";
-import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage, PendingUsagePool, toReportedUsage } from "./usage.js";
+import { getLifetimeCost, getSessionContextPercent, PendingUsagePool } from "./usage.js";
 import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "./worktree.js";
-import { escapeXml } from "./xml.js";
 
 // ---- Shared helpers ----
-
-/** Tool execute return value for a text response. */
-function textResult(msg: string, details?: AgentDetails) {
-  return { content: [{ type: "text" as const, text: msg }], details: details as any };
-}
 
 export function renderRunningAgentStatus(
   frame: string,
@@ -83,31 +81,6 @@ export function renderRunningAgentStatus(
   return container;
 }
 
-/** Format an agent's lifetime token total, or "" when zero. */
-function formatLifetimeTokens(o: { lifetimeUsage: LifetimeUsage }): string {
-  const t = getLifetimeTotal(o.lifetimeUsage);
-  return t > 0 ? formatTokens(t) : "";
-}
-
-/**
- * Spawn callbacks that only repaint.
- *
- * The activity state itself lives on `AgentManager` (see `getActivity`), which
- * updates it for every spawn path; these callbacks exist so the tool result,
- * widget and FleetView redraw when it changes.
- */
-function createActivityTracker(onStreamUpdate?: () => void) {
-  return {
-    onToolActivity: (_activity: { type: "start" | "end"; toolName: string }) => { onStreamUpdate?.(); },
-    onTextDelta: (_delta: string, _fullText: string) => { onStreamUpdate?.(); },
-    onTurnEnd: (_turnCount: number) => { onStreamUpdate?.(); },
-    onSessionCreated: (_session: any) => {},
-    // Spend is accumulated on the AgentRecord (agent-manager), which is what
-    // every surface reads; this callback exists here only to repaint on it.
-    onAssistantUsage: (_usage: LifetimeUsage) => { onStreamUpdate?.(); },
-  };
-}
-
 /**
  * Advertised thinking levels, ordered to mirror pi-ai's EXTENDED_THINKING_LEVELS
  * (`off` + every `ThinkingLevel`). Single source for the Agent tool description,
@@ -116,101 +89,6 @@ function createActivityTracker(onStreamUpdate?: () => void) {
  * host pi version and the selected model — pi clamps unsupported levels down.
  */
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
-
-/** Human-readable status label for agent completion. */
-function getStatusLabel(status: string, error?: string): string {
-  switch (status) {
-    case "error": return `Error: ${error ?? "unknown"}`;
-    case "aborted": return "Aborted (max turns exceeded)";
-    case "steered": return "Wrapped up (turn limit)";
-    case "stopped": return "Stopped";
-    default: return "Done";
-  }
-}
-
-/** Format a structured task notification matching Claude Code's <task-notification> XML. */
-function formatTaskNotification(record: AgentRecord, resultMaxLen: number, showCost = false): string {
-  const status = getStatusLabel(record.status, record.error);
-  const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-  const contextPercent = getSessionContextPercent(record.session);
-  const ctxXml = contextPercent !== null ? `<context_percent>${Math.round(contextPercent)}</context_percent>` : "";
-  const compactXml = record.compactionCount ? `<compactions>${record.compactionCount}</compactions>` : "";
-  // Only under `showCost`: this is LLM context, and a figure the orchestrator
-  // did not ask for is a figure it may start reporting unprompted.
-  const cost = showCost ? getLifetimeCost(record.lifetimeUsage) : 0;
-  const costXml = cost > 0 ? `<estimated_cost_usd>${cost.toFixed(4)}</estimated_cost_usd>` : "";
-
-  const resultPreview = record.result
-    ? record.result.length > resultMaxLen
-      ? record.result.slice(0, resultMaxLen) + "\n...(truncated, use get_subagent_result for full output)"
-      : record.result
-    : "No output.";
-
-  return [
-    `<task-notification>`,
-    `<task-id>${record.id}</task-id>`,
-    record.toolCallId ? `<tool-use-id>${escapeXml(record.toolCallId)}</tool-use-id>` : null,
-    record.outputFile ? `<output-file>${escapeXml(record.outputFile)}</output-file>` : null,
-    `<status>${escapeXml(status)}</status>`,
-    `<summary>Agent "${escapeXml(record.description)}" ${record.status}${getStatusNote(record.status, record.stoppedBy)}</summary>`,
-    `<result>${escapeXml(resultPreview)}</result>`,
-    `<usage><total_tokens>${totalTokens}</total_tokens><tool_uses>${record.toolUses}</tool_uses>${ctxXml}${compactXml}${costXml}<duration_ms>${durationMs}</duration_ms></usage>`,
-    `</task-notification>`,
-  ].filter(Boolean).join('\n');
-}
-
-/** Build AgentDetails from a base + record-specific fields. */
-function buildDetails(
-  base: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">,
-  record: { toolUses: number; startedAt: number; completedAt?: number; status: string; error?: string; id?: string; session?: any; lifetimeUsage: LifetimeUsage },
-  activity?: AgentActivity,
-  overrides?: Partial<AgentDetails>,
-): AgentDetails {
-  return {
-    ...base,
-    toolUses: record.toolUses,
-    tokens: formatLifetimeTokens(record),
-    // Raw, and unconditional: `tokens` is preformatted because it is one stat,
-    // but a cost is joined by "·" in one surface, "," in another and "|" in a
-    // third — so it travels as a number and each renderer punctuates its own.
-    cost: getLifetimeCost(record.lifetimeUsage),
-    turnCount: activity?.turnCount,
-    maxTurns: activity?.maxTurns,
-    durationMs: (record.completedAt ?? Date.now()) - record.startedAt,
-    status: record.status as AgentDetails["status"],
-    agentId: record.id,
-    error: record.error,
-    ...overrides,
-  };
-}
-
-/** Build notification details for the custom message renderer. */
-function buildNotificationDetails(record: AgentRecord, resultMaxLen: number, activity?: AgentActivity): NotificationDetails {
-  const totalTokens = getLifetimeTotal(record.lifetimeUsage);
-
-  return {
-    id: record.id,
-    description: record.description,
-    status: record.status,
-    toolUses: record.toolUses,
-    turnCount: activity?.turnCount ?? 0,
-    maxTurns: activity?.maxTurns,
-    totalTokens,
-    // Carried unconditionally; the renderer gates on the setting. Details are
-    // data, and a notification rendered before a mid-session toggle should not
-    // be stuck with the old answer.
-    totalCost: getLifetimeCost(record.lifetimeUsage),
-    durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
-    outputFile: record.outputFile,
-    error: record.error,
-    resultPreview: record.result
-      ? record.result.length > resultMaxLen
-        ? record.result.slice(0, resultMaxLen) + "…"
-        : record.result
-      : "No output.",
-  };
-}
 
 /**
  * Format an agent's tool scope for the Agent tool description.
@@ -438,44 +316,6 @@ export default function (pi: ExtensionAPI) {
     },
     30_000,
   );
-
-  /** Helper: build event data for lifecycle events from an AgentRecord. */
-  function buildEventData(record: AgentRecord) {
-    const durationMs = record.completedAt ? record.completedAt - record.startedAt : Date.now() - record.startedAt;
-    // All three fields are lifetime-accumulated (Σ over every assistant message_end),
-    // so they survive compaction together — input + output ≤ total always.
-    // tokens is omitted when nothing was ever produced (e.g. agent errored before
-    // any message_end fired), preserving prior payload shape.
-    const u = record.lifetimeUsage;
-    const total = getLifetimeTotal(u);
-    const tokens = total > 0
-      ? { input: u.input, output: u.output, total }
-      : undefined;
-    // The whole run's spend as a pi `Usage` — pi's convention for handing spend
-    // to a consumer, so `usage.cost.total` and `usage.cacheRead` are where a
-    // listener already expects them and anything pi adds to `Usage` arrives
-    // without a change here. Omitted when nothing was spent, so "spent nothing"
-    // and "never ran" stay distinguishable. Ungated by `showCost`: that setting
-    // governs what a human is shown, not what the event carries.
-    //
-    // `tokens` above is the other convention, kept as it shipped: a flat view
-    // model like pi's own `SessionStats`, carrying the DISPLAY total, which
-    // excludes cacheRead (#38). The two answer different questions and neither
-    // derives from the other.
-    const usage = toReportedUsage(u);
-    return {
-      id: record.id,
-      type: record.type,
-      description: record.description,
-      result: record.result,
-      error: record.error,
-      status: record.status,
-      toolUses: record.toolUses,
-      durationMs,
-      tokens,
-      usage,
-    };
-  }
 
   // Background completion: route through group join or send individual nudge
   const manager = new AgentManager((record) => {

@@ -962,6 +962,10 @@ docs/                 # Long-form guides (README links out to them)
 test/                 # vitest suite; e2e/ and perf/ subdirectories
 src/
   index.ts            # Extension entry: tool/command registration, /agents menu, rendering
+  tool-result.ts      # Tool result text shape and AgentDetails building
+  activity-tracker.ts # Spawn callbacks that only repaint
+  notification-format.ts # Task-notification XML and notification details
+  lifecycle-events.ts # `subagents:*` event payload shape
   types.ts            # Type definitions (AgentConfig, AgentRecord, etc.)
 
   # Agent registry
