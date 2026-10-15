@@ -1005,6 +1005,7 @@ src/
   mention-clone.ts    # Run a mention's turn in a cloned conversation, off the main chat
   cross-extension-rpc.ts # RPC handlers for cross-extension spawn/ping via pi.events
   spawn-funnel.ts     # Trust boundary for programmatic spawns (RPC, mentions, registry)
+  thinking-levels.ts  # Advertised thinking levels, shared by the Agent tool and the create wizard
 
   # Scheduling
   schedule.ts         # SubagentScheduler: cron / +10m / interval / ISO dispatch
@@ -1032,6 +1033,7 @@ src/
     schedule-menu.ts      # /agents → Scheduled jobs submenu
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
     settings-menu.ts      # /agents → Settings menu
+    create-agent-wizard.ts # /agents → Create new agent (generate or manual)
 ```
 
 ## License
