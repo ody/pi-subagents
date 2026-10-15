@@ -32,9 +32,10 @@ import { describeModel, type ModelRegistry, resolveModel } from "./model-resolve
 import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "./model-scope.js";
 import { getMaxSubagentDepth, setMaxSubagentDepth } from "./nested-tools.js";
 import { createOutputFilePath, ensureOutputFile, getOutputTranscriptDefault, setOutputTranscriptDefault, streamToOutputFile, writeInitialEntry } from "./output-file.js";
+import { createSettingsPersistence } from "./runtime-settings.js";
 import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
-import { applyAndEmitLoaded, loadSettings, type SubagentsSettings, saveAndEmitChanged, type ToolDescriptionMode } from "./settings.js";
+import { applyAndEmitLoaded, loadSettings, type SubagentsSettings, type ToolDescriptionMode } from "./settings.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
 import { type AgentActivity, type AgentConfig, type AgentInvocation, type AgentMentionMode, type AgentRecord, type JoinMode, type NotificationDetails, type SubagentType, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
@@ -276,7 +277,7 @@ export default function (pi: ExtensionAPI) {
         if (d.turnCount > 0) parts.push(formatTurns(d.turnCount, d.maxTurns));
         if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
         if (d.totalTokens > 0) parts.push(formatTokens(d.totalTokens));
-        if (showCost) {
+        if (settings.showCost) {
           const costText = formatCost(d.totalCost ?? 0);
           if (costText) parts.push(costText);
         }
@@ -308,7 +309,7 @@ export default function (pi: ExtensionAPI) {
       // from it is what the batch cost — not four figures to add up by hand.
       // Derived from the per-agent details rather than carried alongside them:
       // one source, so the total can never disagree with the rows above it.
-      if (showCost && all.length > 1) {
+      if (settings.showCost && all.length > 1) {
         const total = formatCost(all.reduce((sum, a) => sum + (a.totalCost ?? 0), 0));
         if (total) {
           const tokens = all.reduce((sum, a) => sum + a.totalTokens, 0);
@@ -336,32 +337,15 @@ export default function (pi: ExtensionAPI) {
   // ---- Widget ----
 
   // ---- Usage reporting (both off by default; see SubagentsSettings) ----
-  /** Attach subagent spend to tool results, so the parent session counts it. */
-  let reportUsage = false;
-  function isReportUsageEnabled(): boolean { return reportUsage; }
-  function setReportUsage(b: boolean): void {
-    reportUsage = b;
-    // Whatever accumulated while it was on is stale the moment it goes off:
-    // draining it later would bill the parent for a window the user opted out
-    // of, in one lump, on some unrelated later tool call.
-    if (!b) pendingUsage.drain();
-  }
-  /** Show `~$X` next to token counts in the subagent surfaces. */
-  let showCost = false;
-  function isShowCostEnabled(): boolean { return showCost; }
-  function setShowCost(b: boolean): void { showCost = b; widget.update(); fleet.update(); }
-  /** Name the model and thinking level on the widget's running rows. */
-  let showModel = false;
-  function isShowModelEnabled(): boolean { return showModel; }
-  function setShowModel(b: boolean): void { showModel = b; widget.update(); }
-  /**
-   * How much of the conversation viewer renders as Markdown. Read through a
-   * getter by the viewer rather than captured like `showCost`, because the
-   * viewer's `m` key writes back here while the overlay is on screen.
-   */
-  let viewerMarkdown: ViewerMarkdownMode = "assistant";
-  function getViewerMarkdown(): ViewerMarkdownMode { return viewerMarkdown; }
-  function setViewerMarkdown(mode: ViewerMarkdownMode): void { viewerMarkdown = mode; }
+  const settings = createRuntimeSettings();
+  const isReportUsageEnabled = () => settings.reportUsage;
+  const setReportUsage = (b: boolean): void => { settings.setReportUsageFlag(b); };
+  const isShowCostEnabled = () => settings.showCost;
+  const setShowCost = (b: boolean): void => { settings.setShowCostFlag(b); };
+  const isShowModelEnabled = () => settings.showModel;
+  const setShowModel = (b: boolean): void => { settings.setShowModelFlag(b); };
+  const getViewerMarkdown = () => settings.viewerMarkdown;
+  const setViewerMarkdown = (m: ViewerMarkdownMode): void => { settings.setViewerMarkdownMode(m); };
   /**
    * The viewer's `m` key, from either entry point: set the mode and persist it,
    * so the key and `/agents → Settings` stay one setting rather than one per
@@ -370,7 +354,7 @@ export default function (pi: ExtensionAPI) {
    */
   function chooseViewerMarkdown(mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext): void {
     setViewerMarkdown(mode);
-    persistSettings(ctx, `Viewer markdown set to ${mode}`);
+    settingsPersist.persist(ctx, `Viewer markdown set to ${mode}`);
   }
   const pendingUsage = new PendingUsagePool();
 
@@ -403,7 +387,7 @@ export default function (pi: ExtensionAPI) {
   function emitIndividualNudge(record: AgentRecord) {
     if (record.resultConsumed) return;  // re-check at send time
 
-    const notification = formatTaskNotification(record, 500, showCost);
+    const notification = formatTaskNotification(record, 500, settings.showCost);
     const footer = record.outputFile ? `\nFull transcript available at: ${record.outputFile}` : '';
 
     pi.sendMessage<NotificationDetails>({
@@ -432,7 +416,7 @@ export default function (pi: ExtensionAPI) {
         const unconsumed = records.filter(r => !r.resultConsumed);
         if (unconsumed.length === 0) { widget.update(); return; }
 
-        const notifications = unconsumed.map(r => formatTaskNotification(r, 300, showCost)).join('\n\n');
+        const notifications = unconsumed.map(r => formatTaskNotification(r, 300, settings.showCost)).join('\n\n');
         const label = partial
           ? `${unconsumed.length} agent(s) finished (partial — others still running)`
           : `${unconsumed.length} agent(s) finished`;
@@ -570,8 +554,15 @@ export default function (pi: ExtensionAPI) {
     // Parked here until a tool result can carry it back to the parent session;
     // see `PendingUsagePool`. Skipped entirely when the feature is off, so no
     // pool grows in a session that will never drain it.
-    if (reportUsage) pendingUsage.add(usage);
+    if (settings.reportUsage) pendingUsage.add(usage);
   });
+
+  // Settings writes: one snapshot source, one emit, two toasts.
+  const settingsPersist = createSettingsPersistence(
+    settings,
+    { manager },
+    (event, payload) => pi.events.emit(event, payload),
+  );
 
   // Expose manager via Symbol.for() global registry for cross-package access.
   // Standard Node.js pattern for cross-package singletons (used by OpenTelemetry, etc.).
@@ -1051,31 +1042,79 @@ export default function (pi: ExtensionAPI) {
   // every agent; "background" = hide foreground (they already render inline as
   // the Agent tool result, so showing them here too is a duplicate, #118), keep
   // everything else; "off" = hide the widget entirely. Read live at render time.
-  let widgetMode: WidgetMode = "background";
-  function getWidgetMode(): WidgetMode { return widgetMode; }
+  /**
+   * The in-memory settings state, with its setters. Callers that mutate state
+   * through `SettingsAppliers` go through this object; the small wrappers above
+   * and below give the rest of the factory the names it has always used.
+   */
+  function createRuntimeSettings(): {
+    reportUsage: boolean; showCost: boolean; showModel: boolean;
+    viewerMarkdown: ViewerMarkdownMode; widgetMode: WidgetMode; fleetView: boolean;
+    agentMentionMode: AgentMentionMode; defaultJoinMode: JoinMode; backgroundByDefault: boolean;
+    schedulingEnabled: boolean; toolDescriptionMode: ToolDescriptionMode; strictAgentFiles: boolean;
+    setReportUsageFlag(b: boolean): void; setShowCostFlag(b: boolean): void;
+    setShowModelFlag(b: boolean): void; setViewerMarkdownMode(m: ViewerMarkdownMode): void;
+    setWidgetModeFlag(m: WidgetMode): void; setFleetView(b: boolean): void;
+    setAgentMentionMode(m: AgentMentionMode): void; setJoinMode(m: JoinMode): void;
+    setBgDefault(b: boolean): void; setScheduling(b: boolean): void;
+    setToolDescMode(m: ToolDescriptionMode): void; setStrictAgentFiles(b: boolean): void;
+  } {
+    return {
+      reportUsage: false,
+      showCost: false,
+      showModel: false,
+      viewerMarkdown: "assistant",
+      widgetMode: "all",
+      fleetView: true,
+      agentMentionMode: "model",
+      defaultJoinMode: "smart",
+      backgroundByDefault: true,
+      schedulingEnabled: true,
+      toolDescriptionMode: "full",
+      strictAgentFiles,
+      setReportUsageFlag(b) {
+        this.reportUsage = b;
+        // Whatever accumulated while it was on is stale the moment it goes off:
+        // draining it later would bill the parent for a window the user opted out
+        // of, in one lump, on some unrelated later tool call.
+        if (!b) pendingUsage.drain();
+      },
+      setShowCostFlag(b) { this.showCost = b; widget.update(); fleet.update(); },
+      setShowModelFlag(b) { this.showModel = b; widget.update(); },
+      setViewerMarkdownMode(m) { this.viewerMarkdown = m; },
+      setWidgetModeFlag(m) { this.widgetMode = m; widget.update(); },
+      setFleetView(b) { this.fleetView = b; fleet.setEnabled(b); },
+      setAgentMentionMode(m) { this.agentMentionMode = m; },
+      setJoinMode(m) { this.defaultJoinMode = m; },
+      setBgDefault(b) { this.backgroundByDefault = b; },
+      setScheduling(b) { this.schedulingEnabled = b; },
+      setToolDescMode(m) { this.toolDescriptionMode = m; },
+      setStrictAgentFiles(b) { this.strictAgentFiles = b; },
+    };
+  }
+
+  function getWidgetMode(): WidgetMode { return settings.widgetMode; }
   const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled);
-  function setWidgetMode(m: WidgetMode): void { widgetMode = m; widget.update(); }
+  function setWidgetMode(m: WidgetMode): void { settings.setWidgetModeFlag(m); }
 
   // Claude Code-style FleetView: navigable list of main + subagents below the editor.
   // The last two arguments keep a conversation overlay opened here identical to
   // one opened from `/agents`: same setting on the way in, same persist out.
   const fleet = new FleetList(manager, isShowCostEnabled, getViewerMarkdown,
     (mode) => chooseViewerMarkdown(mode, currentCtx as unknown as ExtensionCommandContext | undefined));
-  let fleetViewEnabled = true;
-  function isFleetViewEnabled(): boolean { return fleetViewEnabled; }
-  function setFleetViewEnabled(b: boolean): void { fleetViewEnabled = b; fleet.setEnabled(b); }
+  function isFleetViewEnabled(): boolean { return settings.fleetView; }
+  function setFleetViewEnabled(b: boolean): void { settings.setFleetView(b); }
 
   // Claude Code-style `@handle message` prompt mentions. Read live by both the
   // `input` hook and the stacked autocomplete provider, so the toggle applies
   // immediately — the provider itself can never be unregistered (pi's wrapper
   // list is append-only), it just delegates everything when this is off.
-  let agentMentionMode: AgentMentionMode = "model";
-  function getAgentMentionMode(): AgentMentionMode { return agentMentionMode; }
-  function setAgentMentionMode(mode: AgentMentionMode): void { agentMentionMode = mode; }
+  function getAgentMentionMode(): AgentMentionMode { return settings.agentMentionMode; }
+  function setAgentMentionMode(mode: AgentMentionMode): void { settings.setAgentMentionMode(mode); }
   // `model` and `direct` differ only in who starts a not-yet-running agent, so
   // everything that just asks "are mentions live at all" — the suggestion list,
   // the steer and resume branches — reads this instead of the mode.
-  function isAgentMentionsEnabled(): boolean { return agentMentionMode !== "off"; }
+  function isAgentMentionsEnabled(): boolean { return settings.agentMentionMode !== "off"; }
 
   // Project/global default for writing the subagent .output transcript lives in
   // output-file.ts (both spawn paths read it). A custom agent's
@@ -1083,16 +1122,14 @@ export default function (pi: ExtensionAPI) {
   // is silent, this default applies. Read live at spawn time.
 
   // ---- Join mode configuration ----
-  let defaultJoinMode: JoinMode = 'smart';
-  function getDefaultJoinMode(): JoinMode { return defaultJoinMode; }
-  function setDefaultJoinMode(mode: JoinMode) { defaultJoinMode = mode; }
+  function getDefaultJoinMode(): JoinMode { return settings.defaultJoinMode; }
+  function setDefaultJoinMode(mode: JoinMode) { settings.setJoinMode(mode); }
 
   // What an unqualified top-level spawn means. Defaults to background,
   // following Claude Code; `backgroundByDefault: false` restores the previous
   // foreground default. Nested spawns ignore this — see nested-tools.ts.
-  let backgroundByDefault = true;
-  function getBackgroundByDefault(): boolean { return backgroundByDefault; }
-  function setBackgroundByDefault(b: boolean) { backgroundByDefault = b; }
+  function getBackgroundByDefault(): boolean { return settings.backgroundByDefault; }
+  function setBackgroundByDefault(b: boolean) { settings.setBgDefault(b); }
 
   // Master switch for the schedule subagent feature. Defaults to enabled.
   // Read once at extension init (before tool registration) so the Agent tool's
@@ -1100,9 +1137,8 @@ export default function (pi: ExtensionAPI) {
   // → Settings short-circuit the menu entry + the execute-time addJob path
   // immediately, but the schema-level removal only takes effect on next
   // extension load (next pi session). Documented in README.
-  let schedulingEnabled = true;
-  function isSchedulingEnabled(): boolean { return schedulingEnabled; }
-  function setSchedulingEnabled(b: boolean) { schedulingEnabled = b; }
+  function isSchedulingEnabled(): boolean { return settings.schedulingEnabled; }
+  function setSchedulingEnabled(b: boolean) { settings.setScheduling(b); }
 
   // ---- Disable default agents configuration ----
   // When enabled, the three hardcoded default agents (general-purpose, Explore,
@@ -1120,9 +1156,8 @@ export default function (pi: ExtensionAPI) {
   // "full" (default) keeps the rich Claude Code-style description; "compact"
   // swaps in a ~75% smaller one for small/local models (#91). Read once at
   // tool registration — flipping it applies on the next pi session.
-  let toolDescriptionMode: ToolDescriptionMode = "full";
-  function getToolDescriptionMode(): ToolDescriptionMode { return toolDescriptionMode; }
-  function setToolDescriptionMode(mode: ToolDescriptionMode): void { toolDescriptionMode = mode; }
+  function getToolDescriptionMode(): ToolDescriptionMode { return settings.toolDescriptionMode; }
+  function setToolDescriptionMode(mode: ToolDescriptionMode): void { settings.setToolDescMode(mode); }
 
   // ---- Batch tracking for smart join mode ----
   // Collects background agent IDs spawned in the current turn for smart grouping.
@@ -1186,7 +1221,7 @@ export default function (pi: ExtensionAPI) {
     opts: { outputTranscript: boolean; maxTurns?: number; toolCallId?: string },
   ): Promise<AgentRecord | undefined> {
     const id = existing.id;
-    const joinMode = resolveJoinMode(defaultJoinMode, true);
+    const joinMode = resolveJoinMode(settings.defaultJoinMode, true);
     // Assigned unconditionally: the completion notification carries this as
     // `<tool-use-id>`, so a mention-resume (which passes none) has to CLEAR the
     // id left by the spawn that created the record. Keeping it would point the
@@ -1589,7 +1624,7 @@ Terse command-style prompts produce shallow, generic work.
         }
         if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
         if (d.tokens) parts.push(d.tokens);
-        if (showCost) {
+        if (settings.showCost) {
           const costText = formatCost(d.cost ?? 0);
           if (costText) parts.push(costText);
         }
@@ -1973,7 +2008,7 @@ Terse command-style prompts produce shallow, generic work.
 
         // Set output file + join mode synchronously after spawn, before the
         // event loop yields — onSessionCreated is async so this is safe.
-        const joinMode = resolveJoinMode(defaultJoinMode, true);
+        const joinMode = resolveJoinMode(settings.defaultJoinMode, true);
         const record = manager.getRecord(id);
         if (record && joinMode) {
           record.joinMode = joinMode;
@@ -2166,7 +2201,7 @@ Terse command-style prompts produce shallow, generic work.
       const durationMs = (record.completedAt ?? Date.now()) - record.startedAt;
       const statsParts = [`${record.toolUses} tool uses`];
       if (tokenText) statsParts.push(tokenText);
-      if (showCost) {
+      if (settings.showCost) {
         const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
         if (costText) statsParts.push(costText);
       }
@@ -2196,7 +2231,7 @@ Terse command-style prompts produce shallow, generic work.
       ...tool,
       execute: async (toolCallId: string | undefined, ...rest: any[]) => {
         const result = await tool.execute(toolCallId, ...rest);
-        if (!reportUsage || !toolCallId) return result;
+        if (!settings.reportUsage || !toolCallId) return result;
         const usage = pendingUsage.drain();
         return usage ? { ...result, usage } : result;
       },
@@ -2261,7 +2296,7 @@ Terse command-style prompts produce shallow, generic work.
       const contextPercent = getSessionContextPercent(record.session);
       const statsParts = [`Tool uses: ${record.toolUses}`];
       if (tokens) statsParts.push(tokens);
-      if (showCost) {
+      if (settings.showCost) {
         const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
         if (costText) statsParts.push(`Cost: ${costText}`);
       }
@@ -2340,7 +2375,7 @@ Terse command-style prompts produce shallow, generic work.
         const contextPercent = getSessionContextPercent(record.session);
         const stateParts: string[] = [];
         if (tokens) stateParts.push(tokens);
-        if (showCost) {
+        if (settings.showCost) {
           const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
           if (costText) stateParts.push(costText);
         }
@@ -2620,7 +2655,7 @@ Terse command-style prompts produce shallow, generic work.
           if (manager.abort(record.id)) {
             ctx.ui.notify(`Stopped "${record.description}".`, "info");
           }
-        }, keybindings, (message: string) => manager.steer(record.id, message), showCost, getViewerMarkdown, (mode) => chooseViewerMarkdown(mode, ctx));
+        }, keybindings, (message: string) => manager.steer(record.id, message), settings.showCost, getViewerMarkdown, (mode) => chooseViewerMarkdown(mode, ctx));
       },
       {
         overlay: true,
@@ -2989,61 +3024,6 @@ Write the file using the write tool. Only write the file, nothing else.`;
     ctx.ui.notify(`Created ${targetPath}`, "info");
   }
 
-  /**
-   * Every settings mutation writes this WHOLE object back to disk, so a field
-   * missing here is erased from the user's subagents.json the next time they
-   * toggle something unrelated. `SubagentsSettings` has every field optional,
-   * so a `: SubagentsSettings` return annotation would let a newly-added setting
-   * be forgotten here and still type-check. `satisfies` instead: it still checks
-   * each value's type and rejects a mistyped key, but leaves the return type
-   * inferred so `_NoMissingSettingsKeys` below can check completeness.
-   */
-  function snapshotSettings() {
-    return {
-      maxConcurrent: manager.getMaxConcurrent(),
-      // 0 = unlimited, and the default — see SubagentsSettings.
-      maxConcurrentForeground: manager.getMaxConcurrentForeground(),
-      // 0 = unlimited — per SubagentsSettings.defaultMaxTurns docstring and
-      // normalizeMaxTurns() in agent-runner.ts (which maps 0 → undefined).
-      defaultMaxTurns: getDefaultMaxTurns() ?? 0,
-      graceTurns: getGraceTurns(),
-      defaultJoinMode: getDefaultJoinMode(),
-      backgroundByDefault: getBackgroundByDefault(),
-      schedulingEnabled: isSchedulingEnabled(),
-      scopeModels: isScopeModelsEnabled(),
-      strictAgentFiles,
-      disableDefaultAgents: isDefaultsDisabled(),
-      toolDescriptionMode: getToolDescriptionMode(),
-      fleetView: isFleetViewEnabled(),
-      agentMentions: getAgentMentionMode(),
-      rememberAgents: getRememberAgents(),
-      widgetMode: getWidgetMode(),
-      outputTranscript: getOutputTranscriptDefault(),
-      worktreeIsolation: isWorktreeIsolationEnabled(),
-      maxSubagentDepth: getMaxSubagentDepth(),
-      // Deliberately NOT `?? "general-purpose"`: every settings change writes the
-      // whole snapshot, and materializing the implicit default would turn it into
-      // explicit configuration — which then fails loudly if general-purpose later
-      // goes away. undefined is dropped by JSON.stringify.
-      fallbackSubagent: getFallbackSubagent(),
-      reportUsage: isReportUsageEnabled(),
-      showCost: isShowCostEnabled(),
-      showModel: isShowModelEnabled(),
-      viewerMarkdown: getViewerMarkdown(),
-    } satisfies SubagentsSettings;
-  }
-
-  // Compile-time completeness guard for snapshotSettings(). If a field is added
-  // to SubagentsSettings and not mirrored above, this Exclude is non-empty and
-  // fails to satisfy `never` — turning a silent settings-erasure bug into a
-  // typecheck error. `npm run typecheck` runs in CI.
-  type _NoMissingSettingsKeys =
-    Exclude<keyof SubagentsSettings, keyof ReturnType<typeof snapshotSettings>> extends never
-      ? true
-      : ["snapshotSettings() is missing a SubagentsSettings key"];
-  const _settingsSnapshotIsComplete: _NoMissingSettingsKeys = true;
-  void _settingsSnapshotIsComplete;
-
   const NUMERIC_IDS = new Set([
     "maxConcurrent", "maxConcurrentForeground", "defaultMaxTurns", "graceTurns", "maxSubagentDepth",
   ]);
@@ -3238,14 +3218,14 @@ Write the file using the write tool. Only write the file, nothing else.`;
         const n = parseInt(value, 10);
         if (n >= 1) {
           manager.setMaxConcurrent(n);
-          notifyApplied(ctx, `Max concurrency set to ${n}`);
+          settingsPersist.notifyApplied(ctx, `Max concurrency set to ${n}`);
         }
       } else if (id === "maxConcurrentForeground") {
         // 0 is meaningful here, unlike maxConcurrent above: it means unlimited.
         const n = parseInt(value, 10);
         if (n >= 0) {
           manager.setMaxConcurrentForeground(n);
-          notifyApplied(ctx, n === 0
+          settingsPersist.notifyApplied(ctx, n === 0
             ? "Max foreground concurrency set to unlimited"
             : `Max foreground concurrency set to ${n}`);
         }
@@ -3253,22 +3233,22 @@ Write the file using the write tool. Only write the file, nothing else.`;
         const n = parseInt(value, 10);
         if (n === 0) {
           setDefaultMaxTurns(undefined);
-          notifyApplied(ctx, "Default max turns set to unlimited");
+          settingsPersist.notifyApplied(ctx, "Default max turns set to unlimited");
         } else if (n >= 1) {
           setDefaultMaxTurns(n);
-          notifyApplied(ctx, `Default max turns set to ${n}`);
+          settingsPersist.notifyApplied(ctx, `Default max turns set to ${n}`);
         }
       } else if (id === "graceTurns") {
         const n = parseInt(value, 10);
         if (n >= 1) {
           setGraceTurns(n);
-          notifyApplied(ctx, `Grace turns set to ${n}`);
+          settingsPersist.notifyApplied(ctx, `Grace turns set to ${n}`);
         }
       } else if (id === "maxSubagentDepth") {
         const n = parseInt(value, 10);
         if (n >= 0) {
           setMaxSubagentDepth(n);
-          notifyApplied(
+          settingsPersist.notifyApplied(
             ctx,
             n <= 1
               ? "Nested delegation disabled"
@@ -3277,11 +3257,11 @@ Write the file using the write tool. Only write the file, nothing else.`;
         }
       } else if (id === "joinMode") {
         setDefaultJoinMode(value as JoinMode);
-        notifyApplied(ctx, `Default join mode set to ${value}`);
+        settingsPersist.notifyApplied(ctx, `Default join mode set to ${value}`);
       } else if (id === "backgroundByDefault") {
         const enabled = value === "on";
         setBackgroundByDefault(enabled);
-        notifyApplied(
+        settingsPersist.notifyApplied(
           ctx,
           enabled
             ? "Agent calls run in the background unless they pass run_in_background: false"
@@ -3294,7 +3274,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
         } else {
           setSchedulingEnabled(enabled);
           if (!enabled) scheduler.stop();  // immediate kill — outstanding fires stop ticking
-          notifyApplied(
+          settingsPersist.notifyApplied(
             ctx,
             `Scheduling ${enabled ? "enabled" : "disabled"}. Tool spec change takes effect on next pi session.`,
           );
@@ -3302,18 +3282,18 @@ Write the file using the write tool. Only write the file, nothing else.`;
       } else if (id === "scopeModels") {
         const enabled = value === "on";
         setScopeModelsEnabled(enabled);
-        notifyApplied(ctx, `Scope models ${enabled ? "enabled" : "disabled"}`);
+        settingsPersist.notifyApplied(ctx, `Scope models ${enabled ? "enabled" : "disabled"}`);
       } else if (id === "strictAgentFiles") {
         const enabled = value === "on";
         strictAgentFiles = enabled;
-        notifyApplied(ctx, `Strict agent files ${enabled ? "enabled" : "disabled"}. Takes effect on next pi session.`);
+        settingsPersist.notifyApplied(ctx, `Strict agent files ${enabled ? "enabled" : "disabled"}. Takes effect on next pi session.`);
       } else if (id === "disableDefaultAgents") {
         const enabled = value === "on";
         setDisableDefaultAgents(enabled);
-        notifyApplied(ctx, `Default agents ${enabled ? "disabled" : "enabled"}. Tool spec change takes effect on next pi session.`);
+        settingsPersist.notifyApplied(ctx, `Default agents ${enabled ? "disabled" : "enabled"}. Tool spec change takes effect on next pi session.`);
       } else if (id === "fallbackSubagent") {
         setFallbackSubagent(value);
-        notifyApplied(
+        settingsPersist.notifyApplied(
           ctx,
           value === NO_FALLBACK
             ? "Unknown or disabled agent types will now be rejected"
@@ -3322,23 +3302,23 @@ Write the file using the write tool. Only write the file, nothing else.`;
       } else if (id === "outputTranscript") {
         const enabled = value === "on";
         setOutputTranscriptDefault(enabled);
-        notifyApplied(ctx, `Output transcript ${enabled ? "enabled" : "disabled"} by default`);
+        settingsPersist.notifyApplied(ctx, `Output transcript ${enabled ? "enabled" : "disabled"} by default`);
       } else if (id === "worktreeIsolation") {
         const enabled = value === "on";
         setWorktreeIsolationEnabled(enabled);
         // The refusal is live, but the tool schema is built at registration, so
         // the isolation parameter only appears/disappears next session.
-        notifyApplied(
+        settingsPersist.notifyApplied(
           ctx,
           `Worktree isolation ${enabled ? "enabled" : "disabled"}. Tool parameter updates on next pi session.`,
         );
       } else if (id === "toolDescriptionMode") {
         setToolDescriptionMode(value as ToolDescriptionMode);
-        notifyApplied(ctx, `Tool description set to ${value}. Takes effect on next pi session.`);
+        settingsPersist.notifyApplied(ctx, `Tool description set to ${value}. Takes effect on next pi session.`);
       } else if (id === "reportUsage") {
         const enabled = value === "on";
         setReportUsage(enabled);
-        notifyApplied(
+        settingsPersist.notifyApplied(
           ctx,
           enabled
             ? "Subagent usage now counted in this session's totals"
@@ -3347,22 +3327,22 @@ Write the file using the write tool. Only write the file, nothing else.`;
       } else if (id === "showCost") {
         const enabled = value === "on";
         setShowCost(enabled);
-        notifyApplied(ctx, `Cost display ${enabled ? "enabled" : "disabled"}`);
+        settingsPersist.notifyApplied(ctx, `Cost display ${enabled ? "enabled" : "disabled"}`);
       } else if (id === "showModel") {
         const enabled = value === "on";
         setShowModel(enabled);
-        notifyApplied(ctx, `Model display ${enabled ? "enabled" : "disabled"}`);
+        settingsPersist.notifyApplied(ctx, `Model display ${enabled ? "enabled" : "disabled"}`);
       } else if (id === "viewerMarkdown") {
         setViewerMarkdown(value as ViewerMarkdownMode);
-        notifyApplied(ctx, `Viewer markdown set to ${value}`);
+        settingsPersist.notifyApplied(ctx, `Viewer markdown set to ${value}`);
       } else if (id === "fleetView") {
         const enabled = value === "on";
         setFleetViewEnabled(enabled);
-        notifyApplied(ctx, `Fleet view ${enabled ? "enabled" : "disabled"}`);
+        settingsPersist.notifyApplied(ctx, `Fleet view ${enabled ? "enabled" : "disabled"}`);
       } else if (id === "agentMentions") {
         const mode = value as AgentMentionMode;
         setAgentMentionMode(mode);
-        notifyApplied(
+        settingsPersist.notifyApplied(
           ctx,
           mode === "off"
             ? "Agent mentions disabled"
@@ -3373,10 +3353,10 @@ Write the file using the write tool. Only write the file, nothing else.`;
       } else if (id === "rememberAgents") {
         const enabled = value === "on";
         setRememberAgents(enabled);
-        notifyApplied(ctx, `Remember agents ${enabled ? "enabled" : "disabled"}`);
+        settingsPersist.notifyApplied(ctx, `Remember agents ${enabled ? "enabled" : "disabled"}`);
       } else if (id === "widgetMode") {
         setWidgetMode(value as WidgetMode);
-        notifyApplied(ctx, `Widget set to ${value}`);
+        settingsPersist.notifyApplied(ctx, `Widget set to ${value}`);
       }
     }
 
@@ -3461,40 +3441,6 @@ Write the file using the write tool. Only write the file, nothing else.`;
         input = await ctx.ui.input(label, trimmed);
       }
     }
-  }
-
-  // Persist the current snapshot, emit `subagents:settings_changed`, and surface
-  // the right toast. Successful saves show info; persistence failures downgrade
-  // to warning so users aren't silently reverted on restart. Event fires regardless
-  // of outcome so listeners see the in-memory change.
-  /**
-   * Persist + broadcast the settings, silent on success — for a change whose
-   * feedback is the UI it just changed: the viewer's `m` key, where a
-   * notification per press would talk over the overlay it is describing.
-   *
-   * A *failed* write still speaks. Every other settings path warns when the
-   * value is session-only, and swallowing it here would leave a preference
-   * looking persisted when the next session will not have it.
-   */
-  function persistSettings(ctx: ExtensionCommandContext | undefined, changeMsg: string): void {
-    const { message, level } = saveAndEmitChanged(
-      snapshotSettings(),
-      changeMsg,
-      (event, payload) => pi.events.emit(event, payload),
-    );
-    // `ctx` is absent only on the fleet path between sessions, where
-    // `currentCtx` has been cleared and there is no UI to carry the warning to.
-    // The write still happens.
-    if (level === "warning") ctx?.ui.notify(message, level);
-  }
-
-  function notifyApplied(ctx: ExtensionCommandContext, successMsg: string) {
-    const { message, level } = saveAndEmitChanged(
-      snapshotSettings(),
-      successMsg,
-      (event, payload) => pi.events.emit(event, payload),
-    );
-    ctx.ui.notify(message, level);
   }
 
   pi.registerCommand("agents", {
