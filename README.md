@@ -981,6 +981,8 @@ src/
   runner-defaults.ts  # Process-wide run defaults: max turns, grace turns, rememberAgents
   session-text.ts     # Read response text, final-turn failure and transcript from a session
   agent-manager.ts    # Agent lifecycle, concurrency queue, completion notifications
+  agent-manager-rules.ts # Spawn eligibility and spawn input validation
+  agent-session-shutdown.ts # Graceful shutdown of a child AgentSession
   nested-tools.ts     # Delegation tools handed to subagents (nested spawn/collect/steer)
   child-context.ts    # AsyncLocalStorage flag marking work done for a child session
   abortable.ts        # Race a wait against Esc without cancelling the background child
