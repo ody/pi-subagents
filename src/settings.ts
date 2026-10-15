@@ -34,7 +34,7 @@ export interface SubagentsSettings {
   maxConcurrentForeground?: number;
   /**
    * 0 = unlimited — the extension's single source of truth for that convention:
-   * `normalizeMaxTurns()` in agent-runner.ts treats 0 → `undefined`, and the
+   * `normalizeMaxTurns()` in runner-defaults treats 0 → `undefined`, and the
    * `/agents` → Settings input prompt explicitly says "0 = unlimited".
    */
   defaultMaxTurns?: number;

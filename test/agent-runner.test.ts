@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -122,23 +122,20 @@ vi.mock("../src/nested-tools.js", () => ({
 }));
 
 import {
-  extensionCanonicalName,
-  extensionCanonicalNames,
-  getAgentConversation,
-  getDefaultMaxTurns,
-  getGraceTurns,
-  parseExtensionsSpec,
-  parseExtSelectors,
   resolveDefaultModel,
-  resolveEffectiveMaxTurns,
   resumeAgent,
   runAgent,
-  SUBAGENT_TOOL_NAMES,
+} from "../src/agent-runner.js";
+import { SUBAGENT_TOOL_NAMES } from "../src/extension-scope.js";
+import { buildAgentPrompt } from "../src/prompts.js";
+import {
+  getDefaultMaxTurns,
+  getGraceTurns,
+  resolveEffectiveMaxTurns,
   setDefaultMaxTurns,
   setGraceTurns,
   setRememberAgents,
-} from "../src/agent-runner.js";
-import { buildAgentPrompt } from "../src/prompts.js";
+} from "../src/runner-defaults.js";
 
 /** The most recent session built by `createSession` — read by `lastToolsPassed()`. */
 let lastSession: ReturnType<typeof createSession>["session"] | undefined;
@@ -675,83 +672,6 @@ describe("agent-runner usage callback wiring", () => {
     });
 
     expect(seen).toEqual([{ reason: "threshold", tokensBefore: 12345 }]);
-  });
-});
-
-// getAgentConversation renders the subagent transcript shown in the /agents
-// inspect overlay. Pure function over session.messages — no mocks needed
-// beyond a literal-object session.
-describe("getAgentConversation", () => {
-  function fakeSession(messages: unknown[]) {
-    return { messages } as never;
-  }
-
-  it("returns an empty string for a session with no messages", () => {
-    expect(getAgentConversation(fakeSession([]))).toBe("");
-  });
-
-  it("formats a user-then-assistant exchange with role-prefixed lines joined by blank lines", () => {
-    const out = getAgentConversation(
-      fakeSession([
-        { role: "user", content: "hi" },
-        { role: "assistant", content: [{ type: "text", text: "hello" }] },
-      ]),
-    );
-    expect(out).toBe("[User]: hi\n\n[Assistant]: hello");
-  });
-
-  it("accepts user content as content-blocks (not just strings)", () => {
-    const out = getAgentConversation(
-      fakeSession([{ role: "user", content: [{ type: "text", text: "from blocks" }] }]),
-    );
-    expect(out).toBe("[User]: from blocks");
-  });
-
-  it("emits a [Tool Calls] block listing each toolCall by name or toolName, falling back to 'unknown'", () => {
-    const out = getAgentConversation(
-      fakeSession([
-        {
-          role: "assistant",
-          content: [
-            { type: "text", text: "calling tools" },
-            { type: "toolCall", name: "search" },
-            { type: "toolCall", toolName: "edit" },
-            { type: "toolCall" },
-          ],
-        },
-      ]),
-    );
-    expect(out).toContain("[Assistant]: calling tools");
-    expect(out).toContain("[Tool Calls]:\n  Tool: search\n  Tool: edit\n  Tool: unknown");
-  });
-
-  it("truncates toolResult content beyond 200 chars and tags it with the tool name", () => {
-    const longText = "x".repeat(300);
-    const out = getAgentConversation(
-      fakeSession([
-        {
-          role: "toolResult",
-          toolName: "bash",
-          content: [{ type: "text", text: longText }],
-        },
-      ]),
-    );
-    expect(out.startsWith("[Tool Result (bash)]: ")).toBe(true);
-    expect(out.endsWith("...")).toBe(true);
-    // prefix + 200 chars + "..."
-    expect(out.length).toBe("[Tool Result (bash)]: ".length + 200 + 3);
-  });
-
-  it("emits [Tool Calls] but no [Assistant] when the assistant only made tool calls", () => {
-    const out = getAgentConversation(
-      fakeSession([
-        { role: "user", content: "do it" },
-        { role: "assistant", content: [{ type: "toolCall", name: "search" }] },
-      ]),
-    );
-    expect(out).toContain("[User]: do it");
-    expect(out).not.toContain("[Assistant]:");
-    expect(out).toContain("[Tool Calls]:\n  Tool: search");
   });
 });
 
@@ -1518,126 +1438,6 @@ describe("agent-runner async extension tool registration", () => {
 // extensionsOverride — excluded extensions never bind handlers or register
 // tools.
 
-describe("extensionCanonicalName", () => {
-  it("strips .ts/.js from a single-file extension basename", () => {
-    expect(extensionCanonicalName("/x/foo.ts")).toBe("foo");
-    expect(extensionCanonicalName("/x/foo.js")).toBe("foo");
-  });
-  it("uses the parent directory name for index.{ts,js} extensions", () => {
-    expect(extensionCanonicalName("/x/foo/index.ts")).toBe("foo");
-    expect(extensionCanonicalName("/x/foo/index.js")).toBe("foo");
-  });
-  it("lowercases the result for case-insensitive matching", () => {
-    expect(extensionCanonicalName("/x/MCP.ts")).toBe("mcp");
-    expect(extensionCanonicalName("/x/MyExt.js")).toBe("myext");
-    expect(extensionCanonicalName("/x/Foo/index.ts")).toBe("foo");
-  });
-});
-
-describe("extensionCanonicalNames (#143 — package short name alias)", () => {
-  const tmpDirs: string[] = [];
-  function pkgDir(name: string, piExtensions: unknown): string {
-    const dir = mkdtempSync(join(tmpdir(), "subagents-pkg-"));
-    tmpDirs.push(dir);
-    const manifest: Record<string, unknown> = { name };
-    if (piExtensions !== undefined) manifest.pi = { extensions: piExtensions };
-    writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
-    mkdirSync(join(dir, "src"));
-    writeFileSync(join(dir, "src", "index.ts"), "export default () => {};");
-    return dir;
-  }
-  afterEach(() => {
-    while (tmpDirs.length) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
-  });
-
-  it("aliases a package-declared index.ts entry to the unscoped, lowercased package name", () => {
-    // Without this, `pi.extensions: ["./src/index.ts"]` only ever matches as "src".
-    const dir = pkgDir("@ody/Pi-Subagents", ["./src/index.ts"]);
-    expect(extensionCanonicalNames(join(dir, "src", "index.ts"))).toEqual(["src", "pi-subagents"]);
-  });
-
-  it("adds no alias for a loose file with no enclosing package.json", () => {
-    const dir = mkdtempSync(join(tmpdir(), "subagents-loose-"));
-    tmpDirs.push(dir);
-    writeFileSync(join(dir, "foo.ts"), "export default () => {};");
-    expect(extensionCanonicalNames(join(dir, "foo.ts"))).toEqual(["foo"]);
-  });
-
-  it("adds no alias when the nearest manifest does not declare this entry", () => {
-    // The package.json is a real pi package but lists a *different* entry — so a
-    // co-located file (e.g. our own test fixtures under this repo) is not falsely
-    // stamped with the package name.
-    const dir = pkgDir("@scope/other-ext", ["./src/other.ts"]);
-    expect(extensionCanonicalNames(join(dir, "src", "index.ts"))).toEqual(["src"]);
-  });
-
-  it("adds no alias when the nearest package.json has no pi manifest", () => {
-    const dir = pkgDir("just-a-project", undefined);
-    expect(extensionCanonicalNames(join(dir, "src", "index.ts"))).toEqual(["src"]);
-  });
-
-  it("does not climb past a node_modules boundary into a consumer's manifest", () => {
-    // A consumer that *declares* a dependency's entry must not lend its name to
-    // that dependency: the walk stops at node_modules before reading it.
-    const root = mkdtempSync(join(tmpdir(), "subagents-consumer-"));
-    tmpDirs.push(root);
-    writeFileSync(
-      join(root, "package.json"),
-      JSON.stringify({ name: "consumer", pi: { extensions: ["./node_modules/inner-ext/index.ts"] } }),
-    );
-    const inner = join(root, "node_modules", "inner-ext");
-    mkdirSync(inner, { recursive: true });
-    writeFileSync(join(inner, "index.ts"), "export default () => {};");
-    // Only the path-derived name — never "consumer".
-    expect(extensionCanonicalNames(join(inner, "index.ts"))).toEqual(["inner-ext"]);
-  });
-});
-
-describe("parseExtensionsSpec", () => {
-  it("classifies bare entries as names", () => {
-    const spec = parseExtensionsSpec(["mcp", "logger"], "/work");
-    expect(spec.names).toEqual(new Set(["mcp", "logger"]));
-    expect(spec.paths).toEqual([]);
-    expect(spec.wildcard).toBe(false);
-  });
-  it("treats '*' as the wildcard", () => {
-    const spec = parseExtensionsSpec(["*"], "/work");
-    expect(spec.wildcard).toBe(true);
-    expect(spec.names.size).toBe(0);
-    expect(spec.paths).toEqual([]);
-  });
-  it("resolves a relative path against cwd and adds its canonical name", () => {
-    const spec = parseExtensionsSpec(["./rel/foo.ts"], "/work");
-    expect(spec.paths).toEqual(["/work/rel/foo.ts"]);
-    expect(spec.names).toEqual(new Set(["foo"]));
-  });
-  it("keeps an absolute path as-is", () => {
-    const spec = parseExtensionsSpec(["/abs/bar.ts"], "/work");
-    expect(spec.paths).toEqual(["/abs/bar.ts"]);
-    expect(spec.names).toEqual(new Set(["bar"]));
-  });
-  it("expands a leading ~ to the home directory", () => {
-    const spec = parseExtensionsSpec(["~/ext/baz.ts"], "/work");
-    expect(spec.paths[0]).toBe(`${homedir()}/ext/baz.ts`);
-    expect(spec.names).toEqual(new Set(["baz"]));
-  });
-  it("composes wildcard, names, and paths", () => {
-    const spec = parseExtensionsSpec(["*", "mcp", "/abs/foo.ts"], "/work");
-    expect(spec.wildcard).toBe(true);
-    expect(spec.names).toEqual(new Set(["mcp", "foo"]));
-    expect(spec.paths).toEqual(["/abs/foo.ts"]);
-  });
-  it("lowercases bare-name entries — extension names match case-insensitively", () => {
-    const spec = parseExtensionsSpec(["Mcp", "LOGGER"], "/work");
-    expect(spec.names).toEqual(new Set(["mcp", "logger"]));
-  });
-  it("ignores empty entries (defensive — upstream parsers already strip them)", () => {
-    const spec = parseExtensionsSpec(["", "mcp", ""], "/work");
-    expect(spec.names).toEqual(new Set(["mcp"]));
-    expect(spec.wildcard).toBe(false);
-  });
-});
-
 describe("agent-runner extension allowlist", () => {
   function setupArrayAgent(extensions: string[]) {
     vi.mocked(getConfig).mockReturnValueOnce(makeConfig({ extensions }));
@@ -2017,46 +1817,6 @@ describe("agent-runner unknown built-in tools", () => {
 });
 
 // ─── ext: tool selectors in `tools:` (opt-in flip) ──────────────────────
-describe("parseExtSelectors", () => {
-  it("bare ext:foo → name only, no narrowing", () => {
-    const { extNames, narrowing } = parseExtSelectors(["ext:foo"]);
-    expect(extNames).toEqual(new Set(["foo"]));
-    expect(narrowing.size).toBe(0);
-  });
-  it("ext:foo/bar → name plus a narrowing entry", () => {
-    const { extNames, narrowing } = parseExtSelectors(["ext:foo/bar"]);
-    expect(extNames).toEqual(new Set(["foo"]));
-    expect(narrowing.get("foo")).toEqual(new Set(["bar"]));
-  });
-  it("multiple ext:foo/* entries union", () => {
-    expect(parseExtSelectors(["ext:foo/a", "ext:foo/b"]).narrowing.get("foo")).toEqual(
-      new Set(["a", "b"]),
-    );
-  });
-  it("ext:foo + ext:foo/bar → narrowing wins", () => {
-    const { narrowing } = parseExtSelectors(["ext:foo", "ext:foo/bar"]);
-    expect(narrowing.get("foo")).toEqual(new Set(["bar"]));
-  });
-  it("splits on the first / so tool names may contain /", () => {
-    expect(parseExtSelectors(["ext:foo/bar/baz"]).narrowing.get("foo")).toEqual(
-      new Set(["bar/baz"]),
-    );
-  });
-  it("skips empty name and empty tool halves", () => {
-    const { extNames, narrowing } = parseExtSelectors(["ext:", "ext:foo/"]);
-    expect(extNames).toEqual(new Set(["foo"]));
-    expect(narrowing.size).toBe(0);
-  });
-  it("lowercases the extension name but preserves tool-name case", () => {
-    // The extension half matches the loader's canonical name (also lowercased);
-    // the tool half is matched against pi-mono's registered identifiers, which
-    // are case-sensitive.
-    const { extNames, narrowing } = parseExtSelectors(["ext:Mcp/SomeTool", "ext:FOO"]);
-    expect(extNames).toEqual(new Set(["mcp", "foo"]));
-    expect(narrowing.get("mcp")).toEqual(new Set(["SomeTool"]));
-  });
-});
-
 describe("agent-runner ext: tool selectors", () => {
   function setupExtAgent(o: {
     extensions: boolean | string[];
@@ -2276,53 +2036,6 @@ describe("agent-runner ext: tool selectors", () => {
   });
 });
 
-// The limit a run will enforce, resolved before the run starts. The widget's
-// turn counter has to predict it for agents spawned outside the Agent tool
-// (mentions, cross-extension RPC), and a second copy of the expression there
-// would drift from the one runAgent enforces — so both call this.
-describe("resolveEffectiveMaxTurns", () => {
-  let prevDefault: number | undefined;
-
-  beforeEach(() => {
-    prevDefault = getDefaultMaxTurns();
-    vi.mocked(getAgentConfig).mockReturnValue(makeAgentConfig({ maxTurns: 7 }) as any);
-  });
-
-  afterEach(() => {
-    setDefaultMaxTurns(prevDefault);
-    vi.mocked(getAgentConfig).mockReset();
-  });
-
-  it("prefers an explicit value over the agent's own and the project default", () => {
-    setDefaultMaxTurns(20);
-    expect(resolveEffectiveMaxTurns("test-agent", 3)).toBe(3);
-  });
-
-  it("falls back to the agent's own max_turns", () => {
-    setDefaultMaxTurns(20);
-    expect(resolveEffectiveMaxTurns("test-agent")).toBe(7);
-  });
-
-  it("falls back to the project default when the agent sets none", () => {
-    setDefaultMaxTurns(20);
-    vi.mocked(getAgentConfig).mockReturnValue(makeAgentConfig() as any);
-    expect(resolveEffectiveMaxTurns("test-agent")).toBe(20);
-  });
-
-  it("is unlimited when nothing sets a limit", () => {
-    setDefaultMaxTurns(undefined);
-    vi.mocked(getAgentConfig).mockReturnValue(makeAgentConfig() as any);
-    expect(resolveEffectiveMaxTurns("test-agent")).toBeUndefined();
-  });
-
-  it("treats an explicit 0 as unlimited rather than as 'no opinion'", () => {
-    // Not the same as omitting it: 0 is how a caller says "no limit", and
-    // falling through to the default would impose one it asked not to have.
-    setDefaultMaxTurns(20);
-    expect(resolveEffectiveMaxTurns("test-agent", 0)).toBeUndefined();
-  });
-});
-
 // The soft-limit → grace → hard-abort machine (agent-runner.ts, the `turn_end`
 // branch) has never executed in a test: every consumer of the `steered`/`aborted`
 // flags mocks `runAgent` outright, so the flags are asserted but never produced.
@@ -2491,8 +2204,7 @@ describe("agent-runner abort signal forwarding", () => {
 // through observed behavior — a broken check just means every model-pinned agent
 // quietly runs on the parent's model, costing whatever the parent costs.
 //
-// Exported for this (the file already exports normalizeMaxTurns/setGraceTurns
-// purely for test/agent-runner-settings.test.ts).
+// Exported for this test.
 describe("resolveDefaultModel", () => {
   const parent = { provider: "anthropic", id: "parent-model" } as any;
   const haiku = { provider: "anthropic", id: "claude-haiku-4-5" } as any;

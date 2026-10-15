@@ -25,9 +25,10 @@ vi.mock("../src/agent-runner.js", async () => {
 // when it comes back empty. mention-clone.test.ts covers the clone itself.
 vi.mock("../src/mention-clone.js", () => ({ runMentionClone: vi.fn() }));
 
-import { getDefaultMaxTurns, resumeAgent, runAgent, setDefaultMaxTurns } from "../src/agent-runner.js";
+import { resumeAgent, runAgent } from "../src/agent-runner.js";
 import subagentsExtension from "../src/index.js";
 import { runMentionClone } from "../src/mention-clone.js";
+import { getDefaultMaxTurns, setDefaultMaxTurns } from "../src/runner-defaults.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 
 let hermetic: Hermetic | undefined;

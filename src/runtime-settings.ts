@@ -7,7 +7,7 @@
 
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "./agent-manager.js";
-import { getDefaultMaxTurns, getGraceTurns, getRememberAgents } from "./agent-runner.js";
+import { getDefaultMaxTurns, getGraceTurns, getRememberAgents } from "./runner-defaults.js";
 import { getFallbackSubagent, isDefaultsDisabled } from "./agent-types.js";
 import { isScopeModelsEnabled } from "./model-scope.js";
 import { getMaxSubagentDepth } from "./nested-tools.js";
