@@ -3,8 +3,8 @@
 // registry — resolves its type and sanitizes its options here.
 
 import type { AgentManager } from "./agent-manager.js";
-import { resolveEffectiveMaxTurns } from "./runner-defaults.js";
 import { resolveSpawnType } from "./agent-types.js";
+import { resolveEffectiveMaxTurns } from "./runner-defaults.js";
 import type { AgentConfig, AgentRecord } from "./types.js";
 
 export interface SpawnFunnelDeps {
