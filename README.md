@@ -997,6 +997,7 @@ src/
   usage.ts            # Token usage shapes, accumulators, session-stats readers, withUsageReporting
   agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
   agent-tool-description.ts # Agent tool description text sent to the model (full, compact, custom)
+  agent-tool-render.ts   # Agent tool call/result rendering and the running-status block
 
   # Invocation surface
   invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
