@@ -995,6 +995,7 @@ src/
   background-resume.ts # Detached resume wiring: transcript, tracking, batching, UI refresh
   status-note.ts      # Honest status note + salvaged partial output for non-normal outcomes
   usage.ts            # Token usage shapes, accumulators, session-stats readers, withUsageReporting
+  agent-call-resolution.ts # Agent tool params -> resolved invocation (dispatch, model, scope, details base)
   agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
   agent-tool-description.ts # Agent tool description text sent to the model (full, compact, custom)
   agent-tool-render.ts   # Agent tool call/result rendering and the running-status block
