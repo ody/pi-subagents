@@ -994,7 +994,8 @@ src/
   completion-notifier.ts # When completion nudges fire: hold window, group join, batching
   background-resume.ts # Detached resume wiring: transcript, tracking, batching, UI refresh
   status-note.ts      # Honest status note + salvaged partial output for non-normal outcomes
-  usage.ts            # Token usage shapes, accumulators, session-stats readers
+  usage.ts            # Token usage shapes, accumulators, session-stats readers, withUsageReporting
+  agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
 
   # Invocation surface
   invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)

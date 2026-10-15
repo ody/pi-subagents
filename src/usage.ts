@@ -1,5 +1,7 @@
 /** usage.ts — Token usage: shapes, accumulator operators, session-stats readers. */
 
+import type { RuntimeSettings } from "./runtime-settings.js";
+
 /**
  * Lifetime usage components, accumulated via `message_end` events. Survives
  * compaction (which replaces session.state.messages and would reset any
@@ -164,4 +166,39 @@ export function getSessionContextPercent(session: SessionLike | undefined): numb
   if (!session) return null;
   try { return session.getSessionStats().contextUsage?.percent ?? null; }
   catch { return null; }
+}
+
+/** What `withUsageReporting` reads: the on/off setting and the pool it drains. */
+export interface UsageReportingDeps {
+  settings: Readonly<Pick<RuntimeSettings, "reportUsage">>;
+  pendingUsage: Pick<PendingUsagePool, "drain">;
+}
+
+/**
+ * Wrap a tool so its results carry back whatever subagent spend the parent
+ * session has not been told about yet (see `PendingUsagePool`).
+ *
+ * Pi copies `AgentToolResult.usage` onto the persisted tool-result message and
+ * folds it into `getSessionStats()`, which is what the footer, the statusline
+ * and `/cost` read — so this is the whole of "report usage to the parent".
+ *
+ * Nothing is attached to a call with no tool-call id. That is the `@handle`
+ * mention path (`mention-clone.ts`), which invokes this tool from a fork of the
+ * conversation that is discarded moments later: the result never becomes a
+ * message in the real session, so usage hung on it would be spend the user paid
+ * for and nobody counted. Skipping leaves it pending for the next real result.
+ */
+export function withUsageReporting<T extends { execute: (...args: any[]) => any }>(
+  tool: T,
+  { settings, pendingUsage }: UsageReportingDeps,
+): T {
+  return {
+    ...tool,
+    execute: async (toolCallId: string | undefined, ...rest: any[]) => {
+      const result = await tool.execute(toolCallId, ...rest);
+      if (!settings.reportUsage || !toolCallId) return result;
+      const usage = pendingUsage.drain();
+      return usage ? { ...result, usage } : result;
+    },
+  };
 }
