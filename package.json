@@ -2,7 +2,7 @@
   "name": "@ody/pi-subagents",
   "version": "0.1.0",
   "private": true,
-  "description": "A pi extension that brings Claude Code-like sub-agents and workflow orchestration to pi — parallel execution, live widget, fleet view, custom agent types, mid-run steering, dynamic workflows, Claude Code compatibility, look and feel.",
+  "description": "A pi extension that brings Claude Code-like sub-agents to pi — parallel execution, live widget, fleet view, custom agent types, mid-run steering, Claude Code compatibility, look and feel.",
   "author": "ody",
   "license": "MIT",
   "repository": {

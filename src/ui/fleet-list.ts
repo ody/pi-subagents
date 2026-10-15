@@ -16,7 +16,7 @@ import { hasAgentBadge, renderAgentName } from "../agent-color.js";
 import type { AgentManager } from "../agent-manager.js";
 import type { AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal } from "../usage.js";
-import { type AgentTreeNode, agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey, workflowKey } from "./agent-tree.js";
+import { type AgentTreeNode, agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey } from "./agent-tree.js";
 import { formatCost, type Theme } from "./agent-widget.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
 
@@ -45,27 +45,7 @@ export type FleetUICtx = {
   ): Promise<T>;
 };
 
-/**
- * A workflow run, as the fleet list needs to see it.
- *
- * Narrow on purpose: the list knows nothing about `WorkflowTask`, the runtime
- * or the dialog, so it stays as testable as it was when it only held agents.
- * The extension maps its tasks into this shape and injects an opener.
- */
-export interface FleetWorkflow {
-  id: string;
-  /** The `meta.name` of the run, or its id when the script named nothing. */
-  name: string;
-  status: "running" | "completed" | "failed" | "killed" | "paused";
-  doneCount: number;
-  totalCount: number;
-  startedAt: number;
-  /** Set once the run settles, which is what freezes its clock. */
-  completedAt?: number;
-  tokens: number;
-}
-
-type FleetNode = AgentTreeNode<FleetWorkflow>;
+type FleetNode = AgentTreeNode;
 
 /** `11s` — integer seconds, no decimal/suffix (matches Claude Code, unlike formatMs). */
 export function formatFleetElapsed(ms: number): string {
@@ -114,27 +94,9 @@ export class FleetList {
   private collapsedKeys = new Set<string>();
   /** Whether the current rows warrant the expand/collapse glyph column. */
   private showGlyphs = false;
-  /**
-   * Runs whose default collapse state has already been applied. A workflow row
-   * starts collapsed (a legal run can hold 1,000 agents, which would bury the
-   * list), and this is what keeps re-expanding it from being undone on the next
-   * render.
-   */
-  private seenWorkflowIds = new Set<string>();
   /** Set while a conversation overlay is open; calling it closes the overlay. */
   private viewerClose: (() => void) | undefined;
   private viewingAgentId: string | undefined;
-  /** Injected by the extension; absent until workflows are wired (or at all). */
-  private workflowSource: (() => readonly FleetWorkflow[]) | undefined;
-  private openWorkflow: ((id: string) => Promise<void> | void) | undefined;
-  /**
-   * Set while the workflow inspector is up.
-   *
-   * It does the two jobs `viewerClose` does for an agent's overlay — keep the
-   * list out of the dialog's keys, and remember which row to come back to —
-   * minus the close handle, because that overlay belongs to the extension.
-   */
-  private viewingWorkflowId: string | undefined;
 
   constructor(
     private manager: AgentManager,
@@ -196,9 +158,6 @@ export class FleetList {
     this.inputUnsub = undefined;
     if (this.viewerClose) { this.viewerClose(); this.viewerClose = undefined; }
     this.viewingAgentId = undefined;
-    // No handle to close the workflow inspector with, but the list is going
-    // away — leaving the id set would keep it swallowing input forever.
-    this.viewingWorkflowId = undefined;
     if (this.ui && this.widgetRegistered) this.ui.setWidget(FLEET_KEY, undefined);
     this.widgetRegistered = false;
     this.tui = undefined;
@@ -252,9 +211,9 @@ export class FleetList {
    * or one that finished within the linger window. A record with no session yet
    * is hidden until it starts, so Enter never dead-ends.
    *
-   * Nesting is NOT filtered here any more. Nested and workflow-owned children
-   * used to be dropped by `isTopLevelAgent`, which made them unreachable — no
-   * way to watch, steer or stop one. `buildAgentTree` places them under their
+   * Nesting is NOT filtered here any more. Nested children used to be dropped
+   * by `isTopLevelAgent`, which made them unreachable — no way to watch, steer
+   * or stop one. `buildAgentTree` places them under their
    * owner instead, and pulls in any ancestor this test rejects.
    */
   private isEligible(record: AgentRecord, now: number): boolean {
@@ -264,53 +223,11 @@ export class FleetList {
       || (record.completedAt != null && now - record.completedAt < FINISHED_LINGER_MS);
   }
 
-  /**
-   * Wire workflow runs into the list.
-   *
-   * Injected rather than constructed here because the fleet list predates
-   * workflows and must keep working without them — a session with the feature
-   * switched off never calls this, and the roster is agents-only exactly as
-   * before.
-   */
-  setWorkflowSource(
-    source: () => readonly FleetWorkflow[],
-    open: (id: string) => Promise<void> | void,
-  ): void {
-    this.workflowSource = source;
-    this.openWorkflow = open;
-  }
-
-  /** Live runs, plus recently settled ones — the same linger the agents get. */
-  private workflows(): FleetWorkflow[] {
-    if (!this.workflowSource) return [];
-    const now = Date.now();
-    return [...this.workflowSource()]
-      .filter(run =>
-        run.status === "running"
-        || run.status === "paused"
-        || (run.completedAt != null && now - run.completedAt < FINISHED_LINGER_MS)
-      )
-      .sort((a, b) => a.startedAt - b.startedAt);
-  }
-
-  /**
-   * The visible rows: `main`, then each run with its children indented beneath
-   * it, then the top-level agents with theirs. Runs sit above the agents rather
-   * than interleaved by start time because a run owns most of the agents under
-   * it, so listing the container first is what makes the list read as a
-   * hierarchy rather than a shuffle.
-   */
+  /** The visible rows: `main`, then the top-level agents with their nested children indented beneath. */
   private nodes(): FleetNode[] {
     const now = Date.now();
-    const workflows = this.workflows();
-    for (const run of workflows) {
-      if (this.seenWorkflowIds.has(run.id)) continue;
-      this.seenWorkflowIds.add(run.id);
-      this.collapsedKeys.add(workflowKey(run.id));
-    }
-    return buildAgentTree<FleetWorkflow>({
+    return buildAgentTree({
       records: this.manager.listAgents(),
-      workflows,
       isEligible: record => this.isEligible(record, now),
       collapsed: this.collapsedKeys,
     });
@@ -338,7 +255,7 @@ export class FleetList {
     // While an overlay is open, let it own all input. Checked before the focus
     // test below, which would otherwise read the dialog holding the keyboard as
     // "the user left the list" and reset the selection out from under it.
-    if (this.viewerClose || this.viewingWorkflowId) return undefined;
+    if (this.viewerClose) return undefined;
     // Input listeners fire BEFORE the focused component, and dialogs
     // (ctx.ui.select/confirm/input, pi's own menus) swap the prompt editor out
     // while getEditorText() still reads the detached — empty — editor. So when
@@ -351,9 +268,6 @@ export class FleetList {
     if (!this.active) {
       // Activate: ↓ or ← at an empty prompt moves focus into the list.
       const isActivator = matchesKey(data, "down") || matchesKey(data, "left");
-      // Gated on the roster, not the agents: a session whose only row is a
-      // workflow run still has somewhere to go, and requiring an agent would
-      // render the row but refuse to move into it.
       if (isActivator && this.nodes().length > 1 && this.ui.getEditorText() === "") {
         this.active = true;
         this.selectedKey = MAIN_KEY;
@@ -424,17 +338,6 @@ export class FleetList {
       this.deactivate();
       return;
     }
-    if (entry.kind === "workflow") {
-      // The extension owns this overlay and closes it, so there is no
-      // `viewerClose` to hold — but the list still has to know one is up, and
-      // still has to put the cursor back on the run when it comes down.
-      this.viewingWorkflowId = entry.workflow.id;
-      void Promise.resolve(this.openWorkflow?.(entry.workflow.id)).then(
-        () => this.clearViewer(),
-        () => this.clearViewer(),
-      );
-      return;
-    }
     const record = entry.record;
     if (!this.ui) return;
     if (!record.session) {
@@ -478,10 +381,8 @@ export class FleetList {
     // survives the list reordering (an earlier agent finished) while the overlay
     // was open; if that row is gone, reconcileSelection() settles it.
     if (this.viewingAgentId !== undefined) this.selectedKey = agentKey(this.viewingAgentId);
-    else if (this.viewingWorkflowId !== undefined) this.selectedKey = workflowKey(this.viewingWorkflowId);
     this.viewerClose = undefined;
     this.viewingAgentId = undefined;
-    this.viewingWorkflowId = undefined;
     this.update();
   }
 
@@ -518,9 +419,7 @@ export class FleetList {
       const row = rows[a];
       if (!row) continue;
       lines.push(
-        row.kind === "workflow" ?
-          this.renderWorkflowRow(row, selected, width, theme)
-        : row.kind === "agent" ? this.renderAgentRow(row, selected, width, theme)
+        row.kind === "agent" ? this.renderAgentRow(row, selected, width, theme)
         : truncateToWidth(`${this.gutter(row, selected, theme)}main`, width),
       );
     }
@@ -546,29 +445,6 @@ export class FleetList {
 
   private bullet(key: string, selected: string, theme: Theme): string {
     return key === selected ? theme.fg("accent", "●") : theme.fg("dim", "○");
-  }
-
-  /**
-   * A run's row. Shaped like an agent's — bullet, kind, name, stats flush right
-   * — so the two read as one list, with the agent count where an agent has its
-   * description and the same elapsed/token tail.
-   */
-  private renderWorkflowRow(
-    node: FleetNode & { kind: "workflow" },
-    selectedKey: string,
-    width: number,
-    theme: Theme,
-  ): string {
-    const workflow = node.workflow;
-    const selected = node.key === selectedKey;
-    const kind = theme.fg(selected ? "text" : "muted", "workflow");
-    const name = selected ? theme.fg("text", workflow.name) : workflow.name;
-    const left = `${this.gutter(node, selectedKey, theme)}${kind}  ${name}`;
-    // Frozen once the run settles, exactly as an agent's clock is.
-    const elapsed = (workflow.completedAt ?? Date.now()) - workflow.startedAt;
-    const agents = `${workflow.doneCount}/${workflow.totalCount} agent${workflow.totalCount === 1 ? "" : "s"}`;
-    const stats = `${agents} · ${formatFleetElapsed(elapsed)} · ${formatFleetTokens(workflow.tokens)}`;
-    return rightAlign(left, selected ? theme.fg("text", stats) : theme.fg("dim", stats), width);
   }
 
   private renderAgentRow(node: FleetNode & { kind: "agent" }, selectedKey: string, width: number, theme: Theme): string {

@@ -119,7 +119,7 @@ export type ViewerMarkdownMode = 'off' | 'assistant' | 'all';
 /**
  * Per-agent live activity state: what the agent is doing right now, as opposed
  * to the accounting `AgentRecord` keeps. Owned by `AgentManager` so every spawn
- * path has one — nested and workflow-owned children never went through the
+ * path has one — nested children never went through the
  * Agent tool, which is where the UI used to build this, so their rows had no
  * tool name and no turn count.
  */
@@ -285,27 +285,8 @@ export interface AgentRecord {
   invocation?: AgentInvocation;
   /** Nesting depth: top-level subagent = 1. */
   depth?: number;
-  /**
-   * The validated `StructuredOutput` payload, as canonical JSON.
-   *
-   * Set only when the spawn asked for a schema. Separate from `result` because
-   * `result` is prose for a reader — previewed in the widget, written to the
-   * transcript, and appended to with the worktree branch note — and JSON that
-   * has been appended to no longer parses.
-   */
-  structuredJson?: string;
-  /** Whether the child needed the extra structured-output prompt. */
-  structuredRetried?: boolean;
   /** Parent agent ID for ownership-scoped nested controls. */
   parentAgentId?: string;
-  /**
-   * The workflow run that owns this child, when a workflow spawned it.
-   *
-   * Owned the same way a nested child is owned by its parent: filtered out of
-   * every top-level surface, and outside the `maxConcurrent` pool. See
-   * `isTopLevelAgent`.
-   */
-  workflowId?: string;
   /** Effective inherited nesting cap for this branch. */
   maxSubagentDepth?: number;
   /**

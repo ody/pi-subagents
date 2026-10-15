@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRecord } from "../src/types.js";
-import { agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey, workflowKey } from "../src/ui/agent-tree.js";
+import { agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey } from "../src/ui/agent-tree.js";
 
 let clock = 1000;
 
@@ -30,17 +30,6 @@ describe("buildAgentTree", () => {
     const grandchild = rec("g", { parentAgentId: "c" });
     const nodes = buildAgentTree({ records: [grandchild, child, parent] });
     expect(shape(nodes)).toEqual([`${MAIN_KEY}@0`, "agent:p@0", "agent:c@1", "agent:g@2"]);
-  });
-
-  it("nests a workflow agent under its run and its nested child under it", () => {
-    const owned = rec("w1", { workflowId: "run" });
-    const nested = rec("n1", { parentAgentId: "w1" });
-    const nodes = buildAgentTree({
-      records: [owned, nested],
-      workflows: [{ id: "run" }],
-      includeMain: false,
-    });
-    expect(shape(nodes)).toEqual(["workflow:run@0", "agent:w1@1", "agent:n1@2"]);
   });
 
   it("orders siblings oldest first, breaking ties on id", () => {
@@ -89,38 +78,12 @@ describe("buildAgentTree", () => {
     expect(nodes[0]).toMatchObject({ orphan: true });
   });
 
-  it("promotes a workflow child whose run row was filtered out", () => {
-    const nodes = buildAgentTree({ records: [rec("w", { workflowId: "gone" })], workflows: [], includeMain: false });
-    expect(shape(nodes)).toEqual(["agent:w@0"]);
-    expect(nodes[0]).toMatchObject({ orphan: true });
-  });
-
   it("breaks a parent cycle instead of recursing, losing no rows", () => {
     const a = rec("a", { parentAgentId: "b" });
     const b = rec("b", { parentAgentId: "a" });
     const nodes = buildAgentTree({ records: [a, b], includeMain: false });
     expect(shape(nodes).sort()).toEqual(["agent:a@0", "agent:b@0"]);
     expect(nodes.every(n => n.kind === "agent" && n.orphan)).toBe(true);
-  });
-
-  it("flattens a 100-child workflow deterministically", () => {
-    const records = Array.from({ length: 100 }, (_, i) => rec(`c${i}`, { workflowId: "run", startedAt: i }));
-    const nodes = buildAgentTree({ records, workflows: [{ id: "run" }], includeMain: false });
-    expect(nodes).toHaveLength(101);
-    expect(nodes[1]?.key).toBe("agent:c0");
-    expect(nodes[100]?.key).toBe("agent:c99");
-    expect(nodes.slice(1).every(n => n.depth === 1)).toBe(true);
-  });
-
-  it("collapses that run back to a single row", () => {
-    const records = Array.from({ length: 100 }, (_, i) => rec(`x${i}`, { workflowId: "run" }));
-    const nodes = buildAgentTree({
-      records,
-      workflows: [{ id: "run" }],
-      collapsed: new Set([workflowKey("run")]),
-      includeMain: false,
-    });
-    expect(shape(nodes)).toEqual(["workflow:run@0"]);
   });
 
   it("keeps a settled parent whose child is still running", () => {

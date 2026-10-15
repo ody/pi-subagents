@@ -1,6 +1,6 @@
 # AGENTS.md
 
-pi extension providing sub-agents (`Agent` tool, `/agents` menu) and scripted workflow orchestration (`SubagentWorkflow`), packaged as `@ody/pi-subagents`. TypeScript, vitest, biome.
+pi extension providing sub-agents (`Agent` tool, `/agents` menu), packaged as `@ody/pi-subagents`. TypeScript, vitest, biome.
 
 ## Decision records and backlog
 
@@ -52,5 +52,4 @@ Each entry: the rule an agent must not break, and its ADR.
 Update the doc in the same change as the behavior.
 
 - `README.md`: features, install, tool parameters, commands, settings and defaults, event table, and the `src/` file map. It is the source of truth for defaults and setting names.
-- `docs/workflows.md`: `SubagentWorkflow` usage. Examples live in `examples/workflows/` and are run by tests.
-- `docs/rpc.md`: `pi.events` lifecycle events and the `subagents:rpc:*` channels. Renaming an event, channel, reply field, or workflow global is a docs change.
+- `docs/rpc.md`: `pi.events` lifecycle events and the `subagents:rpc:*` channels. Renaming an event, channel, or reply field is a docs change.
