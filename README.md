@@ -977,6 +977,9 @@ src/
 
   # Execution
   agent-runner.ts     # Session creation, execution, graceful max_turns, steer/resume
+  extension-scope.ts  # Extension matching, extensions:/ext: parsing, live tool-scope enforcement
+  runner-defaults.ts  # Process-wide run defaults: max turns, grace turns, rememberAgents
+  session-text.ts     # Read response text, final-turn failure and transcript from a session
   agent-manager.ts    # Agent lifecycle, concurrency queue, completion notifications
   nested-tools.ts     # Delegation tools handed to subagents (nested spawn/collect/steer)
   child-context.ts    # AsyncLocalStorage flag marking work done for a child session
