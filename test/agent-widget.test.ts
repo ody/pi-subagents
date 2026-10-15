@@ -74,7 +74,7 @@ describe("AgentWidget", () => {
 
   function makeRecord(
     id: string,
-    opts: { isBackground?: boolean; parentAgentId?: string; workflowId?: string; status?: string; completedAt?: number } = {},
+    opts: { isBackground?: boolean; parentAgentId?: string; status?: string; completedAt?: number } = {},
   ) {
     return {
       id,
@@ -89,7 +89,6 @@ describe("AgentWidget", () => {
       invocation: { modelName: "sonnet 4.6", modelId: "anthropic/claude-sonnet-4-6", thinking: "high" },
       isBackground: opts.isBackground,
       parentAgentId: opts.parentAgentId,
-      workflowId: opts.workflowId,
     };
   }
 
@@ -152,16 +151,6 @@ describe("AgentWidget", () => {
       ],
     };
     expect(renderLines(manager, "parent", () => "all")).not.toContain("child description");
-  });
-
-  it("hides a workflow's agents in every coordinator widget mode", () => {
-    // They belong to the run, which reports for them through its own card and
-    // its own row in the fleet list.
-    const manager = {
-      listAgents: () => [makeRecord("child", { isBackground: true, workflowId: "wf_abc" })],
-    };
-    expect(renderLines(manager, "child", () => "all")).toBe("");
-    expect(renderLines(manager, "child", () => "background")).toBe("");
   });
 
   it("excludes foreground agents in 'background' mode", () => {

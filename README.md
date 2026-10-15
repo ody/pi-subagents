@@ -1,13 +1,13 @@
 # @ody/pi-subagents
 
-A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-agents and workflow orchestration** to pi. Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level. Run them in the background (the default) or block on them, steer them mid-run, resume completed sessions, and define your own custom agent types. When the orchestration shouldn't be improvised, hand a deterministic JavaScript script to the `SubagentWorkflow` tool — `agent()`, `parallel()`, `pipeline()` — and scripts written for Claude Code's `Workflow` tool run here unchanged.
+A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-agents** to pi. Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level. Run them in the background (the default) or block on them, steer them mid-run, resume completed sessions, and define your own custom agent types.
 
 ## Features
 
 - **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`Agent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent), `background` (default — hides foreground runs, which already render inline as the `Agent` tool result), or `off`
-- **FleetView** — Claude Code-style navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) and a workflow's agents indented under their owner. `↓` (or `←`) at an empty prompt jumps in, `↑`/`↓` move the selection, `←`/`→` collapse and expand a row that owns children, `Enter` opens the selected agent's live conversation, `Esc` returns. Toggle via `/agents → Settings → Fleet view`
+- **FleetView** — Claude Code-style navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in, `↑`/`↓` move the selection, `←`/`→` collapse and expand a row that owns children, `Enter` opens the selected agent's live conversation, `Esc` returns. Toggle via `/agents → Settings → Fleet view`
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steer a running agent inline by pressing `Enter` to open a composer, typing, then `Enter` to send (`Esc` or an empty submit returns) — the message appears as a user message and redirects the agent after its current tool. Stop a still-running agent by pressing `x` (then `x` again to confirm) — both work for background agents too. Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings))
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally, with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
 - **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `Agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. The allowlist is a privilege boundary — a child runs with its own tools, so pick it as carefully as `tools:` itself
@@ -16,14 +16,6 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation, so it gets Claude Code's context-written prompt and a real `Agent` tool call without a word of it reaching the chat. `direct` mode starts it here from your text instead, with no model call at all.
   - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too.
   - `@` completes live agents, resumable ones, and startable types alongside pi's file completion. `@main` forces text back to the main model.
-- **Scripted workflows** — a `SubagentWorkflow` tool that runs a deterministic JavaScript script orchestrating many subagents. **[Full guide](docs/workflows.md)**
-  - API: `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()` and `args`, with a pure-literal `meta` block declaring the phases.
-  - `pipeline()` has no barrier between stages, so one item can be in a later stage while another is still in the first — unlike `parallel()`, which idles every fast agent until the slowest finishes.
-  - Runs in the background with a live card, inspectable via `/agents → Workflows` or by selecting the run in FleetView.
-  - `agent()` also takes `gate: "npm test"` to verify a child by running a command (inside its worktree, when isolated) rather than asking another model, and `resume: "<label>"` to continue a child instead of re-paying its context.
-  - Scripts run in a `node:vm` sandbox on a worker thread where `Date.now()`, `Math.random()` and `eval` throw.
-  - On by default, but it stands down for company: if another extension already provides a `Workflow` or `SubagentWorkflow` tool, this one warns and disables itself for the session rather than offering the model two orchestrators. Pin it either way with `"workflowsEnabled"` in `subagents.json` or `/agents → Settings → Workflows`.
-  - Claude Code compatibility: a script written for Claude Code's `Workflow` tool runs here unchanged. Same globals. `schema` returns a validated object exactly as it does there. `budget` is present and always reports no token target (pi has no such directive), so its `budget.total`-guarded patterns still take the branch they were written for. Nested `workflow()` composes saved workflows one level deep.
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context. Resumes detached by default and notifies you on completion, just like a fresh spawn; pass `run_in_background: false` to block and get the result inline
 - **Graceful turn limits** — agents get a "wrap up" warning before hard abort, producing clean partial results instead of cut-off output
@@ -146,23 +138,19 @@ While subagents are running, a Claude Code-style navigable list renders **below*
   ↑↓ select · ←→ collapse · enter view · esc back
 
    ● main
-  ▸○ workflow         audit-src                   12/40 agents · 32s · ↓ 26.4k tokens
   ▾○ general-purpose  Sleep then report 1                               11s · ↓ 13.1k tokens
      ○ Explore        Find the route table                               4s · ↓ 2.1k tokens
    ○ general-purpose  Sleep then report 2                               11s · ↓ 13.1k tokens
                                                                                    ↓ 3 more
 ```
 
-The list is a tree. A [nested child](#nested-subagents) sits indented under the agent that spawned it, at any depth, and a [workflow](#subagentworkflow)'s agents sit under their run. So every agent in the session is reachable, openable, steerable and stoppable, which nested ones were not when the list showed only the top level.
+The list is a tree. A [nested child](#nested-subagents) sits indented under the agent that spawned it, at any depth. So every agent in the session is reachable, openable, steerable and stoppable, which nested ones were not when the list showed only the top level.
 
-Four rules govern the tree:
+Three rules govern the tree:
 
 - A row that owns children carries `▾` when expanded and `▸` when collapsed. `→` expands, `←` collapses, and `←` on a leaf moves up to its parent.
-- Workflow rows start **collapsed**, because a legal run can hold a thousand agents.
-- An agent whose owner is gone — evicted by cleanup, or a run that has aged out — renders at the top level marked `↯`, rather than vanishing.
+- An agent whose owner is gone — evicted by cleanup — renders at the top level marked `↯`, rather than vanishing.
 - Selection follows the row, not its position, so an agent starting or settling elsewhere in the tree never moves the cursor out from under you.
-
-Running workflows appear as a single `workflow` row above the agents, carrying their agent counts in place of a description. `Enter` on one opens the same two-pane inspector `/agents → Workflows` does, rather than a conversation overlay. A run's agents are still outside the `maxConcurrent` pool: the run has its own concurrency cap, and routing a fan-out through the session pool as well would let one workflow starve everything else.
 
 Which rows appear:
 
@@ -504,45 +492,6 @@ Launch a sub-agent.
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when `worktreeIsolation: false` |
 | `inherit_context` | boolean | no | Fork parent conversation into agent |
 
-### `SubagentWorkflow`
-
-Run a deterministic script that orchestrates many subagents. Returns a task id immediately; the run continues in the background and notifies on completion.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `script` | string | no | The workflow source. Must begin with `export const meta = { name, description }` |
-| `scriptPath` | string | no | Path to a script file. Takes precedence over `script` and `name` |
-| `name` | string | no | A saved workflow — `<name>.js` in `.pi/workflows/`, `.agents/workflows/` or `<agent dir>/workflows/`, carrying an `export const meta` declaration |
-| `args` | any | no | Passed through to the script as the `args` global, verbatim |
-| `resumeFromRunId` | string | no | Replay an earlier run in this session — its unchanged leading `agent()` calls return their recorded results instead of spawning |
-| `title` / `description` | string | no | Accepted and ignored, as in Claude Code — a workflow is named by its `meta` block |
-
-At least one of `script` / `scriptPath` / `name` is required; `scriptPath` wins over `script`, which wins over `name`. Each invocation's script is persisted to the session directory and its path returned, so iterating means editing that file and re-running rather than resending the source. A saved workflow reports its own file instead, so the same loop works on it — project `.pi/workflows/` shadows a same-named global one. Those directories are ordinary folders that may hold other scripts, so only files carrying the `export const meta = { name, description }` declaration are listed or resolved; naming anything else reports that it is not a workflow rather than running it. The check is a regex over the source — nothing in the file is executed to make it, and even a real parse evaluates only the `meta` object literal, in an empty `node:vm` context with a 100ms bound.
-
-```js
-export const meta = {
-  name: 'auth-audit',
-  description: 'Find routes missing auth checks, then verify each finding',
-  phases: [{ title: 'Scan' }, { title: 'Audit' }],
-}
-
-phase('Scan')
-const listing = await agent('List every route file under src/routes/. One path per line.')
-const files = listing.split('\n').map(s => s.trim()).filter(Boolean)
-log('auditing ' + files.length + ' files')
-
-phase('Audit')
-return await pipeline(
-  files,
-  file => agent(`Audit ${file} for missing auth checks.`, { label: `audit:${file}` }),
-  (found, file) => agent(`Try to REFUTE this finding about ${file}: ${found}`, { label: `verify:${file}` }),
-)
-```
-
-Concurrency is capped at `max(1, min(16, cpus - 2))` — the run's own limit, independent of the session's `maxConcurrent` pool, which its agents do not enter. There are 1000 agents per run and 4096 items per `parallel`/`pipeline` call.
-
-**Full guide:** [`docs/workflows.md`](docs/workflows.md) — how the model writes the script for you, how to edit and re-run it, how to save one as a reusable named workflow, plus the complete `agent()` option reference, recipes and troubleshooting.
-
 ### `get_subagent_result`
 
 Check status and retrieve results from a background agent.
@@ -578,44 +527,7 @@ An already-completed, errored, or otherwise terminal agent reports its status an
 
 | Command | Description |
 | --- | --- |
-| `/agents` | Interactive agent management menu — agent types, running agents, scheduled jobs, workflow runs, settings |
-
-`/agents → Workflows` (shown only when [workflows](#persistent-settings) are on) opens a framed two-pane inspector over a run, with two levels of depth:
-
-```text
- audit-src
- Dynamically discover files under src/ and audit each …                    1/3 agents · 32s
-
- ╭ Phases ──────────┬ Discover · 1 agent ──────────────────────────────────────────────╮
- │ ❯ ✔ Discover 1/1 │ ❯ ✔ discover:src Opus 5 (1M context) · 26.4k tok             25s │
- │   2 Audit    0/2 │                                                                  │
- │   3 Verify       │                                                                  │
- │   4 Synthesize   │                                                                  │
- ╰──────────────────┴──────────────────────────────────────────────────────────────────╯
- ↑↓ select · ⏎ open · f filter · x stop · esc close · c convo
-```
-
-The overview puts the phases on the left (a phase shows its number until it finishes, then `✔`/`✘`) and the selected phase's agents on the right. `⏎` opens one: the agents move to the left pane and the right becomes that agent's **Prompt**, **Activity** and **Outcome**, with `⏎` now expanding the prompt and `esc` going back a level rather than closing. `↑↓` (or `j`/`k`) move and `f` cycles the state filter, naming it in the pane title. The dialog opens as a centered overlay, like the conversation viewer an agent row opens; the frame sizes itself to what it holds, between six rows and twenty-two, so a three-agent run is not twenty rows of nothing and a two-hundred-agent one scrolls inside the pane. Long titles truncate with `…` rather than tearing it. With more than one workflow in the session it asks which, newest first.
-
-The run itself takes five keys, and the footer offers each only while it can actually do something:
-
-| Key | What it does |
-| --- | --- |
-| `x` | Stop the run. Live runs only — a settled one has nothing left to stop |
-| `p` | Pause / resume. Pausing stops *starting* agents; ones already running are left to finish, because killing model work mid-turn throws away everything it has spent. Held time is subtracted from the run's elapsed clock |
-| `s` | Skip the selected agent: its `agent()` call returns `null`, exactly as a terminal failure does, and the row renders skipped. Offered while the agent is queued or running |
-| `r` | Retry the selected agent: the child is stopped and the same call runs again, so the script's `agent()` promise is still the one waiting and gets the new answer. Running agents only — once a call has settled its value is already the script's, and a re-run would have nowhere to put one. The row then reads `attempt 2 · user retry` |
-| `c` | Open the selected agent's **conversation** — the same live, scrolling viewer a fleet-list row opens, over the dialog, which hides itself underneath and comes back when you close it. The one key here that shows something rather than changing the run, so it works at both levels and on an agent that has already finished; reading what a child actually did is most of why anyone opens the inspector. Offered once the child has a record to open, which excludes a queued agent and one replayed from the resume journal. Records are swept ten minutes after they finish, and the key says so rather than opening an empty viewer |
-
-Skipping is immediate for a running agent and for one held at a pause; an agent parked behind the concurrency limit takes its skip when it reaches the front of the queue.
-
-### CLI flags
-
-| Flag | Description |
-| --- | --- |
-| `--subagents-workflow-file=<path>` | Run a workflow script at session start |
-
-Use the `=` form. The bare `--flag value` spelling consumes the next argument, so `pi --subagents-workflow-file review.js "do the thing"` would take the prompt as the flag's value. Composes with headless mode: `pi -p --subagents-workflow-file=review.js`. With no tool call to attach to, the run renders as a session entry and its result is handed to the model as context for its next turn.
+| `/agents` | Interactive agent management menu — agent types, running agents, scheduled jobs, settings |
 
 The `/agents` command opens an interactive menu:
 
@@ -626,7 +538,7 @@ Create new agent                            ← manual wizard or AI-generated
 Settings                                    ← max concurrency (background + foreground), max turns, grace turns, join mode
 ```
 
-- **Agents** — the whole hierarchy, indented, with nested children under their spawner and a workflow's agents under their run. Selecting a run row opens the workflow inspector. An agent whose owner is gone is marked `detached`. Select an agent to open its live conversation viewer, where:
+- **Agents** — the whole hierarchy, indented, with nested children under their spawner. An agent whose owner is gone is marked `detached`. Select an agent to open its live conversation viewer, where:
   - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `steer_subagent` tool. `Esc`, or an empty submit, returns.
   - `x` (then `x` again to confirm) stops or aborts it, **background** agents included — a global Esc can't unambiguously target those, and still stops a blocking foreground `Agent` call instead. A stopped agent reports its partial output flagged as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot and fires its completion notification within a few seconds, rather than holding both forever.
   - `m` cycles how much of the transcript renders as Markdown — see [Viewer markdown](#persistent-settings).
@@ -667,7 +579,7 @@ The two are deliberately **not** one limit. A foreground agent blocks the parent
 
 The foreground pool does not cover `resume`: a foreground resume reopens an existing session and never reaches the spawn path, so several blocking resumes in one message can still run at once. A *background* resume does take a background slot and queues behind them like any other background agent.
 
-Nested children and a [workflow](#subagentworkflow)'s agents are outside the pool entirely. A nested child would deadlock behind a parent waiting on it; a workflow already bounds its own fan-out at `max(1, min(16, cpus - 2))`, and counting its agents twice would let one run fill the session's pool and starve everything else.
+Nested children are outside the pool entirely: a nested child would deadlock behind a parent waiting on it.
 
 ## Join Strategies
 
@@ -797,12 +709,6 @@ Two rewrites are suppressed outright rather than left to the mode, because they 
 
 Turn `all` on for tools that genuinely emit Markdown, and off again for a diff or a log. `m` in the viewer cycles the three and persists the choice, so the key and this setting are the same value — the footer shows which is in force as `m raw` / `m md` / `m md+`. Code fences are syntax-highlighted using pi's own Markdown theme — which is also why fenced code is the one part of a result *not* dimmed under `all`; result prose still is, so the transcript keeps its hierarchy. Applied live; also settable from `/agents → Settings → Viewer markdown`.
 
-**Workflows** (`workflowsEnabled`, default `true`): the master switch for scripted workflows. Toggle it via `/agents → Settings → Workflows`, or set it in `subagents.json`. Off, the `SubagentWorkflow` tool is never registered — the model is not told the feature exists and cannot call it, so it costs no tool-spec context — the `/agents → Workflows` entry is hidden, and `--subagents-workflow-file` refuses with a pointer to the setting rather than doing nothing. Read at extension load, so it applies on the next pi session; runs already in flight are left alone.
-
-Leaving it unset is not quite the same as `true`. Unset means *auto*: on, unless another extension already provides a workflow tool, in which case this one warns and stands down for the session. Two orchestrators in one tool spec is a worse default than none — the model has to guess which to call and pays for both descriptions to find out — and the extension that was installed on purpose is the one that should survive. Setting `workflowsEnabled` explicitly pins the answer: `true` keeps ours whatever else is loaded, `false` is off regardless.
-
-The match is on the exact tool names `Workflow` (Claude Code's) and `SubagentWorkflow` (ours), never a substring, so a `list_workflows` or `github_workflow_run` from some CI integration does not silently take the feature down. The check runs at `session_start` and nowhere earlier, because `getAllTools` throws during extension loading and load order means a check at registration time could not see an extension that has not loaded yet — so the tool is registered first and withdrawn from the active set through `setActiveTools`, which rebuilds the system prompt before any turn runs. When the other extension took the `SubagentWorkflow` name itself, pi's first-registration-wins rule already dropped ours, so there is nothing to withdraw and only the menu and the CLI flag come down.
-
 **Tool description** (`toolDescriptionMode`, default `"full"`): which Agent tool description the LLM sees. `"full"` is the rich Claude Code-style prompt (~1,400 tokens with the default agents); `"compact"` is ~75% smaller — one-line agent type list, terse usage notes — for small/local models where tool-spec tokens are expensive. Per-option details stay in the parameter descriptions in every mode (the parameter schema is never customizable). Applies on the next pi session.
 
 `"custom"` registers your own description from `<cwd>/.pi/agent-tool-description.md` (project) or `<agentDir>/agent-tool-description.md` (global; project wins). The file is read once at tool registration, so edits also apply on the next pi session. Dynamic parts stay live via placeholders — a static agent list would go stale the moment you add a custom agent:
@@ -855,7 +761,7 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project) |
 | `subagents:settings_changed` | `/agents` → Settings mutation was applied | `settings`, `persisted` (`boolean` — `false` on write failure) |
 
-The four agent-lifecycle events — `subagents:started`, `:completed`, `:failed`, `:compacted` — are emitted for **top-level agents only**. Nested subagents and a workflow's children emit nothing at all; they report through the parent or workflow that owns them.
+The four agent-lifecycle events — `subagents:started`, `:completed`, `:failed`, `:compacted` — are emitted for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
 
 `tokens.total` = `input + output + cacheWrite`. `cacheRead` is excluded — each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call, so summing per-message would over-count it as a measure of work done. Use `contextUsage.percent` (surfaced as `(NN%)` in the widget) for current context size.
 
@@ -1052,10 +958,7 @@ This is useful for creating agents that inherit extension tools but should not h
 
 ```text
 docs/                 # Long-form guides (README links out to them)
-  workflows.md        # SubagentWorkflow: writing, editing, saving and re-running scripts
   rpc.md              # Cross-extension integration: pi.events, subagents:rpc:*, manager registry
-examples/
-  workflows/          # Runnable examples, executed by test/workflow-examples.test.ts
 test/                 # vitest suite; e2e/ and perf/ subdirectories
 src/
   index.ts            # Extension entry: tool/command registration, /agents menu, rendering
@@ -1101,25 +1004,15 @@ src/
   settings.ts         # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
   env.ts              # Environment detection (git, platform)
 
-  workflow/
-    meta.ts           # Extract and validate a script's pure-literal `meta` block
-    worker-source.ts  # The sandbox: vm context, determinism prelude, script globals
-    runtime.ts        # Worker lifecycle, RPC bridge, semaphore, caps, gate/resume
-    progress.ts       # Progress event log and every derived view of it (pure)
-    host.ts           # WorkflowHost adapter over AgentManager
-    task.ts           # local_workflow task record and batched progress updates
-    tool-description.ts # Model-facing description carrying the orchestration patterns
   ui/
     agent-widget.ts       # Persistent widget: spinners, activity, status icons, theming
-    agent-tree.ts         # Pure projection: records + runs → flat pre-order rows with depth
+    agent-tree.ts         # Pure projection: records → flat pre-order rows with depth
     fleet-list.ts         # FleetView: navigable agent tree below the editor
     conversation-viewer.ts # Live conversation overlay for viewing agent sessions
     viewer-keys.ts        # Viewer scroll keys resolved through user keybindings
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
     schedule-menu.ts      # /agents → Scheduled jobs submenu
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
-    workflow-card.ts      # Inline workflow card (tool result and session entry)
-    workflow-dialog.ts    # /agents → Workflows two-pane inspector
 ```
 
 ## License

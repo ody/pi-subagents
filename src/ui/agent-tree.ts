@@ -3,11 +3,11 @@
  * pre-order list of tree nodes.
  *
  * The manager already knows the whole hierarchy: `AgentRecord.parentAgentId`
- * links a nested child to its spawner and `AgentRecord.workflowId` links a
- * workflow-owned child to its run. Nothing rendered it — every agent surface
- * filtered through `isTopLevelAgent`, so a nested agent was unreachable. This
- * module turns those two fields into rows, and owns nothing else: no rendering,
- * no key handling, no manager access. Callers pass records in and get rows out.
+ * links a nested child to its spawner. Nothing rendered it — every agent
+ * surface filtered through `isTopLevelAgent`, so a nested agent was
+ * unreachable. This module turns that field into rows, and owns nothing else:
+ * no rendering, no key handling, no manager access. Callers pass records in
+ * and get rows out.
  *
  * Flat-with-depth rather than a real tree component on purpose. The existing
  * list views already handle windowing, selection and repaint against an array;
@@ -19,38 +19,23 @@ import type { AgentRecord } from "../types.js";
 /** Stable key for `main`, the one node that has no backing record. */
 export const MAIN_KEY = "main";
 
-/** `workflow:<runId>` — the virtual container row for a workflow run. */
-export function workflowKey(id: string): string {
-  return `workflow:${id}`;
-}
-
 /** `agent:<recordId>` — a row backed by a manager record. */
 export function agentKey(id: string): string {
   return `agent:${id}`;
 }
 
-/**
- * One row. `W` is the caller's own workflow shape (the fleet list has
- * `FleetWorkflow`, the `/agents` menu has its own) — this module only ever
- * reads `.id` off it.
- */
-export type AgentTreeNode<W extends { id: string }> =
+/** One row. */
+export type AgentTreeNode =
   | { kind: "main"; key: string; depth: number; parentKey?: string; hasChildren: boolean; collapsed: boolean; orphan: false }
-  | { kind: "workflow"; key: string; depth: number; parentKey?: string; hasChildren: boolean; collapsed: boolean; orphan: false; workflow: W }
   | { kind: "agent"; key: string; depth: number; parentKey?: string; hasChildren: boolean; collapsed: boolean; orphan: boolean; record: AgentRecord };
 
-export interface AgentTreeOptions<W extends { id: string }> {
+export interface AgentTreeOptions {
   /**
    * Every record the manager knows about — NOT a pre-filtered list. Topology is
    * derived from the full set so a child whose parent is ineligible for display
    * still resolves to that parent rather than looking detached.
    */
   records: readonly AgentRecord[];
-  /**
-   * Workflow container rows, in the order the caller wants them. Already
-   * filtered by the caller (the fleet list applies its own linger window).
-   */
-  workflows?: readonly W[];
   /**
    * Which records the caller wants shown. A record that fails this test is
    * still emitted when a descendant passes it — an active grandchild must never
@@ -72,18 +57,16 @@ function bySiblingOrder(a: AgentRecord, b: AgentRecord): number {
  * Flatten the hierarchy in pre-order.
  *
  * A record's parent is its `parentAgentId` when that record exists and the
- * chain is acyclic, else its `workflowId` when that run is in `workflows`. Any
- * other linkage — a parent evicted by GC, a workflow row the caller filtered
- * out, a cycle from a malformed caller — is promoted to a root and marked
- * `orphan`. Dropping those rows is what the old code effectively did, and it is
- * the bug: an unreachable agent cannot be stopped.
+ * chain is acyclic. Any other linkage — a parent evicted by GC, a cycle from a
+ * malformed caller — is promoted to a root and marked `orphan`. Dropping those
+ * rows is what the old code effectively did, and it is the bug: an unreachable
+ * agent cannot be stopped.
  */
-export function buildAgentTree<W extends { id: string }>(options: AgentTreeOptions<W>): AgentTreeNode<W>[] {
-  const { records, workflows = [], isEligible = () => true, collapsed, includeMain = true } = options;
+export function buildAgentTree(options: AgentTreeOptions): AgentTreeNode[] {
+  const { records, isEligible = () => true, collapsed, includeMain = true } = options;
 
   const byId = new Map<string, AgentRecord>();
   for (const record of records) byId.set(record.id, record);
-  const workflowIds = new Set(workflows.map(w => w.id));
 
   /** Walks up `parentAgentId` to prove the chain terminates. */
   const hasCycle = (record: AgentRecord): boolean => {
@@ -106,10 +89,6 @@ export function buildAgentTree<W extends { id: string }>(options: AgentTreeOptio
         continue;
       }
       orphans.add(record.id);
-    } else if (record.workflowId !== undefined && !workflowIds.has(record.workflowId)) {
-      // A live workflow child whose run row the caller left out: show it rather
-      // than hide it, but say it is detached.
-      orphans.add(record.id);
     }
     parentIdOf.set(record.id, undefined);
   }
@@ -128,22 +107,22 @@ export function buildAgentTree<W extends { id: string }>(options: AgentTreeOptio
 
   const childrenOf = new Map<string, AgentRecord[]>();
   const roots: AgentRecord[] = [];
-  const push = (key: string, record: AgentRecord) => {
-    const bucket = childrenOf.get(key);
-    if (bucket) bucket.push(record);
-    else childrenOf.set(key, [record]);
-  };
   for (const record of records) {
     if (!shown.has(record.id)) continue;
     const parentId = parentIdOf.get(record.id);
-    if (parentId !== undefined) push(agentKey(parentId), record);
-    else if (record.workflowId !== undefined && !orphans.has(record.id)) push(workflowKey(record.workflowId), record);
-    else roots.push(record);
+    if (parentId === undefined) {
+      roots.push(record);
+      continue;
+    }
+    const key = agentKey(parentId);
+    const bucket = childrenOf.get(key);
+    if (bucket) bucket.push(record);
+    else childrenOf.set(key, [record]);
   }
   for (const bucket of childrenOf.values()) bucket.sort(bySiblingOrder);
   roots.sort(bySiblingOrder);
 
-  const nodes: AgentTreeNode<W>[] = [];
+  const nodes: AgentTreeNode[] = [];
   const emitAgents = (bucket: readonly AgentRecord[], depth: number, parentKey: string | undefined): void => {
     for (const record of bucket) {
       const key = agentKey(record.id);
@@ -166,21 +145,6 @@ export function buildAgentTree<W extends { id: string }>(options: AgentTreeOptio
   if (includeMain) {
     nodes.push({ kind: "main", key: MAIN_KEY, depth: 0, hasChildren: false, collapsed: false, orphan: false });
   }
-  for (const workflow of workflows) {
-    const key = workflowKey(workflow.id);
-    const children = childrenOf.get(key) ?? [];
-    const isCollapsed = collapsed?.has(key) === true;
-    nodes.push({
-      kind: "workflow",
-      key,
-      depth: 0,
-      hasChildren: children.length > 0,
-      collapsed: isCollapsed,
-      orphan: false,
-      workflow,
-    });
-    if (!isCollapsed) emitAgents(children, 1, key);
-  }
   emitAgents(roots, 0, undefined);
 
   return nodes;
@@ -195,8 +159,8 @@ export function buildAgentTree<W extends { id: string }>(options: AgentTreeOptio
  * ancestor was just collapsed), else the row before where it used to be, else
  * the first row.
  */
-export function resolveSelectedKey<W extends { id: string }>(
-  nodes: readonly AgentTreeNode<W>[],
+export function resolveSelectedKey(
+  nodes: readonly AgentTreeNode[],
   previousKey: string | undefined,
   previousAncestorKeys: readonly string[] = [],
 ): string | undefined {
@@ -210,8 +174,8 @@ export function resolveSelectedKey<W extends { id: string }>(
 }
 
 /** Ancestor keys of `key`, nearest first — the fallback chain for the above. */
-export function ancestorKeys<W extends { id: string }>(
-  nodes: readonly AgentTreeNode<W>[],
+export function ancestorKeys(
+  nodes: readonly AgentTreeNode[],
   key: string,
 ): string[] {
   const byKey = new Map(nodes.map(n => [n.key, n]));

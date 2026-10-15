@@ -531,9 +531,8 @@ export function agentToolResults(session: AgentSession): string[] {
 }
 
 /**
- * The same, for any tool by name — `SubagentWorkflow`'s launch envelope is read
- * exactly the way an `Agent` spawn's is, and duplicating the walk to say so
- * would leave two copies to keep in step with pi's message shape.
+ * The same, for any tool by name. One walk over pi's message shape, so there is
+ * a single copy to keep in step with it.
  */
 export function toolResultsNamed(session: AgentSession, toolName: string): string[] {
   const out: string[] = [];
@@ -588,10 +587,8 @@ export function agentToolCalls(session: AgentSession): Array<Record<string, unkn
 }
 
 /**
- * The same, for any tool by name. A live workflow smoke has to read the
- * `SubagentWorkflow` call's own arguments — whether it carried `script` or
- * `name` is the difference between two different code paths, and a model that
- * merely *narrates* running a workflow leaves no call here at all.
+ * The same, for any tool by name. A model that merely *narrates* a tool call
+ * leaves no call here at all.
  */
 export function toolCallsNamed(
   session: AgentSession,
