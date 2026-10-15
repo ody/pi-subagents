@@ -4,6 +4,9 @@
 		"enabled": true,
 		"rules": {
 			"recommended": true,
+			"complexity": {
+				"noExcessiveCognitiveComplexity": "info"
+			},
 			"style": {
 				"recommended": false
 			},
