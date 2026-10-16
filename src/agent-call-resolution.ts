@@ -6,7 +6,7 @@ import { checkModelScope } from "./model-scope.js";
 import { getOutputTranscriptDefault } from "./output-file.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "./runner-defaults.js";
 import type { AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "./types.js";
-import { buildInvocationTags, getDisplayName, getPromptModeLabel } from "./ui/agent-widget.js";
+import { buildInvocationTags, getDisplayName, getPromptModeLabel } from "./ui/agent-format.js";
 
 /** The fields every Agent result's `details` start from. */
 export interface DetailBase {

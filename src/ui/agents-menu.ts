@@ -12,8 +12,8 @@ import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../mo
 import type { RuntimeSettings } from "../runtime-settings.js";
 import type { SubagentScheduler } from "../schedule.js";
 import type { AgentConfig, AgentRecord, ViewerMarkdownMode } from "../types.js";
+import { formatDuration, getDisplayName } from "./agent-format.js";
 import { buildAgentTree } from "./agent-tree.js";
-import { formatDuration, getDisplayName } from "./agent-widget.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
 import { showSchedulesMenu } from "./schedule-menu.js";
 import { selectItem } from "./select-item.js";

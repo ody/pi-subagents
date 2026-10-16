@@ -1,7 +1,7 @@
 // Shape of a tool result text and the `AgentDetails` block attached to it.
 
 import type { AgentActivity } from "./types.js";
-import { type AgentDetails, formatTokens } from "./ui/agent-widget.js";
+import { type AgentDetails, formatTokens } from "./ui/agent-format.js";
 import { getLifetimeCost, getLifetimeTotal, type LifetimeUsage } from "./usage.js";
 
 /** Tool execute return value for a text response. */

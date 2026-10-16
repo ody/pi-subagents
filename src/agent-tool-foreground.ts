@@ -10,7 +10,8 @@ import type { RuntimeSettings } from "./runtime-settings.js";
 import { getForegroundOutcomeNote, partialOutputSuffix } from "./status-note.js";
 import { buildDetails, formatLifetimeTokens, textResult } from "./tool-result.js";
 import type { AgentActivity, AgentRecord } from "./types.js";
-import { type AgentDetails, type AgentWidget, describeActivity, formatCost, formatMs, SPINNER } from "./ui/agent-widget.js";
+import { type AgentDetails, describeActivity, formatCost, formatMs, SPINNER } from "./ui/agent-format.js";
+import type { AgentWidget } from "./ui/agent-widget.js";
 import type { FleetList } from "./ui/fleet-list.js";
 import { getLifetimeCost } from "./usage.js";
 

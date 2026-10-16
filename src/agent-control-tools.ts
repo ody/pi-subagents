@@ -14,7 +14,7 @@ import { getAgentConversation } from "./session-text.js";
 import { getStatusNote, partialOutputSuffix } from "./status-note.js";
 import { formatLifetimeTokens, textResult } from "./tool-result.js";
 import type { AgentRecord } from "./types.js";
-import { formatCost, formatDuration, getDisplayName } from "./ui/agent-widget.js";
+import { formatCost, formatDuration, getDisplayName } from "./ui/agent-format.js";
 import { getLifetimeCost, getSessionContextPercent, type UsageReportingDeps, withUsageReporting } from "./usage.js";
 
 export interface AgentControlToolsDeps {
