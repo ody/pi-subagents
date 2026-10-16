@@ -1,7 +1,7 @@
 // The `/agents -> Create new agent` wizard: pick a location, then either have
 // a general-purpose agent write the file or collect each field by hand.
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { buildNewAgentFile, personalAgentsDir, projectAgentsDir } from "../agent-file-toggle.js";
@@ -199,7 +199,6 @@ async function showManualWizard(ctx: ExtensionCommandContext, targetDir: string,
     if (!overwrite) return;
   }
 
-  const { writeFileSync } = await import("node:fs");
   writeFileSync(targetPath, content, "utf-8");
   reloadCustomAgents();
   ctx.ui.notify(`Created ${targetPath}`, "info");

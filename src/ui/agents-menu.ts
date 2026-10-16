@@ -1,7 +1,7 @@
 // The `/agents` command: the top menu, the agent and agent-type lists, the
 // agent detail screen, and the view / eject / disable / enable actions.
 
-import { existsSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type ExtensionAPI, type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
@@ -14,6 +14,7 @@ import type { SubagentScheduler } from "../schedule.js";
 import type { AgentConfig, AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { buildAgentTree } from "./agent-tree.js";
 import { formatDuration, getDisplayName } from "./agent-widget.js";
+import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
 import { showSchedulesMenu } from "./schedule-menu.js";
 import { selectItem } from "./select-item.js";
 
@@ -222,7 +223,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return;
     }
 
-    const { ConversationViewer, VIEWPORT_HEIGHT_PCT } = await import("./conversation-viewer.js");
     const session = record.session;
     const activity = manager.getActivity(record.id);
 
@@ -280,7 +280,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       const content = readFileSync(file.path, "utf-8");
       const edited = await ctx.ui.editor(`Edit ${name}`, content);
       if (edited !== undefined && edited !== content) {
-        const { writeFileSync } = await import("node:fs");
         writeFileSync(file.path, edited, "utf-8");
         reloadCustomAgents();
         ctx.ui.notify(`Updated ${file.path}`, "info");
@@ -340,7 +339,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     // serializer does not cover is lost.
     const content = cfg.source === "skill" && cfg.sourcePath ? readFileSync(cfg.sourcePath, "utf-8") : serializeAgentFile(cfg);
 
-    const { writeFileSync } = await import("node:fs");
     writeFileSync(targetPath, content, "utf-8");
     reloadCustomAgents();
     ctx.ui.notify(`Ejected ${name} to ${targetPath}`, "info");
@@ -363,7 +361,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
         ctx.ui.notify(`Cannot disable ${name}: ${file.path} has no frontmatter block.`, "error");
         return;
       }
-      const { writeFileSync } = await import("node:fs");
       writeFileSync(file.path, updated, "utf-8");
       reloadCustomAgents();
       ctx.ui.notify(`Disabled ${name} (${file.path})`, "info");
@@ -381,7 +378,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     mkdirSync(targetDir, { recursive: true });
 
     const targetPath = join(targetDir, `${name}.md`);
-    const { writeFileSync } = await import("node:fs");
     writeFileSync(targetPath, "---\nenabled: false\n---\n", "utf-8");
     reloadCustomAgents();
     ctx.ui.notify(`Disabled ${name} (${targetPath})`, "info");
@@ -400,7 +396,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       ctx.ui.notify(`${name} is not disabled in ${file.path}.`, "info");
       return;
     }
-    const { writeFileSync } = await import("node:fs");
 
     // If the file was just a stub ("---\n---\n"), delete it to restore the built-in default
     if (isEmptyStub(updated)) {
