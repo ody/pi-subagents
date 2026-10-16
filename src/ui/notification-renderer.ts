@@ -5,7 +5,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import type { RuntimeSettings } from "../runtime-settings.js";
 import type { NotificationDetails } from "../types.js";
-import { formatCost, formatMs, formatTokens, formatTurns } from "./agent-widget.js";
+import { formatCost, formatMs, formatTokens, formatTurns } from "./agent-format.js";
 
 /** Register the custom notification renderer on pi. */
 export function registerNotificationRenderer(

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { renderRunningAgentStatus } from "../src/agent-tool-render.js";
 import type { AgentActivity, WidgetMode } from "../src/types.js";
-import { AgentWidget, fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-widget.js";
+import { fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-format.js";
+import { AgentWidget } from "../src/ui/agent-widget.js";
 
 /** Fold an activity map into a fake manager: the widget reads `getActivity`. */
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {

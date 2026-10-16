@@ -9,7 +9,7 @@ import {
   formatTurns,
   SPINNER,
   type Theme,
-} from "./ui/agent-widget.js";
+} from "./ui/agent-format.js";
 
 export function renderRunningAgentStatus(
   frame: string,

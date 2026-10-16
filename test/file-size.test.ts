@@ -20,9 +20,7 @@ const MAX_LINES = 800;
 const MAX_BYTES = 40 * 1024;
 const HEADER_SCAN_LINES = 30;
 
-const ALLOWLIST: Record<string, { lines: number; bytes: number }> = {
-  "src/ui/agent-widget.ts": { lines: 685, bytes: 28447 },
-};
+const ALLOWLIST: Record<string, { lines: number; bytes: number }> = {};
 
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

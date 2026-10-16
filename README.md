@@ -1205,6 +1205,7 @@ src/
 
   ui/
     agent-widget.ts       # Persistent widget: spinners, activity, status icons, theming
+    agent-format.ts       # Display helpers: token/cost/duration formatters, activity text, Theme and AgentDetails types
     agent-tree.ts         # Pure projection: records → flat pre-order rows with depth
     fleet-list.ts         # FleetView: navigable agent tree below the editor
     notification-renderer.ts # How the subagent-notification message block renders
