@@ -1,3 +1,4 @@
+// Size: the SubagentsSettings interface documents every field (about half the file); sanitize, load/save and apply all change together whenever a setting is added.
 // Persistence for pi-subagents operational settings.
 // - Global:  ~/.pi/agent/subagents.json (via getAgentDir()) — manual defaults, never written here
 // - Project: <cwd>/.pi/subagents.json — written by /agents → Settings; overrides global on load

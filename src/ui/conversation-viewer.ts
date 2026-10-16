@@ -1,3 +1,4 @@
+// Size: ConversationViewer is one overlay component; scrolling, the steering composer, and rendering share its scroll, focus, and live-session state.
 /**
  * conversation-viewer.ts — Live conversation overlay for viewing agent sessions.
  *
