@@ -10,7 +10,7 @@ Checks that must run before a commit live in a tracked `.githooks/pre-commit`. T
 
 - `.githooks/pre-commit` is executable and tracked.
 - A `prepare` script in `package.json` sets `core.hooksPath` to `.githooks`. It must not fail an install outside a git checkout: `git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true`.
-- The hook runs `npx vitest run test/file-size.test.ts`, which fails the commit on a size violation.
+- The hook runs `npx vitest run test/file-size.test.ts test/complexity.test.ts`, which fails the commit on a size or complexity-ceiling violation.
 - The hook runs `npx biome lint --staged --only=complexity/noExcessiveCognitiveComplexity`. It prints its `info` reports and never fails the commit.
 - Agents never skip the hook with `--no-verify` and never edit git config. `npm install` sets the hooks path.
 
