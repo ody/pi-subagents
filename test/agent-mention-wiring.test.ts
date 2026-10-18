@@ -202,6 +202,32 @@ describe("messaging a finished agent", () => {
 
   });
 
+  it("falls through to starting a fresh agent when the finished record has no session", async () => {
+    const { lifecycle, tools } = boot({ agentMentions: "direct" });
+    vi.mocked(runAgent).mockResolvedValue({
+      responseText: "first answer",
+      session: undefined,
+      aborted: false,
+      steered: false,
+      failure: undefined,
+    } as any);
+
+    await spawnBackground(tools);
+    await flush();
+    vi.mocked(runAgent).mockClear();
+
+    const uiCtx = ctx();
+    const result = await lifecycle.get("input")(
+      { type: "input", text: "@explore anything else?", source: "interactive" },
+      uiCtx,
+    );
+
+    expect(result).toEqual({ action: "handled" });
+    expect(resumeAgent).not.toHaveBeenCalled();
+    expect(runAgent).toHaveBeenCalledTimes(1);
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith("Started @explore", "info");
+  });
+
   it("honours the agent's output_transcript: false when resuming", async () => {
     // The frontmatter flag overrides the project default (README, Persistent
     // settings), and record.outputFile is the sole gate every downstream

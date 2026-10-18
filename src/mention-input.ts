@@ -2,7 +2,7 @@
 // start the named agent instead of sending the text to the main model.
 
 import { existsSync } from "node:fs";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "./agent-manager.js";
 import { getAgentConfig, getAvailableTypes, resolveSpawnType } from "./agent-types.js";
 import type { StartBackgroundResume } from "./background-resume.js";
@@ -12,6 +12,7 @@ import { getOutputTranscriptDefault } from "./output-file.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "./runner-defaults.js";
 import type { RuntimeSettings } from "./runtime-settings.js";
 import type { SpawnFunnel } from "./spawn-funnel.js";
+import type { AgentRecord, AgentTombstone } from "./types.js";
 
 export interface MentionInputDeps {
   manager: Pick<AgentManager, "resolveMention" | "steer" | "dropTombstone" | "awaitStartup">;
@@ -26,17 +27,221 @@ export interface MentionInputDeps {
   agentTool: MentionCloneOptions["agentTool"];
 }
 
+type Mention = NonNullable<ReturnType<typeof parseMention>>;
+type Handled = { action: "handled" };
+
+const handled: Handled = { action: "handled" };
+
+/**
+ * Message a live agent: steer it while it runs, resume it once it has
+ * finished. Returns `undefined` for a record with no session, so the caller
+ * falls through to the tombstone and start paths.
+ */
+async function dispatchLiveMention(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  deps: MentionInputDeps,
+  record: AgentRecord,
+  mention: Mention,
+): Promise<Handled | undefined> {
+  const target = `@${record.alias ?? record.handle ?? mention.handle}`;
+
+  if (record.status === "running" || record.status === "queued") {
+    // Steering interrupts after the current tool call, exactly like the
+    // steer_subagent tool. Un-consume the result so the agent's reply to
+    // this message is still relayed even if the LLM read its last answer.
+    record.resultConsumed = false;
+    deps.manager.steer(record.id, mention.message);
+    pi.events.emit("subagents:steered", { id: record.id, message: mention.message });
+    ctx.ui.notify(`Sent to ${target}`, "info");
+    return handled;
+  }
+
+  if (record.session) {
+    // Both derived from the record's OWN type: a mention names an existing
+    // agent, so its frontmatter is what governs — `output_transcript: false`
+    // must keep holding, since record.outputFile is the sole gate every
+    // downstream consumer keys off and a resume must not re-open it.
+    const config = getAgentConfig(record.type);
+    const resumedRecord = await deps.startBackgroundResume(ctx, record, mention.message, {
+      outputTranscript: config?.outputTranscript ?? getOutputTranscriptDefault(),
+      maxTurns: normalizeMaxTurns(config?.maxTurns ?? getDefaultMaxTurns()),
+    });
+    ctx.ui.notify(
+      resumedRecord ? `Resuming ${target}` : `Could not resume ${target} — it is still running.`,
+      resumedRecord ? "info" : "warning",
+    );
+    return handled;
+  }
+  // A live record with no session never got far enough to continue, so it
+  // falls through to the start-fresh path, like Claude's `no_transcript`.
+  return undefined;
+}
+
+/**
+ * Evicted, but its conversation is still on disk: reopen it. This is an
+ * ordinary spawn carrying a session file, so the new record picks up the
+ * widget, fleet row, transcript and completion notification unchanged —
+ * and `reclaim` hands it back the names the tombstone was holding.
+ */
+async function resumeTombstone(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  deps: MentionInputDeps,
+  entry: AgentTombstone,
+  mention: Mention,
+): Promise<Handled> {
+  const target = `@${entry.alias ?? entry.handle}`;
+
+  // Checked here rather than left to SessionManager.open: that runs inside
+  // runAgent, whose rejection lands on the record as an agent error, not in
+  // the catch below. A `/new` in another pi window or a manual delete makes
+  // the conversation unrecoverable (Claude Code's `not_reachable`), so drop
+  // the entry — a row that can only ever fail is worse than none — and say
+  // so rather than quietly sending this message to an unrelated agent.
+  if (!existsSync(entry.sessionFile)) {
+    deps.manager.dropTombstone(entry.handle);
+    ctx.ui.notify(`Could not resume ${target} — its session is gone.`, "warning");
+    return handled;
+  }
+
+  // The Agent tool deliberately falls back to general-purpose for a type it
+  // cannot resolve (#183), which covers a deleted file AND a merely
+  // disabled one. A resume must not inherit that: reopening this
+  // conversation under a different agent's prompt and tools is not
+  // continuing it, and the new record would re-tombstone under the
+  // substitute, so the handle would never find its way back.
+  deps.reloadCustomAgents();
+  const dispatch = resolveSpawnType(entry.type);
+  if (!dispatch.ok || dispatch.fellBackFrom !== undefined) {
+    // The tombstone stays: re-enabling the agent makes the handle work
+    // again, which a drop would foreclose.
+    ctx.ui.notify(`Could not resume ${target} — the ${entry.type} agent is no longer available.`, "warning");
+    return handled;
+  }
+
+  try {
+    // spawnResolved, not spawnTopLevel: the latter strips
+    // `resumeSessionFile` and `reclaim` as untrusted. This path is the
+    // exception — both come from a tombstone this extension wrote.
+    const id = deps.spawnResolved(pi, ctx, dispatch.type, mention.message, {
+      description: entry.description,
+      reclaim: { handle: entry.handle, alias: entry.alias },
+      resumeSessionFile: entry.sessionFile,
+      isBackground: true,
+    });
+    // The agent may still be starting — wait, so a startup failure lands in
+    // the catch below instead of being announced as a resume.
+    await deps.manager.awaitStartup(id);
+    // The tombstone deliberately stays. `resolveMention` prefers the live
+    // record holding these same names, so it cannot shadow the resume — and
+    // if this run dies before establishing its own session, the original
+    // transcript is still the right thing for the next mention to reopen.
+    // Once the resumed record is evicted it overwrites this entry in place,
+    // keyed by the same handle, so nothing accumulates.
+    ctx.ui.notify(`Resuming ${target}`, "info");
+  } catch (err) {
+    // The type is already settled above, so what is left is a spawn-time
+    // failure: a strict worktree-isolation error, an unusable cwd.
+    ctx.ui.notify(
+      `Could not resume ${target}: ${err instanceof Error ? err.message : String(err)}`,
+      "warning",
+    );
+  }
+  return handled;
+}
+
+/**
+ * Claude Code never starts the agent itself: `@agent-<type>` becomes an
+ * attachment asking the main model to do it, and the model writes the
+ * agent's prompt from the conversation rather than forwarding the typed
+ * text. That buys a real `Agent` tool call — transcript, per-tool widget
+ * detail, tool-use-id correlation, join grouping — and a prompt with the
+ * context a cold spawn lacks.
+ *
+ * It also costs a visible turn, spent narrating a decision the user already
+ * made by typing the handle. So the turn is taken by a clone of this
+ * conversation instead (mention-clone.ts): same messages, same system
+ * prompt, off-screen, holding only the `Agent` tool. Nothing reaches the
+ * chat, and what it starts is an ordinary top-level agent.
+ */
+function startViaClone(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  deps: MentionInputDeps,
+  type: string,
+  mention: Mention,
+): void {
+  const label = `@${handleBase(type)}`;
+  // "Prompting", not "Starting": in this mode nothing starts until the
+  // off-screen clone has taken a whole model turn writing the agent's
+  // prompt, and that wait is the one thing the chat cannot show. `direct`
+  // says "Started" because by then it has. The distinction tells the user
+  // which of the two they are waiting on.
+  ctx.ui.notify(`Prompting ${label}…`, "info");
+  // Not awaited: the clone runs a full model turn, and prompt() is blocked
+  // until this hook returns. The user gets their prompt back immediately
+  // and the agent appears in the widget when it starts.
+  void runMentionClone({ ctx, type, message: mention.message, agentTool: deps.agentTool })
+    .then(async (result) => {
+      if (result.spawned) return;
+      // A clone that could not run must not swallow the mention: start the
+      // agent the direct way rather than leaving the user with a toast and
+      // nothing running.
+      try {
+        const id = deps.spawnTopLevel(pi, ctx, type, mention.message, {
+          description: describeMention(mention.message),
+          isBackground: true,
+        });
+        // Same reason as the direct path: the agent may still be starting,
+        // and a failure there must reach this catch.
+        await deps.manager.awaitStartup(id);
+        ctx.ui.notify(`Started ${label} directly — ${result.error}`, "warning");
+      } catch (err) {
+        ctx.ui.notify(
+          `Could not start ${label}: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
+      }
+    });
+}
+
+/** No agent under the handle, but it names an agent type: start one. */
+async function startMentionedType(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  deps: MentionInputDeps,
+  type: string,
+  mention: Mention,
+): Promise<Handled> {
+  if (deps.settings.agentMentionMode === "model") {
+    startViaClone(pi, ctx, deps, type, mention);
+    return handled;
+  }
+
+  try {
+    // Nothing else to pass: runAgent resolves model, thinking and max turns
+    // from the agent's own config when the spawn omits them, and the
+    // manager's onStart/onComplete callbacks own the widget, the fleet list
+    // and the completion notification — the same contract the scheduler and
+    // cross-extension RPC spawns run under.
+    const id = deps.spawnTopLevel(pi, ctx, type, mention.message, {
+      description: describeMention(mention.message),
+      isBackground: true,
+    });
+    // The agent may still be starting (a worktree copy is an awaited git
+    // call) — report a failure that lands there as a failed start, not as a
+    // "Started" toast for an agent that never ran.
+    await deps.manager.awaitStartup(id);
+    ctx.ui.notify(`Started @${handleBase(type)}`, "info");
+  } catch (err) {
+    ctx.ui.notify(`Could not start @${handleBase(type)}: ${err instanceof Error ? err.message : String(err)}`, "error");
+  }
+  return handled;
+}
+
 export function registerMentionInput(pi: ExtensionAPI, deps: MentionInputDeps): void {
-  const {
-    manager,
-    settings,
-    isAgentMentionsEnabled,
-    spawnResolved,
-    spawnTopLevel,
-    startBackgroundResume,
-    reloadCustomAgents,
-    agentTool: registeredAgentTool,
-  } = deps;
+  const { manager, settings, isAgentMentionsEnabled } = deps;
 
   /**
    * `@handle message` typed at the prompt addresses that agent instead of the
@@ -94,180 +299,18 @@ export function registerMentionInput(pi: ExtensionAPI, deps: MentionInputDeps): 
     if (resolved && !canDispatchDirectly) return { action: "continue" };
 
     if (resolved?.kind === "live") {
-      const record = resolved.record;
-      const target = `@${record.alias ?? record.handle ?? mention.handle}`;
-
-      if (record.status === "running" || record.status === "queued") {
-        // Steering interrupts after the current tool call, exactly like the
-        // steer_subagent tool. Un-consume the result so the agent's reply to
-        // this message is still relayed even if the LLM read its last answer.
-        record.resultConsumed = false;
-        manager.steer(record.id, mention.message);
-        pi.events.emit("subagents:steered", { id: record.id, message: mention.message });
-        ctx.ui.notify(`Sent to ${target}`, "info");
-        return { action: "handled" };
-      }
-
-      if (record.session) {
-        // Both derived from the record's OWN type: a mention names an existing
-        // agent, so its frontmatter is what governs — `output_transcript: false`
-        // must keep holding, since record.outputFile is the sole gate every
-        // downstream consumer keys off and a resume must not re-open it.
-        const config = getAgentConfig(record.type);
-        const resumedRecord = await startBackgroundResume(ctx, record, mention.message, {
-          outputTranscript: config?.outputTranscript ?? getOutputTranscriptDefault(),
-          maxTurns: normalizeMaxTurns(config?.maxTurns ?? getDefaultMaxTurns()),
-        });
-        ctx.ui.notify(
-          resumedRecord ? `Resuming ${target}` : `Could not resume ${target} — it is still running.`,
-          resumedRecord ? "info" : "warning",
-        );
-        return { action: "handled" };
-      }
-      // A live record with no session never got far enough to continue, so it
-      // falls through to the start-fresh path below, like Claude's
-      // `no_transcript`.
+      const result = await dispatchLiveMention(pi, ctx, deps, resolved.record, mention);
+      if (result) return result;
     }
 
-    // Evicted, but its conversation is still on disk: reopen it. This is an
-    // ordinary spawn carrying a session file, so the new record picks up the
-    // widget, fleet row, transcript and completion notification unchanged —
-    // and `reclaim` hands it back the names the tombstone was holding.
-    if (resolved?.kind === "tombstone") {
-      const entry = resolved.entry;
-      const target = `@${entry.alias ?? entry.handle}`;
-
-      // Checked here rather than left to SessionManager.open: that runs inside
-      // runAgent, whose rejection lands on the record as an agent error, not in
-      // the catch below. A `/new` in another pi window or a manual delete makes
-      // the conversation unrecoverable (Claude Code's `not_reachable`), so drop
-      // the entry — a row that can only ever fail is worse than none — and say
-      // so rather than quietly sending this message to an unrelated agent.
-      if (!existsSync(entry.sessionFile)) {
-        manager.dropTombstone(entry.handle);
-        ctx.ui.notify(`Could not resume ${target} — its session is gone.`, "warning");
-        return { action: "handled" };
-      }
-
-      // The Agent tool deliberately falls back to general-purpose for a type it
-      // cannot resolve (#183), which covers a deleted file AND a merely
-      // disabled one. A resume must not inherit that: reopening this
-      // conversation under a different agent's prompt and tools is not
-      // continuing it, and the new record would re-tombstone under the
-      // substitute, so the handle would never find its way back.
-      reloadCustomAgents();
-      const dispatch = resolveSpawnType(entry.type);
-      if (!dispatch.ok || dispatch.fellBackFrom !== undefined) {
-        // The tombstone stays: re-enabling the agent makes the handle work
-        // again, which a drop would foreclose.
-        ctx.ui.notify(`Could not resume ${target} — the ${entry.type} agent is no longer available.`, "warning");
-        return { action: "handled" };
-      }
-
-      try {
-        // spawnResolved, not spawnTopLevel: the latter strips
-        // `resumeSessionFile` and `reclaim` as untrusted. This path is the
-        // exception — both come from a tombstone this extension wrote.
-        const id = spawnResolved(pi, ctx, dispatch.type, mention.message, {
-          description: entry.description,
-          reclaim: { handle: entry.handle, alias: entry.alias },
-          resumeSessionFile: entry.sessionFile,
-          isBackground: true,
-        });
-        // The agent may still be starting — wait, so a startup failure lands in
-        // the catch below instead of being announced as a resume.
-        await manager.awaitStartup(id);
-        // The tombstone deliberately stays. `resolveMention` prefers the live
-        // record holding these same names, so it cannot shadow the resume — and
-        // if this run dies before establishing its own session, the original
-        // transcript is still the right thing for the next mention to reopen.
-        // Once the resumed record is evicted it overwrites this entry in place,
-        // keyed by the same handle, so nothing accumulates.
-        ctx.ui.notify(`Resuming ${target}`, "info");
-      } catch (err) {
-        // The type is already settled above, so what is left is a spawn-time
-        // failure: a strict worktree-isolation error, an unusable cwd.
-        ctx.ui.notify(
-          `Could not resume ${target}: ${err instanceof Error ? err.message : String(err)}`,
-          "warning",
-        );
-      }
-      return { action: "handled" };
-    }
+    if (resolved?.kind === "tombstone") return resumeTombstone(pi, ctx, deps, resolved.entry, mention);
 
     // No agent under that handle — but the name may still be an agent type, in
     // which case the mention starts one.
-    const typeHandle = mention.handle;
-    const type = resolveHandleToType(typeHandle, getAvailableTypes())
+    const type = resolveHandleToType(mention.handle, getAvailableTypes())
       ?? (alias ? resolveHandleToType(alias, getAvailableTypes()) : undefined);
     if (!type) return { action: "continue" };
 
-    // Claude Code never starts the agent itself: `@agent-<type>` becomes an
-    // attachment asking the main model to do it, and the model writes the
-    // agent's prompt from the conversation rather than forwarding the typed
-    // text. That buys a real `Agent` tool call — transcript, per-tool widget
-    // detail, tool-use-id correlation, join grouping — and a prompt with the
-    // context a cold spawn lacks.
-    //
-    // It also costs a visible turn, spent narrating a decision the user already
-    // made by typing the handle. So the turn is taken by a clone of this
-    // conversation instead (mention-clone.ts): same messages, same system
-    // prompt, off-screen, holding only the `Agent` tool. Nothing reaches the
-    // chat, and what it starts is an ordinary top-level agent.
-    if (settings.agentMentionMode === "model") {
-      const label = `@${handleBase(type)}`;
-      // "Prompting", not "Starting": in this mode nothing starts until the
-      // off-screen clone has taken a whole model turn writing the agent's
-      // prompt, and that wait is the one thing the chat cannot show. `direct`
-      // says "Started" because by then it has. The distinction tells the user
-      // which of the two they are waiting on.
-      ctx.ui.notify(`Prompting ${label}…`, "info");
-      // Not awaited: the clone runs a full model turn, and prompt() is blocked
-      // until this hook returns. The user gets their prompt back immediately
-      // and the agent appears in the widget when it starts.
-      void runMentionClone({ ctx, type, message: mention.message, agentTool: registeredAgentTool })
-        .then(async (result) => {
-          if (result.spawned) return;
-          // A clone that could not run must not swallow the mention: start the
-          // agent the direct way rather than leaving the user with a toast and
-          // nothing running.
-          try {
-            const id = spawnTopLevel(pi, ctx, type, mention.message, {
-              description: describeMention(mention.message),
-              isBackground: true,
-            });
-            // Same reason as the direct path below: the agent may still be
-            // starting, and a failure there must reach this catch.
-            await manager.awaitStartup(id);
-            ctx.ui.notify(`Started ${label} directly — ${result.error}`, "warning");
-          } catch (err) {
-            ctx.ui.notify(
-              `Could not start ${label}: ${err instanceof Error ? err.message : String(err)}`,
-              "error",
-            );
-          }
-        });
-      return { action: "handled" };
-    }
-
-    try {
-      // Nothing else to pass: runAgent resolves model, thinking and max turns
-      // from the agent's own config when the spawn omits them, and the
-      // manager's onStart/onComplete callbacks own the widget, the fleet list
-      // and the completion notification — the same contract the scheduler and
-      // cross-extension RPC spawns run under.
-      const id = spawnTopLevel(pi, ctx, type, mention.message, {
-        description: describeMention(mention.message),
-        isBackground: true,
-      });
-      // The agent may still be starting (a worktree copy is an awaited git
-      // call) — report a failure that lands there as a failed start, not as a
-      // "Started" toast for an agent that never ran.
-      await manager.awaitStartup(id);
-      ctx.ui.notify(`Started @${handleBase(type)}`, "info");
-    } catch (err) {
-      ctx.ui.notify(`Could not start @${handleBase(type)}: ${err instanceof Error ? err.message : String(err)}`, "error");
-    }
-    return { action: "handled" };
+    return startMentionedType(pi, ctx, deps, type, mention);
   });
 }
