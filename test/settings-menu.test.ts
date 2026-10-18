@@ -5,7 +5,7 @@ import { isScopeModelsEnabled, setScopeModelsEnabled } from "../src/model-scope.
 import { getMaxSubagentDepth, setMaxSubagentDepth } from "../src/nested-tools.js";
 import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../src/output-file.js";
 import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../src/runner-defaults.js";
-import { applySettingValue, type SettingsMenuDeps } from "../src/ui/settings-menu.js";
+import { applySettingValue, type SettingsMenuDeps, showSettings } from "../src/ui/settings-menu.js";
 import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../src/worktree.js";
 
 const saved = {
@@ -345,5 +345,76 @@ describe("applySettingValue enum and toggle settings", () => {
     apply("nope", "on");
     expect(notifyApplied).not.toHaveBeenCalled();
     expect(notify).not.toHaveBeenCalled();
+  });
+});
+
+describe("showSettings numeric prompt", () => {
+  const custom = vi.fn();
+  const input = vi.fn();
+  const promptCtx = { ui: { notify, custom, input } } as unknown as ExtensionCommandContext;
+
+  beforeEach(() => {
+    manager.getMaxConcurrent.mockReturnValue(4);
+    manager.getMaxConcurrentForeground.mockReturnValue(2);
+    setDefaultMaxTurns(undefined);
+    setGraceTurns(5);
+    setMaxSubagentDepth(3);
+  });
+
+  it.each([
+    ["maxConcurrent", "Max concurrency (1+)", "4"],
+    ["maxConcurrentForeground", "Max foreground concurrency (0 = unlimited)", "2"],
+    ["defaultMaxTurns", "Default max turns (0 = unlimited)", "0"],
+    ["graceTurns", "Grace turns (1+)", "5"],
+    ["maxSubagentDepth", "Nested depth (0/1 = nesting off)", "3"],
+  ])("%s prompts with its label and current value", async (id, label, current) => {
+    custom.mockResolvedValueOnce(id);
+    input.mockResolvedValueOnce(undefined);
+    await showSettings(promptCtx, deps);
+    expect(input).toHaveBeenCalledWith(label, current);
+  });
+
+  it("defaultMaxTurns shows the set value", async () => {
+    setDefaultMaxTurns(9);
+    custom.mockResolvedValueOnce("defaultMaxTurns");
+    input.mockResolvedValueOnce(undefined);
+    await showSettings(promptCtx, deps);
+    expect(input).toHaveBeenCalledWith("Default max turns (0 = unlimited)", "9");
+  });
+
+  it("re-prompts on non-numeric input with the last entry", async () => {
+    custom.mockResolvedValueOnce("graceTurns");
+    input.mockResolvedValueOnce("abc").mockResolvedValueOnce(undefined);
+    await showSettings(promptCtx, deps);
+    expect(input).toHaveBeenCalledTimes(2);
+    expect(input).toHaveBeenNthCalledWith(2, "Grace turns (1+)", "abc");
+    expect(notifyApplied).not.toHaveBeenCalled();
+    expect(custom).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a trimmed value, then reopens the menu", async () => {
+    custom.mockResolvedValueOnce("graceTurns").mockResolvedValueOnce(undefined);
+    input.mockResolvedValueOnce(" 7 ");
+    await showSettings(promptCtx, deps);
+    expect(getGraceTurns()).toBe(7);
+    expect(notifyApplied).toHaveBeenCalledWith(promptCtx, "Grace turns set to 7");
+    expect(custom).toHaveBeenCalledTimes(2);
+    expect(notifyApplied.mock.invocationCallOrder[0]).toBeLessThan(custom.mock.invocationCallOrder[1]);
+  });
+
+  it("does not reopen or apply on cancel", async () => {
+    custom.mockResolvedValueOnce("maxConcurrent");
+    input.mockResolvedValueOnce(undefined);
+    await showSettings(promptCtx, deps);
+    expect(custom).toHaveBeenCalledTimes(1);
+    expect(notifyApplied).not.toHaveBeenCalled();
+  });
+
+  it("does not prompt when the menu closes or returns a non-numeric id", async () => {
+    custom.mockResolvedValueOnce(undefined);
+    await showSettings(promptCtx, deps);
+    custom.mockResolvedValueOnce("joinMode");
+    await showSettings(promptCtx, deps);
+    expect(input).not.toHaveBeenCalled();
   });
 });
