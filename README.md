@@ -1183,6 +1183,7 @@ src/
     agent-tree.ts         # Pure projection: records → flat pre-order rows with depth
     fleet-list.ts         # FleetView: navigable agent tree below the editor
     notification-renderer.ts # How the subagent-notification message block renders
+    notification-block.ts # Pure text formatting for the notification block (stats, preview, batch total)
     conversation-viewer.ts # Live conversation overlay for viewing agent sessions
     viewer-keys.ts        # Viewer scroll keys resolved through user keybindings
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
