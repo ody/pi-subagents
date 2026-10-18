@@ -23,7 +23,6 @@ const PINS: Record<string, number[]> = {
   "src/session-text.ts": [35],
   "src/settings.ts": [40],
   "src/ui/agent-widget.ts": [68],
-  "src/ui/agents-menu.ts": [40],
   "src/ui/conversation-viewer.ts": [74, 33],
   "src/ui/fleet-list.ts": [33],
   "src/ui/notification-renderer.ts": [49],

@@ -18,6 +18,8 @@ import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.j
 import { showSchedulesMenu } from "./schedule-menu.js";
 import { selectItem } from "./select-item.js";
 
+type UserAgentFile = NonNullable<ReturnType<typeof locateAgentFile>>;
+
 export interface AgentsCommandDeps {
   manager: Pick<AgentManager, "listAgents" | "getActivity" | "abort" | "steer">;
   scheduler: SubagentScheduler;
@@ -26,6 +28,29 @@ export interface AgentsCommandDeps {
   chooseViewerMarkdown: (mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext) => void;
   showCreateWizard: (ctx: ExtensionCommandContext) => Promise<void>;
   showSettings: (ctx: ExtensionCommandContext) => Promise<void>;
+}
+
+/** The detail-screen menu for an agent, given whether a user .md file backs it. */
+export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] {
+  const isDefault = cfg.isDefault === true;
+  const disabled = cfg.enabled === false;
+  if (cfg.source === "skill") {
+    // The file belongs to the skill (often a read-only store path), so it is
+    // never edited in place: overriding it means writing a user file.
+    return disabled ? ["Eject (export as .md)", "Back"] : ["Eject (export as .md)", "Disable", "Back"];
+  }
+  if (disabled && hasFile) {
+    // Disabled agent with a file — offer Enable
+    return isDefault
+      ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
+      : ["Enable", "Edit", "Delete", "Back"];
+  }
+  // Default agent with no .md override
+  if (isDefault && !hasFile) return ["Eject (export as .md)", "Disable", "Back"];
+  // Default agent with .md override (ejected)
+  if (isDefault && hasFile) return ["Edit", "Disable", "Reset to default", "Delete", "Back"];
+  // User-defined agent
+  return ["Edit", "Disable", "Delete", "Back"];
 }
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
@@ -249,57 +274,16 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     }
 
     const file = locateUserAgentFile(name, cfg);
-    const isDefault = cfg.isDefault === true;
-    const disabled = cfg.enabled === false;
 
-    let menuOptions: string[];
-    if (cfg.source === "skill") {
-      // The file belongs to the skill (often a read-only store path), so it is
-      // never edited in place: overriding it means writing a user file.
-      menuOptions = disabled ? ["Eject (export as .md)", "Back"] : ["Eject (export as .md)", "Disable", "Back"];
-    } else if (disabled && file) {
-      // Disabled agent with a file — offer Enable
-      menuOptions = isDefault
-        ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
-        : ["Enable", "Edit", "Delete", "Back"];
-    } else if (isDefault && !file) {
-      // Default agent with no .md override
-      menuOptions = ["Eject (export as .md)", "Disable", "Back"];
-    } else if (isDefault && file) {
-      // Default agent with .md override (ejected)
-      menuOptions = ["Edit", "Disable", "Reset to default", "Delete", "Back"];
-    } else {
-      // User-defined agent
-      menuOptions = ["Edit", "Disable", "Delete", "Back"];
-    }
-
-    const choice = await ctx.ui.select(name, menuOptions);
+    const choice = await ctx.ui.select(name, detailMenuOptions(cfg, file !== undefined));
     if (!choice || choice === "Back") return;
 
     if (choice === "Edit" && file) {
-      const content = readFileSync(file.path, "utf-8");
-      const edited = await ctx.ui.editor(`Edit ${name}`, content);
-      if (edited !== undefined && edited !== content) {
-        writeFileSync(file.path, edited, "utf-8");
-        reloadCustomAgents();
-        ctx.ui.notify(`Updated ${file.path}`, "info");
-      }
+      await editAgentFile(ctx, name, file);
     } else if (choice === "Delete") {
-      if (file) {
-        const confirmed = await ctx.ui.confirm("Delete agent", `Delete ${name} from ${file.location} (${file.path})?`);
-        if (confirmed) {
-          unlinkSync(file.path);
-          reloadCustomAgents();
-          ctx.ui.notify(`Deleted ${file.path}`, "info");
-        }
-      }
+      if (file) await deleteAgentFile(ctx, name, file);
     } else if (choice === "Reset to default" && file) {
-      const confirmed = await ctx.ui.confirm("Reset to default", `Delete override ${file.path} and restore embedded default?`);
-      if (confirmed) {
-        unlinkSync(file.path);
-        reloadCustomAgents();
-        ctx.ui.notify(`Restored default ${name}`, "info");
-      }
+      await resetAgentToDefault(ctx, name, file);
     } else if (choice.startsWith("Eject")) {
       await ejectAgent(ctx, name, cfg);
     } else if (choice === "Disable") {
@@ -316,6 +300,37 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
    */
   function locateUserAgentFile(name: string, cfg: AgentConfig | undefined) {
     return cfg?.source === "skill" ? undefined : locateAgentFile(name, cfg?.sourcePath);
+  }
+
+  /** Open the agent's .md file in the editor and save changes. */
+  async function editAgentFile(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
+    const content = readFileSync(file.path, "utf-8");
+    const edited = await ctx.ui.editor(`Edit ${name}`, content);
+    if (edited !== undefined && edited !== content) {
+      writeFileSync(file.path, edited, "utf-8");
+      reloadCustomAgents();
+      ctx.ui.notify(`Updated ${file.path}`, "info");
+    }
+  }
+
+  /** Delete the agent's .md file after confirmation. */
+  async function deleteAgentFile(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
+    const confirmed = await ctx.ui.confirm("Delete agent", `Delete ${name} from ${file.location} (${file.path})?`);
+    if (confirmed) {
+      unlinkSync(file.path);
+      reloadCustomAgents();
+      ctx.ui.notify(`Deleted ${file.path}`, "info");
+    }
+  }
+
+  /** Delete a default agent's override file to restore the embedded default. */
+  async function resetAgentToDefault(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
+    const confirmed = await ctx.ui.confirm("Reset to default", `Delete override ${file.path} and restore embedded default?`);
+    if (confirmed) {
+      unlinkSync(file.path);
+      reloadCustomAgents();
+      ctx.ui.notify(`Restored default ${name}`, "info");
+    }
   }
 
   /** Eject a default or skill-embedded agent: write its config as a user .md file. */
