@@ -177,6 +177,46 @@ describe("ConversationViewer cost display", () => {
   });
 });
 
+describe("ConversationViewer header and footer", () => {
+  /** Theme that tags each fragment with its color, so icon colors are visible. */
+  const tagTheme = {
+    fg: (c: string, t: string) => `<${c}>${t}</${c}>`,
+    bold: (t: string) => t,
+  } as any;
+
+  function render(record: AgentRecord, session = mockSession(), rows = 30): string[] {
+    return new ConversationViewer(mockTui(rows, 120), session, record, undefined, tagTheme, vi.fn()).render(120);
+  }
+
+  it.each([
+    ["running", "<accent>●</accent>"],
+    ["completed", "<success>✓</success>"],
+    ["error", "<error>✗</error>"],
+    ["stopped", "<dim>○</dim>"],
+  ])("shows the %s status icon in the header", (status, icon) => {
+    const lines = render(mockRecord({ status: status as AgentRecord["status"] }));
+    expect(lines[1]).toContain(`</border> ${icon} `);
+  });
+
+  it("reads 100% when all content fits the viewport", () => {
+    const session = mockSession([{ role: "assistant", content: [{ type: "text", text: "hi" }] }]);
+    const footer = render(mockRecord({ status: "completed" }), session).at(-2) ?? "";
+    expect(footer).toMatch(/\d+ lines · 100%/);
+  });
+
+  it("reads a partial percentage when content overflows the viewport", () => {
+    const text = Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n");
+    const session = mockSession([{ role: "assistant", content: [{ type: "text", text }] }]);
+    const viewer = new ConversationViewer(mockTui(20, 120), session, mockRecord({ status: "completed" }), undefined, tagTheme, vi.fn());
+    viewer.handleInput("\x1b[H"); // home: scroll to top, auto-scroll off
+    const footer = viewer.render(120).at(-2) ?? "";
+    const m = footer.match(/(\d+) lines · (\d+)%/);
+    expect(m).not.toBeNull();
+    expect(Number(m?.[2])).toBeGreaterThan(0);
+    expect(Number(m?.[2])).toBeLessThan(100);
+  });
+});
+
 describe("ConversationViewer", () => {
   it("closes with Ctrl+C when not composing", () => {
     const done = vi.fn();
