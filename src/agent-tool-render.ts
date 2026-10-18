@@ -48,6 +48,66 @@ export function renderAgentCall(
   return new Text(rowBackground + "▸ " + name + (desc ? "  " + theme.fg("muted", desc) : ""), 0, 0);
 }
 
+/** Build "haiku · thinking: high · ↻5≤30 · 3 tool uses · 33.8k tokens". */
+function formatAgentStats(d: AgentDetails, theme: PiTheme, showCost: boolean): string {
+  const parts: string[] = [];
+  if (d.modelName) parts.push(d.modelName);
+  if (d.tags) parts.push(...d.tags);
+  if (d.turnCount != null && d.turnCount > 0) {
+    parts.push(formatTurns(d.turnCount, d.maxTurns));
+  }
+  if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
+  if (d.tokens) parts.push(d.tokens);
+  if (showCost) {
+    const costText = formatCost(d.cost ?? 0);
+    if (costText) parts.push(costText);
+  }
+  return parts.map(p => fgPreservingNestedStyles(theme, "dim", p)).join(" " + theme.fg("dim", "·") + " ");
+}
+
+function appendExpandedOutput(line: string, resultText: string, theme: PiTheme): string {
+  if (!resultText) return line;
+  const all = resultText.split("\n");
+  for (const l of all.slice(0, 50)) {
+    line += "\n" + theme.fg("dim", `  ${l}`);
+  }
+  if (all.length > 50) {
+    line += "\n" + theme.fg("muted", "  ... (use get_subagent_result with verbose for full output)");
+  }
+  return line;
+}
+
+function renderFinishedAgent(
+  details: AgentDetails,
+  resultText: string,
+  expanded: boolean,
+  theme: PiTheme,
+  stats: string,
+): Text {
+  const isSteered = details.status === "steered";
+  const icon = isSteered ? theme.fg("warning", "✓") : theme.fg("success", "✓");
+  let line = icon + (stats ? " " + stats : "");
+  line += " " + theme.fg("dim", "·") + " " + theme.fg("dim", formatMs(details.durationMs));
+
+  if (expanded) {
+    line = appendExpandedOutput(line, resultText, theme);
+  } else {
+    const doneText = isSteered ? "Wrapped up (turn limit)" : "Done";
+    line += "\n" + theme.fg("dim", `  ⎿  ${doneText}`);
+  }
+  return new Text(line, 0, 0);
+}
+
+function renderFailedAgent(details: AgentDetails, theme: PiTheme, stats: string): Text {
+  let line = theme.fg("error", "✗") + (stats ? " " + stats : "");
+  if (details.status === "error") {
+    line += "\n" + theme.fg("error", `  ⎿  Error: ${details.error ?? "unknown"}`);
+  } else {
+    line += "\n" + theme.fg("warning", "  ⎿  Aborted (max turns exceeded)");
+  }
+  return new Text(line, 0, 0);
+}
+
 /** `showCost` is read by the caller at render time so the cost setting stays live. */
 export function renderAgentResult(
   result: AgentToolResult<unknown>,
@@ -65,28 +125,11 @@ export function renderAgentResult(
     return new Text(text, 0, 0);
   }
 
-  // Helper: build "haiku · thinking: high · ↻5≤30 · 3 tool uses · 33.8k tokens" stats string
-  const stats = (d: AgentDetails) => {
-    const parts: string[] = [];
-    if (d.modelName) parts.push(d.modelName);
-    if (d.tags) parts.push(...d.tags);
-    if (d.turnCount != null && d.turnCount > 0) {
-      parts.push(formatTurns(d.turnCount, d.maxTurns));
-    }
-    if (d.toolUses > 0) parts.push(`${d.toolUses} tool use${d.toolUses === 1 ? "" : "s"}`);
-    if (d.tokens) parts.push(d.tokens);
-    if (showCost) {
-      const costText = formatCost(d.cost ?? 0);
-      if (costText) parts.push(costText);
-    }
-    return parts.map(p => fgPreservingNestedStyles(theme, "dim", p)).join(" " + theme.fg("dim", "·") + " ");
-  };
+  const stats = formatAgentStats(details, theme, showCost);
 
-  // ---- While running (streaming) ----
   if (isPartial || details.status === "running") {
     const frame = SPINNER[details.spinnerFrame ?? 0];
-    const s = stats(details);
-    return renderRunningAgentStatus(frame, s, details.activity ?? "thinking…", theme);
+    return renderRunningAgentStatus(frame, stats, details.activity ?? "thinking…", theme);
   }
 
   // ---- Background agent launched ----
@@ -96,35 +139,12 @@ export function renderAgentResult(
 
   // ---- Completed / Steered ----
   if (details.status === "completed" || details.status === "steered") {
-    const duration = formatMs(details.durationMs);
-    const isSteered = details.status === "steered";
-    const icon = isSteered ? theme.fg("warning", "✓") : theme.fg("success", "✓");
-    const s = stats(details);
-    let line = icon + (s ? " " + s : "");
-    line += " " + theme.fg("dim", "·") + " " + theme.fg("dim", duration);
-
-    if (expanded) {
-      const resultText = result.content[0]?.type === "text" ? result.content[0].text : "";
-      if (resultText) {
-        const lines = resultText.split("\n").slice(0, 50);
-        for (const l of lines) {
-          line += "\n" + theme.fg("dim", `  ${l}`);
-        }
-        if (resultText.split("\n").length > 50) {
-          line += "\n" + theme.fg("muted", "  ... (use get_subagent_result with verbose for full output)");
-        }
-      }
-    } else {
-      const doneText = isSteered ? "Wrapped up (turn limit)" : "Done";
-      line += "\n" + theme.fg("dim", `  ⎿  ${doneText}`);
-    }
-    return new Text(line, 0, 0);
+    return renderFinishedAgent(details, text, expanded, theme, stats);
   }
 
   // ---- Stopped (user-initiated abort) ----
   if (details.status === "stopped") {
-    const s = stats(details);
-    let line = theme.fg("dim", "■") + (s ? " " + s : "");
+    let line = theme.fg("dim", "■") + (stats ? " " + stats : "");
     line += "\n" + theme.fg("dim", "  ⎿  Stopped");
     return new Text(line, 0, 0);
   }
@@ -135,15 +155,6 @@ export function renderAgentResult(
     return new Text(text, 0, 0);
   }
 
-  // ---- Error / Aborted (hard max_turns) ----
-  const s = stats(details);
-  let line = theme.fg("error", "✗") + (s ? " " + s : "");
-
-  if (details.status === "error") {
-    line += "\n" + theme.fg("error", `  ⎿  Error: ${details.error ?? "unknown"}`);
-  } else {
-    line += "\n" + theme.fg("warning", "  ⎿  Aborted (max turns exceeded)");
-  }
-
-  return new Text(line, 0, 0);
+  // Error / Aborted (hard max_turns)
+  return renderFailedAgent(details, theme, stats);
 }
