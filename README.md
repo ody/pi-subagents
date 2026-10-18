@@ -1151,6 +1151,9 @@ src/
   agent-tool-render.ts   # Agent tool call/result rendering and the running-status block
   agent-tool.ts       # Agent tool definition: schema, rendering hooks, execute dispatch
   agent-tool-foreground.ts # Foreground Agent run: blocking spawn with streamed progress
+  agent-tool-background.ts # Background Agent spawn: detached start, batch join, launch text
+  agent-tool-resume.ts # Agent resume by ID, detached or blocking
+  agent-tool-schedule.ts # Scheduled Agent calls: parameter conflict checks and job registration
 
   # Invocation surface
   invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)

@@ -3,24 +3,24 @@
 
 import { defineTool, type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { createActivityTracker } from "./activity-tracker.js";
-import { detailBaseFor, resolveAgentCall } from "./agent-call-resolution.js";
+import { resolveAgentCall } from "./agent-call-resolution.js";
 import type { AgentManager } from "./agent-manager.js";
-import { isTopLevelAgent } from "./agent-manager-rules.js";
+import { startBackgroundAgent } from "./agent-tool-background.js";
 import { buildAgentToolDescription } from "./agent-tool-description.js";
 import { runForegroundAgent } from "./agent-tool-foreground.js";
 import { renderAgentCall, renderAgentResult } from "./agent-tool-render.js";
+import { resumeAgentCall } from "./agent-tool-resume.js";
+import { scheduleAgentCall } from "./agent-tool-schedule.js";
 import { getAvailableTypes } from "./agent-types.js";
 import type { StartBackgroundResume } from "./background-resume.js";
 import type { CompletionNotifier } from "./completion-notifier.js";
 import { SUBAGENT_TOOL_NAMES } from "./extension-scope.js";
-import { isolationParam, resolveJoinMode } from "./invocation-config.js";
-import { createOutputFilePath, streamToOutputFile, writeInitialEntry } from "./output-file.js";
+import { isolationParam } from "./invocation-config.js";
+import { createOutputFilePath, writeInitialEntry } from "./output-file.js";
 import type { RuntimeSettings } from "./runtime-settings.js";
 import type { SubagentScheduler } from "./schedule.js";
-import { partialOutputSuffix } from "./status-note.js";
 import { THINKING_LEVELS } from "./thinking-levels.js";
-import { buildDetails, textResult } from "./tool-result.js";
+import { textResult } from "./tool-result.js";
 import type { AgentRecord } from "./types.js";
 import type { AgentWidget, UICtx } from "./ui/agent-widget.js";
 import type { FleetList } from "./ui/fleet-list.js";
@@ -168,22 +168,7 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
         defaultRunInBackground: settings.backgroundByDefault,
       });
       if (!call.ok) return textResult(call.message);
-      const {
-        subagentType,
-        requestedType,
-        fallbackNote,
-        displayName,
-        model,
-        thinking,
-        inheritContext,
-        runInBackground,
-        isolated,
-        isolation,
-        outputTranscript,
-        effectiveMaxTurns,
-        agentInvocation,
-        detailBase,
-      } = call;
+      const { runInBackground, outputTranscript } = call;
 
       // `attachTranscript` is the SOLE gate for the .output transcript (whether
       // it is on comes from resolveAgentCall) — every
@@ -195,197 +180,19 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
         writeInitialEntry(rec.outputFile, agentId, params.prompt, ctx.cwd);
       };
 
-      // ---- Schedule: register a job, don't spawn now ----
-      if (params.schedule) {
-        if (!settings.schedulingEnabled) {
-          return textResult("Scheduling is disabled in this project. Enable via /agents → Settings → Scheduling.");
-        }
-        if (params.resume) {
-          return textResult("Cannot combine `schedule` with `resume` — schedules create fresh agents.");
-        }
-        if (params.inherit_context) {
-          return textResult("Cannot combine `schedule` with `inherit_context` — there is no parent conversation at fire time.");
-        }
-        if (params.run_in_background === false) {
-          return textResult("Cannot combine `schedule` with `run_in_background: false` — scheduled jobs always run in background.");
-        }
-        if (!scheduler.isActive()) {
-          return textResult("Scheduler is not active in this session yet. Try again after the session has fully started.");
-        }
-        try {
-          const job = scheduler.addJob({
-            name: params.description as string,
-            description: params.description as string,
-            schedule: params.schedule as string,
-            // The caller's own name, not the substitute — the scheduler re-resolves
-            // at fire time, and the original is what a user edits.
-            subagent_type: requestedType,
-            prompt: params.prompt as string,
-            model: params.model as string | undefined,
-            thinking: thinking,
-            max_turns: effectiveMaxTurns,
-            isolated: isolated,
-            isolation: isolation,
-          });
-          const next = scheduler.getNextRun(job.id);
-          return textResult(
-            `${fallbackNote}Scheduled "${job.name}" (id: ${job.id}, type: ${job.scheduleType}). ` +
-            `Next run: ${next ?? "(unknown)"}. ` +
-            `Manage via /agents → Scheduled jobs.`,
-          );
-        } catch (err) {
-          return textResult(err instanceof Error ? err.message : String(err));
-        }
-      }
+      if (params.schedule) return scheduleAgentCall({ scheduler, settings }, { params, call });
 
-      // Resume existing agent
       if (params.resume) {
-        const existing = manager.getRecord(params.resume);
-        if (!existing || !isTopLevelAgent(existing)) {
-          return textResult(`Agent not found: "${params.resume}". It may have been cleaned up.`);
-        }
-        if (!existing.session) {
-          return textResult(`Agent "${params.resume}" has no active session to resume.`);
-        }
-
-        // Background resume: detached run that notifies on completion, mirroring
-        // a background spawn. Previously run_in_background was silently ignored
-        // on resume (this branch returned before the background branch below),
-        // so a resumed agent always blocked the main loop until it finished.
-        if (runInBackground) {
-          const id = existing.id;
-          // A detached resume hands control back while the record stays
-          // "running", so nothing stops the model from resuming the same agent
-          // again mid-run. manager.resume() refuses that (it would orphan the
-          // live run's abort controller); say why here, where the model can act
-          // on it, instead of letting it read as a generic failure.
-          if (existing.status === "running" || existing.status === "queued") {
-            return textResult(
-              `Agent "${params.resume}" is still ${existing.status} — it can only be resumed once its current run finishes.\n` +
-              `Use steer_subagent to send it a message mid-run, or get_subagent_result to wait for it.`,
-            );
-          }
-
-          const record = await startBackgroundResume(ctx, existing, params.prompt, {
-            outputTranscript,
-            maxTurns: effectiveMaxTurns,
-            toolCallId,
-          });
-          if (!record) {
-            return textResult(`Failed to resume agent "${params.resume}".`);
-          }
-
-          const isQueued = record.status === "queued";
-          return textResult(
-            `Agent ${isQueued ? "queued" : "resumed"} in background.\n` +
-            `Agent ID: ${id}\n` +
-            `Type: ${existing.type}\n` +
-            (record.outputFile ? `Output file: ${record.outputFile}\n` : "") +
-            (isQueued ? `Position: queued (max ${manager.getMaxConcurrent()} concurrent)\n` : "") +
-            `\nYou will be notified when this agent completes.\n` +
-            `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.`,
-            { ...detailBaseFor(detailBase, record), toolUses: record.toolUses, tokens: "", durationMs: 0, status: "background" as const, agentId: id },
-          );
-        }
-
-        const record = await manager.resume(params.resume, params.prompt, signal);
-        if (!record) {
-          return textResult(`Failed to resume agent "${params.resume}".`);
-        }
-        // A failed resume surfaces the error, plus any partial output THIS
-        // resume produced (never the previous turn's answer, #144).
-        if (record.status === "error") {
-          return textResult(`Agent failed: ${record.error}${partialOutputSuffix(record)}`, buildDetails(detailBaseFor(detailBase, record), record));
-        }
-        return textResult(
-          record.result?.trim() || "No output.",
-          buildDetails(detailBaseFor(detailBase, record), record),
+        return resumeAgentCall(
+          { manager, startBackgroundResume },
+          { ctx, toolCallId, params: { prompt: params.prompt, resume: params.resume }, signal, call },
         );
       }
 
-      // Background execution
       if (runInBackground) {
-        const bgCallbacks = createActivityTracker();
-
-        // Wrap onSessionCreated to wire output file streaming.
-        // The callback lazily reads record.outputFile (set right after spawn)
-        // rather than closing over a value that doesn't exist yet.
-        let id: string;
-        const origBgOnSession = bgCallbacks.onSessionCreated;
-        bgCallbacks.onSessionCreated = (session: any) => {
-          origBgOnSession(session);
-          const rec = manager.getRecord(id);
-          if (rec?.outputFile) {
-            rec.outputCleanup = streamToOutputFile(session, rec.outputFile, id, ctx.cwd);
-          }
-        };
-
-        // A throw here means the agent never started. Let it out: pi marks a
-        // tool call failed only when execute throws, and a returned message
-        // reads to the model as a subagent that ran and reported this (#179).
-        id = manager.spawn(pi, ctx, subagentType, params.prompt, {
-          description: params.description,
-          name: params.name as string | undefined,
-          model,
-          maxTurns: effectiveMaxTurns,
-          isolated,
-          inheritContext,
-          thinkingLevel: thinking,
-          isBackground: true,
-          isolation,
-          invocation: agentInvocation,
-          rootSessionId: ctx.sessionManager.getSessionId(),
-          ...bgCallbacks,
-        });
-
-        // Set output file + join mode synchronously after spawn, before the
-        // event loop yields — onSessionCreated is async so this is safe.
-        const joinMode = resolveJoinMode(settings.defaultJoinMode, true);
-        const record = manager.getRecord(id);
-        if (record && joinMode) {
-          record.joinMode = joinMode;
-          record.toolCallId = toolCallId;
-          attachTranscript(record, id);
-        }
-
-        // With isolation: "worktree" the agent isn't running yet — the repo
-        // copy is an awaited git call. Wait for it here, after the synchronous
-        // wiring above, so a strict-isolation failure still fails THIS tool
-        // call instead of being reported as a subagent that ran (#179).
-        await manager.awaitStartup(id);
-
-        if (joinMode == null || joinMode === 'async') {
-          // Foreground/no join mode or explicit async — not part of any batch
-        } else {
-          // smart or group — add to current batch
-          notifier.addToBatch(id, joinMode);
-        }
-
-        widget.ensureTimer();
-        widget.update();
-        fleet.ensureTimer();
-        fleet.update();
-
-        // Emit created event
-        pi.events.emit("subagents:created", {
-          id,
-          type: subagentType,
-          description: params.description,
-          isBackground: true,
-        });
-
-        const isQueued = record?.status === "queued";
-        return textResult(
-          `${fallbackNote}Agent ${isQueued ? "queued" : "started"} in background.\n` +
-          `Agent ID: ${id}\n` +
-          `Type: ${displayName}\n` +
-          `Description: ${params.description}\n` +
-          (record?.outputFile ? `Output file: ${record.outputFile}\n` : "") +
-          (isQueued ? `Position: queued (max ${manager.getMaxConcurrent()} concurrent)\n` : "") +
-          `\nYou will be notified when this agent completes.\n` +
-          `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.\n` +
-          `Do not duplicate this agent's work.`,
-          { ...detailBaseFor(detailBase, record), toolUses: 0, tokens: "", durationMs: 0, status: "background" as const, agentId: id },
+        return startBackgroundAgent(
+          { pi, manager, widget, fleet, notifier, settings },
+          { ctx, toolCallId, params, call, attachTranscript },
         );
       }
 
