@@ -65,6 +65,22 @@ export function resultBody(record: AgentRecord): string {
   return record.result?.trim() || "No output.";
 }
 
+/** The ` · `-joined "Current state" of a `steer_subagent` reply. */
+export function formatSteerState(record: AgentRecord, showCost: boolean): string {
+  const tokens = formatLifetimeTokens(record);
+  const contextPercent = getSessionContextPercent(record.session);
+  const stateParts: string[] = [];
+  if (tokens) stateParts.push(tokens);
+  if (showCost) {
+    const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
+    if (costText) stateParts.push(costText);
+  }
+  stateParts.push(`${record.toolUses} tool ${record.toolUses === 1 ? "use" : "uses"}`);
+  if (contextPercent !== null) stateParts.push(`context ${Math.round(contextPercent)}% full`);
+  if (record.compactionCount) stateParts.push(`${record.compactionCount} compaction${record.compactionCount === 1 ? "" : "s"}`);
+  return stateParts.join(" · ");
+}
+
 export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlToolsDeps): void {
   const { manager, notifier, settings, resolveAgentRef, usageReporting } = deps;
 
@@ -164,20 +180,9 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       try {
         await steerAgent(record.session, params.message);
         pi.events.emit("subagents:steered", { id: record.id, message: params.message });
-        const tokens = formatLifetimeTokens(record);
-        const contextPercent = getSessionContextPercent(record.session);
-        const stateParts: string[] = [];
-        if (tokens) stateParts.push(tokens);
-        if (settings.showCost) {
-          const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
-          if (costText) stateParts.push(costText);
-        }
-        stateParts.push(`${record.toolUses} tool ${record.toolUses === 1 ? "use" : "uses"}`);
-        if (contextPercent !== null) stateParts.push(`context ${Math.round(contextPercent)}% full`);
-        if (record.compactionCount) stateParts.push(`${record.compactionCount} compaction${record.compactionCount === 1 ? "" : "s"}`);
         return textResult(
           `Steering message sent to agent ${record.id}. The agent will process it after its current tool execution.\n` +
-          `Current state: ${stateParts.join(" · ")}`,
+          `Current state: ${formatSteerState(record, settings.showCost)}`,
         );
       } catch (err) {
         return textResult(`Failed to steer agent: ${err instanceof Error ? err.message : String(err)}`);
