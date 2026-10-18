@@ -769,51 +769,6 @@ All tools.`);
     expect(result.get("unrestricted")!.disallowedTools).toBeUndefined();
   });
 
-  it("parses memory scope", () => {
-    writeAgent("rememberer", `---
-description: Agent with memory
-memory: project
----
-
-Remember things.`);
-
-    const result = loadCustomAgents(tmpDir);
-    expect(result.get("rememberer")!.memory).toBe("project");
-  });
-
-  it("parses memory: user scope", () => {
-    writeAgent("global-mem", `---
-memory: user
----
-
-User memory.`);
-
-    const result = loadCustomAgents(tmpDir);
-    expect(result.get("global-mem")!.memory).toBe("user");
-  });
-
-  it("memory defaults to undefined when omitted", () => {
-    writeAgent("no-mem", `---
-description: No memory
----
-
-Stateless.`);
-
-    const result = loadCustomAgents(tmpDir);
-    expect(result.get("no-mem")!.memory).toBeUndefined();
-  });
-
-  it("rejects invalid memory scope", () => {
-    writeAgent("bad-mem", `---
-memory: invalid
----
-
-Bad memory.`);
-
-    const result = loadCustomAgents(tmpDir);
-    expect(result.get("bad-mem")!.memory).toBeUndefined();
-  });
-
   it("parses isolation: worktree", () => {
     writeAgent("isolated-wt", `---
 description: Worktree agent
@@ -1099,7 +1054,6 @@ Good body.`);
         runInBackground: true,
         outputTranscript: false,
         isolated: true,
-        memory: "project",
         isolation: "worktree",
       });
       expect(loaded.displayName).toBe("RT");
@@ -1113,7 +1067,6 @@ Good body.`);
       expect(loaded.runInBackground).toBe(true);
       expect(loaded.outputTranscript).toBe(false);
       expect(loaded.isolated).toBe(true);
-      expect(loaded.memory).toBe("project");
       expect(loaded.isolation).toBe("worktree");
     });
 
