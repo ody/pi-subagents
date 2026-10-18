@@ -19,7 +19,6 @@ const PINS: Record<string, number[]> = {
   "src/agent-tool.ts": [84],
   "src/mention-input.ts": [66],
   "src/nested-tools.ts": [35],
-  "src/session-text.ts": [35],
   "src/settings.ts": [40],
   "src/ui/agent-widget.ts": [68],
   "src/ui/conversation-viewer.ts": [74, 33],

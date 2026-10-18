@@ -180,6 +180,29 @@ describe("getAgentConversation", () => {
     expect(out.length).toBe("[Tool Result (bash)]: ".length + 200 + 3);
   });
 
+  it("skips whitespace-only user text and trims the rest", () => {
+    const out = getAgentConversation(
+      fakeSession([
+        { role: "user", content: "  \n " },
+        { role: "user", content: [{ type: "text", text: "   " }] },
+        { role: "user", content: "  padded  " },
+      ]),
+    );
+    expect(out).toBe("[User]: padded");
+  });
+
+  it("puts assistant text before the tool calls block", () => {
+    const out = getAgentConversation(
+      fakeSession([
+        {
+          role: "assistant",
+          content: [{ type: "toolCall", name: "a" }, { type: "text", text: "t" }],
+        },
+      ]),
+    );
+    expect(out).toBe("[Assistant]: t\n\n[Tool Calls]:\n  Tool: a");
+  });
+
   it("emits [Tool Calls] but no [Assistant] when the assistant only made tool calls", () => {
     const out = getAgentConversation(
       fakeSession([
