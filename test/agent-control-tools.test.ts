@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatResultStats, registerAgentControlTools, resultBody } from "../src/agent-control-tools.js";
+import { formatResultStats, formatSteerState, registerAgentControlTools, resultBody } from "../src/agent-control-tools.js";
+import { steerAgent } from "../src/agent-runner.js";
 import type { AgentRecord } from "../src/types.js";
+
+vi.mock("../src/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+  return { ...actual, steerAgent: vi.fn() };
+});
 
 function setup(record: AgentRecord) {
   const tools: any[] = [];
-  const pi = { registerTool: (tool: any) => tools.push(tool) } as any;
+  const pi = { registerTool: (tool: any) => tools.push(tool), events: { emit: vi.fn() } } as any;
   const cancelNudge = vi.fn();
   registerAgentControlTools(pi, {
     manager: { abort: vi.fn(), getActivity: vi.fn() } as any,
@@ -15,7 +21,8 @@ function setup(record: AgentRecord) {
     usageReporting: { settings: { reportUsage: false }, pendingUsage: new Map() } as any,
   });
   const getResult = tools.find((tool) => tool.name === "get_subagent_result");
-  return { getResult, cancelNudge };
+  const steer = tools.find((tool) => tool.name === "steer_subagent");
+  return { getResult, steer, cancelNudge };
 }
 
 function completedRecord(): AgentRecord {
@@ -151,5 +158,51 @@ describe("get_subagent_result verbose and consume", () => {
     const text = resultText(await getResult.execute("c", { agent_id: "explore" }, undefined, undefined, {}));
 
     expect(text).not.toContain("Agent Conversation");
+  });
+});
+
+describe("formatSteerState", () => {
+  const base = { toolUses: 1, startedAt: 0, lifetimeUsage: { input: 100, output: 50, cacheWrite: 0, cost: 0.5 } } as AgentRecord;
+
+  it("joins tokens, cost, tool uses, context and compactions with ·", () => {
+    const record = { ...base, session: sessionWith(41.6), compactionCount: 2 } as AgentRecord;
+    const parts = formatSteerState(record, true).split(" · ");
+    expect(parts).toHaveLength(5);
+    expect(parts.slice(2)).toEqual(["1 tool use", "context 42% full", "2 compactions"]);
+  });
+
+  it("pluralises tool uses and compactions", () => {
+    const record = { ...base, toolUses: 2, compactionCount: 1 } as AgentRecord;
+    const text = formatSteerState(record, false);
+    expect(text).toContain("2 tool uses");
+    expect(text).toContain("1 compaction");
+    expect(text).not.toContain("1 compactions");
+  });
+
+  it("omits cost when showCost is off, and context when unknown", () => {
+    const text = formatSteerState(base, false);
+    expect(text).not.toContain("$");
+    expect(text).not.toContain("context");
+  });
+});
+
+describe("steer_subagent", () => {
+  const running = () => ({ ...completedRecord(), status: "running", session: sessionWith(7) }) as AgentRecord;
+
+  it("reports the current state after steering", async () => {
+    vi.mocked(steerAgent).mockResolvedValue(undefined as any);
+    const { steer } = setup(running());
+    const text = resultText(await steer.execute("c", { agent_id: "explore", message: "hi" }, undefined, undefined, {}));
+    expect(text).toContain("Steering message sent to agent agent-123.");
+    expect(text).toContain("Current state: 0 tool uses · context 7% full");
+  });
+
+  it("turns a failure while formatting state into Failed to steer agent", async () => {
+    vi.mocked(steerAgent).mockResolvedValue(undefined as any);
+    const record = running();
+    Object.defineProperty(record, "lifetimeUsage", { get() { throw new Error("bad usage"); } });
+    const { steer } = setup(record);
+    const text = resultText(await steer.execute("c", { agent_id: "explore", message: "hi" }, undefined, undefined, {}));
+    expect(text).toBe("Failed to steer agent: bad usage");
   });
 });
