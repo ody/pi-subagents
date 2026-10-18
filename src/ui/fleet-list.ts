@@ -265,51 +265,60 @@ export class FleetList {
       return undefined;
     }
 
-    if (!this.active) {
-      // Activate: ↓ or ← at an empty prompt moves focus into the list.
-      const isActivator = matchesKey(data, "down") || matchesKey(data, "left");
-      if (isActivator && this.nodes().length > 1 && this.ui.getEditorText() === "") {
-        this.active = true;
-        this.selectedKey = MAIN_KEY;
-        this.update();
-        return { consume: true };
-      }
-      return undefined;
-    }
+    if (!this.active) return this.tryActivate(data) ? { consume: true } : undefined;
 
     // Active — arrows navigate the tree, Enter opens, Esc / Up-past-top exits.
-    if (matchesKey(data, "down") || matchesKey(data, "up")) {
-      const nodes = this.nodes();
-      const index = nodes.findIndex(n => n.key === this.selectedKey);
-      if (matchesKey(data, "up") && index <= 0) { this.deactivate(); return { consume: true }; }
-      const next = matchesKey(data, "down") ? Math.min(nodes.length - 1, index + 1) : index - 1;
-      const target = nodes[next];
-      if (target) this.selectedKey = target.key;
-      this.update();
-      return { consume: true };
+    if (matchesKey(data, "down")) this.moveSelection(true);
+    else if (matchesKey(data, "up")) this.moveSelection(false);
+    else if (matchesKey(data, "right")) this.expandSelected();
+    else if (matchesKey(data, "left")) this.collapseOrAscend();
+    else if (matchesKey(data, "escape")) this.deactivate();
+    else if (matchesKey(data, Key.enter)) this.openSelected();
+    else {
+      // Any other key cancels navigation and flows to the editor.
+      this.deactivate();
+      return undefined;
     }
-    if (matchesKey(data, "right")) {
-      const node = this.selectedNode(this.nodes());
-      if (node?.hasChildren && node.collapsed) {
-        this.collapsedKeys.delete(node.key);
-        this.update();
-      }
-      return { consume: true };
-    }
-    if (matchesKey(data, "left")) {
-      const nodes = this.nodes();
-      const node = this.selectedNode(nodes);
-      if (node?.hasChildren && !node.collapsed) this.collapsedKeys.add(node.key);
-      else if (node?.parentKey !== undefined) this.selectedKey = node.parentKey;
-      this.update();
-      return { consume: true };
-    }
-    if (matchesKey(data, "escape")) { this.deactivate(); return { consume: true }; }
-    if (matchesKey(data, Key.enter)) { this.openSelected(); return { consume: true }; }
+    return { consume: true };
+  }
 
-    // Any other key cancels navigation and flows to the editor.
-    this.deactivate();
-    return undefined;
+  /** Activate: ↓ or ← at an empty prompt moves focus into the list. True when the key was consumed. */
+  private tryActivate(data: string): boolean {
+    const isActivator = matchesKey(data, "down") || matchesKey(data, "left");
+    if (!isActivator || this.nodes().length <= 1 || this.ui?.getEditorText() !== "") return false;
+    this.active = true;
+    this.selectedKey = MAIN_KEY;
+    this.update();
+    return true;
+  }
+
+  /** Move one row; ↑ at or above the first row deactivates instead (no `update()`). */
+  private moveSelection(down: boolean): void {
+    const nodes = this.nodes();
+    const index = nodes.findIndex(n => n.key === this.selectedKey);
+    if (!down && index <= 0) {
+      this.deactivate();
+      return;
+    }
+    const target = nodes[down ? Math.min(nodes.length - 1, index + 1) : index - 1];
+    if (target) this.selectedKey = target.key;
+    this.update();
+  }
+
+  private expandSelected(): void {
+    const node = this.selectedNode(this.nodes());
+    if (node?.hasChildren && node.collapsed) {
+      this.collapsedKeys.delete(node.key);
+      this.update();
+    }
+  }
+
+  /** Collapse an expanded parent, otherwise move to the parent row. */
+  private collapseOrAscend(): void {
+    const node = this.selectedNode(this.nodes());
+    if (node?.hasChildren && !node.collapsed) this.collapsedKeys.add(node.key);
+    else if (node?.parentKey !== undefined) this.selectedKey = node.parentKey;
+    this.update();
   }
 
   /**

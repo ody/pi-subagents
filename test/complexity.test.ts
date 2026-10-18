@@ -22,7 +22,6 @@ const PINS: Record<string, number[]> = {
   "src/settings.ts": [40],
   "src/ui/agent-widget.ts": [68],
   "src/ui/conversation-viewer.ts": [74, 33],
-  "src/ui/fleet-list.ts": [33],
   "src/ui/notification-renderer.ts": [49],
   "src/ui/settings-menu.ts": [103, 37],
 };
