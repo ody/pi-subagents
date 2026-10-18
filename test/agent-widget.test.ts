@@ -240,6 +240,50 @@ describe("AgentWidget", () => {
     expect(lines).not.toContain("more (");
   });
 
+  describe("connectors", () => {
+    function bodyLines(records: unknown[]): string[] {
+      const widget = new AgentWidget(
+        withActivity({ listAgents: () => records } as any, new Map()),
+        () => "all",
+        () => false,
+        () => false,
+      );
+      let factory: any;
+      widget.setUICtx({ setStatus: () => {}, setWidget: (_key, content) => { factory = content; } });
+      for (const r of records as { id: string; status: string }[]) if (r.status === "completed") widget.markFinished(r.id);
+      widget.update();
+      return factory({ terminal: { columns: 200 }, requestRender: () => {} }, theme).render().slice(1);
+    }
+    const finished = (id: string) => ({ ...makeRecord(id, { status: "completed", completedAt: Date.now() }) });
+
+    it("closes a last running agent with └─ and drops │ from its activity line", () => {
+      const body = bodyLines([makeRecord("a"), makeRecord("b")]);
+      expect(body).toHaveLength(4);
+      expect(body[0]).toMatch(/^├─/);
+      expect(body[1]).toMatch(/^│ /);
+      expect(body[2]).toMatch(/^└─/);
+      expect(body[3]).not.toContain("│");
+      expect(body[3]).toMatch(/^ {5}⎿ /);
+    });
+
+    it("closes a queued line that comes last", () => {
+      const body = bodyLines([makeRecord("a"), makeRecord("q", { status: "queued" })]);
+      expect(body).toHaveLength(3);
+      expect(body[0]).toMatch(/^├─/);
+      expect(body[1]).toMatch(/^│ /);
+      expect(body[2]).toMatch(/^└─ ◦ 1 queued/);
+    });
+
+    it("closes a finished line that comes last", () => {
+      const body = bodyLines([finished("f")]);
+      expect(body).toHaveLength(1);
+      expect(body[0]).toMatch(/^└─/);
+      const withQueued = bodyLines([finished("f"), makeRecord("q", { status: "queued" })]);
+      expect(withQueued[0]).toMatch(/^├─/);
+      expect(withQueued[1]).toMatch(/^└─/);
+    });
+  });
+
   // "off" hides the widget entirely — even a background agent renders nothing.
   it("renders nothing in 'off' mode", () => {
     const manager = { listAgents: () => [makeRecord("background", { isBackground: true })] };
