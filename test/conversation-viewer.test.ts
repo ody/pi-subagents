@@ -950,3 +950,65 @@ describe("ConversationViewer", () => {
     });
   });
 });
+
+describe("ConversationViewer transcript lines", () => {
+  const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+
+  function body(messages: any[]): string[] {
+    const viewer = new ConversationViewer(
+      mockTui(60, 60), mockSession(messages), mockRecord({ status: "completed" }), undefined, plain, vi.fn(),
+      undefined, undefined, undefined, false, () => "off",
+    );
+    return viewer.render(60).map(l => l.replace(/\x1b\[[0-9;]*m/g, "").trim());
+  }
+
+  it("renders each role with separators, labels and skip rules", () => {
+    const lines = body([
+      { role: "user", content: "hello there" },
+      { role: "user", content: "   " },
+      { role: "assistant", content: [{ type: "text", text: "thinking" }, { type: "toolCall", name: "read" }] },
+      { role: "toolResult", content: [{ type: "text", text: "  " }] },
+      { role: "toolResult", content: [{ type: "text", text: "file body" }] },
+      { role: "bashExecution", command: "ls", output: "a\nb" },
+      { role: "bashExecution", command: "true", output: "  " },
+      { role: "mystery", content: "ignored" },
+      { role: "assistant", content: [] },
+    ]);
+    const start = lines.findIndex(l => l.includes("[User]"));
+    const end = lines.findLastIndex(l => l.includes("[Assistant]"));
+    expect(lines.slice(start, end + 1)).toMatchInlineSnapshot(`
+      [
+        "│ [User]                                                   │",
+        "│ hello there                                              │",
+        "│ ───                                                      │",
+        "│ [Assistant]                                              │",
+        "│ thinking                                                 │",
+        "│   [Tool: read]                                           │",
+        "│ ───                                                      │",
+        "│ [Result]                                                 │",
+        "│ file body                                                │",
+        "│ ───                                                      │",
+        "│   $ ls                                                   │",
+        "│ a                                                        │",
+        "│ b                                                        │",
+        "│ ───                                                      │",
+        "│   $ true                                                 │",
+        "│ ───                                                      │",
+        "│ [Assistant]                                              │",
+      ]
+    `);
+  });
+
+  it("shows the waiting placeholder for an empty transcript", () => {
+    expect(body([]).some(l => l.includes("(waiting for first message...)"))).toBe(true);
+  });
+
+  it("appends the streaming line for a running agent with activity", () => {
+    const viewer = new ConversationViewer(
+      mockTui(60, 60), mockSession([{ role: "user", content: "go" }]), mockRecord({ status: "running" }),
+      { activeTools: new Map(), toolUses: 0, tokens: "", responseText: "", session: undefined } as any,
+      plain, vi.fn(),
+    );
+    expect(viewer.render(60).some(l => l.includes("▍ "))).toBe(true);
+  });
+});

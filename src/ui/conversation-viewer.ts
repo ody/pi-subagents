@@ -525,6 +525,71 @@ export class ConversationViewer implements Component {
     return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
   }
 
+  /** Lines for one message, or undefined when it renders nothing (and gets no separator). */
+  private messageLines(msg: AgentSession["messages"][number], mode: ViewerMarkdownMode, width: number): string[] | undefined {
+    switch (msg.role) {
+      case "user": return this.userLines(msg, width);
+      case "assistant": return this.assistantLines(msg, mode, width);
+      case "toolResult": return this.toolResultLines(msg, mode, width);
+      default:
+        return (msg as any).role === "bashExecution" ? this.bashLines(msg, width) : undefined;
+    }
+  }
+
+  private userLines(msg: any, width: number): string[] | undefined {
+    const text = typeof msg.content === "string" ? msg.content : extractText(msg.content);
+    if (!text.trim()) return undefined;
+    return [this.theme.fg("accent", "[User]"), ...wrapTextWithAnsi(text.trim(), width)];
+  }
+
+  private assistantLines(msg: any, mode: ViewerMarkdownMode, width: number): string[] {
+    const th = this.theme;
+    const textParts: string[] = [];
+    const toolCalls: string[] = [];
+    for (const c of msg.content) {
+      if (c.type === "text" && c.text) textParts.push(c.text);
+      else if (c.type === "toolCall") {
+        toolCalls.push((c as any).name ?? (c as any).toolName ?? "unknown");
+      }
+    }
+    const lines = [th.bold("[Assistant]")];
+    if (textParts.length > 0) {
+      const text = textParts.join("\n").trim();
+      lines.push(...(mode === "off"
+        ? this.rawLines(text, width, false)
+        : this.markdownLines(msg, text, width, false)));
+    }
+    for (const name of toolCalls) {
+      lines.push(truncateToWidth(th.fg("muted", `  [Tool: ${name}]`), width));
+    }
+    return lines;
+  }
+
+  private toolResultLines(msg: any, mode: ViewerMarkdownMode, width: number): string[] | undefined {
+    const th = this.theme;
+    const { text, elided } = capResult(extractText(msg.content).trim());
+    if (!text) return undefined;
+    const lines = [
+      th.fg("dim", "[Result]"),
+      ...(mode === "all" ? this.markdownLines(msg, text, width, true) : this.rawLines(text, width, true)),
+    ];
+    if (elided) lines.push(truncateToWidth(th.fg("dim", truncationNote(elided)), width));
+    return lines;
+  }
+
+  private bashLines(bash: any, width: number): string[] {
+    const th = this.theme;
+    const lines = [truncateToWidth(th.fg("muted", `  $ ${bash.command}`), width)];
+    if (bash.output?.trim()) {
+      // Same cap as a tool result, never Markdown: command output is the one
+      // thing here that is definitionally not authored as Markdown.
+      const { text, elided } = capResult(bash.output.trim());
+      lines.push(...this.rawLines(text, width, true));
+      if (elided) lines.push(truncateToWidth(th.fg("dim", truncationNote(elided)), width));
+    }
+    return lines;
+  }
+
   private buildContentLines(width: number): string[] {
     if (width <= 0) return [];
 
@@ -540,59 +605,10 @@ export class ConversationViewer implements Component {
     const mode = this.markdownMode();
     let needsSeparator = false;
     for (const msg of messages) {
-      if (msg.role === "user") {
-        const text = typeof msg.content === "string"
-          ? msg.content
-          : extractText(msg.content);
-        if (!text.trim()) continue;
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        lines.push(th.fg("accent", "[User]"));
-        for (const line of wrapTextWithAnsi(text.trim(), width)) {
-          lines.push(line);
-        }
-      } else if (msg.role === "assistant") {
-        const textParts: string[] = [];
-        const toolCalls: string[] = [];
-        for (const c of msg.content) {
-          if (c.type === "text" && c.text) textParts.push(c.text);
-          else if (c.type === "toolCall") {
-            toolCalls.push((c as any).name ?? (c as any).toolName ?? "unknown");
-          }
-        }
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        lines.push(th.bold("[Assistant]"));
-        if (textParts.length > 0) {
-          const text = textParts.join("\n").trim();
-          lines.push(...(mode === "off"
-            ? this.rawLines(text, width, false)
-            : this.markdownLines(msg, text, width, false)));
-        }
-        for (const name of toolCalls) {
-          lines.push(truncateToWidth(th.fg("muted", `  [Tool: ${name}]`), width));
-        }
-      } else if (msg.role === "toolResult") {
-        const { text, elided } = capResult(extractText(msg.content).trim());
-        if (!text) continue;
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        lines.push(th.fg("dim", "[Result]"));
-        lines.push(...(mode === "all"
-          ? this.markdownLines(msg, text, width, true)
-          : this.rawLines(text, width, true)));
-        if (elided) lines.push(truncateToWidth(th.fg("dim", truncationNote(elided)), width));
-      } else if ((msg as any).role === "bashExecution") {
-        const bash = msg as any;
-        if (needsSeparator) lines.push(th.fg("dim", "───"));
-        lines.push(truncateToWidth(th.fg("muted", `  $ ${bash.command}`), width));
-        if (bash.output?.trim()) {
-          // Same cap as a tool result, never Markdown: command output is the one
-          // thing here that is definitionally not authored as Markdown.
-          const { text, elided } = capResult(bash.output.trim());
-          lines.push(...this.rawLines(text, width, true));
-          if (elided) lines.push(truncateToWidth(th.fg("dim", truncationNote(elided)), width));
-        }
-      } else {
-        continue;
-      }
+      const body = this.messageLines(msg, mode, width);
+      if (!body) continue;
+      if (needsSeparator) lines.push(th.fg("dim", "───"));
+      lines.push(...body);
       needsSeparator = true;
     }
 
