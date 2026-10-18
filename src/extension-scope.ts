@@ -6,7 +6,13 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import type { AgentSession, AgentSessionEvent, DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
+import type {
+  AgentSession,
+  AgentSessionEvent,
+  DefaultResourceLoader,
+  LoadExtensionsResult,
+} from "@earendil-works/pi-coding-agent";
+import { BUILTIN_TOOL_NAMES } from "./agent-types.js";
 
 /**
  * Tool names registered by THIS extension. Single source of truth so the
@@ -178,6 +184,146 @@ export function parseExtSelectors(entries: string[]): {
     set.add(tool);
   }
   return { extNames, narrowing };
+}
+
+export interface ExtensionLoadPlan {
+  noExtensions: boolean;
+  keepNames: Set<string>;
+  excludeNames: Set<string>;
+  hasExcludes: boolean;
+  additionalExtensionPaths: string[] | undefined;
+  /** Undefined when nothing needs filtering (load nothing, or load everything without excludes). */
+  extensionsOverride: ((base: LoadExtensionsResult) => LoadExtensionsResult) | undefined;
+  /**
+   * Pre-filter discovered names. Filled when the loader runs `extensionsOverride`
+   * during `reload()`, so read it after reload, never before. The exclude-typo
+   * warning compares against this: absence from the survivors is an exclude working.
+   */
+  discoveredNames(): Set<string> | undefined;
+}
+
+/**
+ * Plan the loader-level extension filter: `keepNames` minus `excludeNames`.
+ * `exclude_extensions:` is applied after the include set, so exclude wins. Excluded
+ * extensions' factories still run once during `reload()` — exclusion suppresses
+ * handler binding and tool registration; it is not a sandbox.
+ */
+export function planExtensionLoad(
+  extensions: true | string[] | false,
+  excludeExtensions: string[] | undefined,
+  configCwd: string,
+): ExtensionLoadPlan {
+  const noExtensions = extensions === false;
+  const spec = Array.isArray(extensions) ? parseExtensionsSpec(extensions, configCwd) : undefined;
+  const keepNames = spec?.names ?? new Set<string>();
+  const excludeNames = new Set((excludeExtensions ?? []).map((n) => n.toLowerCase()));
+  const hasExcludes = excludeNames.size > 0;
+  const loadAll = extensions === true || spec?.wildcard === true;
+  let discovered: Set<string> | undefined;
+  const extensionsOverride =
+    noExtensions || (loadAll && !hasExcludes)
+      ? undefined
+      : (base: LoadExtensionsResult): LoadExtensionsResult => {
+          discovered = new Set(base.extensions.flatMap((e) => extensionCanonicalNames(e.path)));
+          return {
+            ...base,
+            extensions: base.extensions.filter((e) => {
+              const canons = extensionCanonicalNames(e.path);
+              if (canons.some((n) => excludeNames.has(n))) return false; // exclude wins
+              return loadAll || canons.some((n) => keepNames.has(n));
+            }),
+          };
+        };
+  return {
+    noExtensions,
+    keepNames,
+    excludeNames,
+    hasExcludes,
+    additionalExtensionPaths: spec?.paths.length ? spec.paths : undefined,
+    extensionsOverride,
+    discoveredNames: () => discovered,
+  };
+}
+
+/**
+ * Messages (as `extension-error:` tool-activity names) for bad `extensions:` /
+ * `ext:` config. A subagent spawns mid-task, so these warn rather than abort.
+ * `getSurvivingNames` is called only when `keepNames` or `extNames` is non-empty.
+ */
+export function extensionConfigWarnings(a: {
+  type: string;
+  noExtensions: boolean;
+  keepNames: Set<string>;
+  excludeNames: Set<string>;
+  extNames: Set<string>;
+  discoveredNames: Set<string> | undefined;
+  getSurvivingNames: () => Set<string>;
+}): string[] {
+  const { type, keepNames, excludeNames, extNames } = a;
+  const warnings: string[] = [];
+  // Contradictory: nothing loads, so there is nothing to exclude.
+  if (excludeNames.size > 0 && a.noExtensions) {
+    warnings.push(
+      `extension-error:exclude_extensions has no effect for agent "${type}" — extensions: false loads nothing`,
+    );
+  }
+  if (excludeNames.size > 0 && a.discoveredNames) {
+    for (const name of excludeNames) {
+      if (!a.discoveredNames.has(name)) {
+        warnings.push(
+          `extension-error:exclude_extensions: "${name}" for agent "${type}" did not match any discovered extension`,
+        );
+      }
+    }
+  }
+  if (keepNames.size === 0 && extNames.size === 0) return warnings;
+  const surviving = a.getSurvivingNames();
+  for (const name of keepNames) {
+    if (surviving.has(name)) continue;
+    warnings.push(
+      excludeNames.has(name)
+        ? `extension-error:extension "${name}" is in both extensions: and exclude_extensions: for agent "${type}" — exclude wins`
+        : `extension-error:extension "${name}" requested by agent "${type}" was not loaded`,
+    );
+  }
+  for (const name of extNames) {
+    if (surviving.has(name)) continue;
+    warnings.push(
+      `extension-error:ext:${name} referenced by agent "${type}" but extension "${name}" is not loaded (check extensions:/exclude_extensions:)`,
+    );
+  }
+  return warnings;
+}
+
+/**
+ * Static tool scope for session construction. Under `noExtensions` a strict
+ * allowlist (nothing async can appear); otherwise a deny list pi re-applies on
+ * every registry refresh. Opt-in nested tools share EXCLUDED_TOOL_NAMES' names,
+ * so they are re-admitted explicitly; `disallowedSet` wins even over them.
+ */
+export function resolveSessionToolScope(a: {
+  noExtensions: boolean;
+  toolNames: string[];
+  disallowedSet: Set<string> | undefined;
+  nestedToolNames: Set<string>;
+}): { sessionTools: string[] | undefined; sessionExcludeTools: string[] | undefined } {
+  const { toolNames, disallowedSet, nestedToolNames } = a;
+  if (a.noExtensions) {
+    return {
+      sessionTools: [
+        ...toolNames.filter((t) => !EXCLUDED_TOOL_NAMES.includes(t) && !disallowedSet?.has(t)),
+        ...[...nestedToolNames].filter((t) => !disallowedSet?.has(t)),
+      ],
+      sessionExcludeTools: undefined,
+    };
+  }
+  const denyTools = new Set<string>(EXCLUDED_TOOL_NAMES.filter((t) => !nestedToolNames.has(t)));
+  const wanted = new Set(toolNames);
+  for (const name of BUILTIN_TOOL_NAMES) {
+    if (!wanted.has(name)) denyTools.add(name);
+  }
+  for (const name of disallowedSet ?? []) denyTools.add(name);
+  return { sessionTools: undefined, sessionExcludeTools: [...denyTools] };
 }
 
 /**
