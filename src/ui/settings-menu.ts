@@ -1,3 +1,4 @@
+// Size: the menu's item list and the per-setting handler table both enumerate the same 23 settings, so they change together.
 // The `/agents -> Settings` menu: a SettingsList over every setting, plus the
 // typed-input flow for numeric fields.
 
@@ -46,8 +47,197 @@ const NUMERIC_IDS = new Set([
   "maxConcurrent", "maxConcurrentForeground", "defaultMaxTurns", "graceTurns", "maxSubagentDepth",
 ]);
 
+type SettingId =
+  | "maxConcurrent" | "maxConcurrentForeground" | "defaultMaxTurns" | "graceTurns" | "maxSubagentDepth"
+  | "joinMode" | "backgroundByDefault" | "schedulingEnabled" | "scopeModels" | "strictAgentFiles"
+  | "disableDefaultAgents" | "fallbackSubagent" | "outputTranscript" | "worktreeIsolation"
+  | "toolDescriptionMode" | "reportUsage" | "showCost" | "showModel" | "viewerMarkdown"
+  | "fleetView" | "agentMentions" | "rememberAgents" | "widgetMode";
+
+/**
+ * One handler per setting id. The Record makes a missing id a type error; the
+ * Map makes an unknown id a silent no-op (no prototype keys like "constructor").
+ */
+function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Map<string, (value: string) => void> {
+  const { settings, appliers, manager, scheduler, settingsPersist } = deps;
+  const handlers: Record<SettingId, (value: string) => void> = {
+    maxConcurrent: (value) => {
+      const n = parseInt(value, 10);
+      if (n >= 1) {
+        manager.setMaxConcurrent(n);
+        settingsPersist.notifyApplied(ctx, `Max concurrency set to ${n}`);
+      }
+    },
+    maxConcurrentForeground: (value) => {
+      // 0 is meaningful here, unlike maxConcurrent above: it means unlimited.
+      const n = parseInt(value, 10);
+      if (n >= 0) {
+        manager.setMaxConcurrentForeground(n);
+        settingsPersist.notifyApplied(ctx, n === 0
+          ? "Max foreground concurrency set to unlimited"
+          : `Max foreground concurrency set to ${n}`);
+      }
+    },
+    defaultMaxTurns: (value) => {
+      const n = parseInt(value, 10);
+      if (n === 0) {
+        setDefaultMaxTurns(undefined);
+        settingsPersist.notifyApplied(ctx, "Default max turns set to unlimited");
+      } else if (n >= 1) {
+        setDefaultMaxTurns(n);
+        settingsPersist.notifyApplied(ctx, `Default max turns set to ${n}`);
+      }
+    },
+    graceTurns: (value) => {
+      const n = parseInt(value, 10);
+      if (n >= 1) {
+        setGraceTurns(n);
+        settingsPersist.notifyApplied(ctx, `Grace turns set to ${n}`);
+      }
+    },
+    maxSubagentDepth: (value) => {
+      const n = parseInt(value, 10);
+      if (n >= 0) {
+        setMaxSubagentDepth(n);
+        settingsPersist.notifyApplied(
+          ctx,
+          n <= 1
+            ? "Nested delegation disabled"
+            : `Nested depth set to ${n}. Applies to agents started from now on.`,
+        );
+      }
+    },
+    joinMode: (value) => {
+      appliers.setDefaultJoinMode(value as JoinMode);
+      settingsPersist.notifyApplied(ctx, `Default join mode set to ${value}`);
+    },
+    backgroundByDefault: (value) => {
+      const enabled = value === "on";
+      appliers.setBackgroundByDefault(enabled);
+      settingsPersist.notifyApplied(
+        ctx,
+        enabled
+          ? "Agent calls run in the background unless they pass run_in_background: false"
+          : "Agent calls block and return inline unless they pass run_in_background: true",
+      );
+    },
+    schedulingEnabled: (value) => {
+      const enabled = value === "on";
+      if (enabled === settings.schedulingEnabled) {
+        ctx.ui.notify(`Scheduling already ${enabled ? "enabled" : "disabled"}.`, "info");
+      } else {
+        appliers.setSchedulingEnabled(enabled);
+        if (!enabled) scheduler.stop();  // immediate kill — outstanding fires stop ticking
+        settingsPersist.notifyApplied(
+          ctx,
+          `Scheduling ${enabled ? "enabled" : "disabled"}. Tool spec change takes effect on next pi session.`,
+        );
+      }
+    },
+    scopeModels: (value) => {
+      const enabled = value === "on";
+      setScopeModelsEnabled(enabled);
+      settingsPersist.notifyApplied(ctx, `Scope models ${enabled ? "enabled" : "disabled"}`);
+    },
+    strictAgentFiles: (value) => {
+      const enabled = value === "on";
+      appliers.setStrictAgentFiles(enabled);
+      settingsPersist.notifyApplied(ctx, `Strict agent files ${enabled ? "enabled" : "disabled"}. Takes effect on next pi session.`);
+    },
+    disableDefaultAgents: (value) => {
+      const enabled = value === "on";
+      appliers.setDisableDefaultAgents(enabled);
+      settingsPersist.notifyApplied(ctx, `Default agents ${enabled ? "disabled" : "enabled"}. Tool spec change takes effect on next pi session.`);
+    },
+    fallbackSubagent: (value) => {
+      setFallbackSubagent(value);
+      settingsPersist.notifyApplied(
+        ctx,
+        value === NO_FALLBACK
+          ? "Unknown or disabled agent types will now be rejected"
+          : `Unknown agent types will fall back to ${value}`,
+      );
+    },
+    outputTranscript: (value) => {
+      const enabled = value === "on";
+      setOutputTranscriptDefault(enabled);
+      settingsPersist.notifyApplied(ctx, `Output transcript ${enabled ? "enabled" : "disabled"} by default`);
+    },
+    worktreeIsolation: (value) => {
+      const enabled = value === "on";
+      setWorktreeIsolationEnabled(enabled);
+      // The refusal is live, but the tool schema is built at registration, so
+      // the isolation parameter only appears/disappears next session.
+      settingsPersist.notifyApplied(
+        ctx,
+        `Worktree isolation ${enabled ? "enabled" : "disabled"}. Tool parameter updates on next pi session.`,
+      );
+    },
+    toolDescriptionMode: (value) => {
+      appliers.setToolDescriptionMode(value as ToolDescriptionMode);
+      settingsPersist.notifyApplied(ctx, `Tool description set to ${value}. Takes effect on next pi session.`);
+    },
+    reportUsage: (value) => {
+      const enabled = value === "on";
+      appliers.setReportUsage(enabled);
+      settingsPersist.notifyApplied(
+        ctx,
+        enabled
+          ? "Subagent usage now counted in this session's totals"
+          : "Subagent usage no longer counted in this session's totals",
+      );
+    },
+    showCost: (value) => {
+      const enabled = value === "on";
+      appliers.setShowCost(enabled);
+      settingsPersist.notifyApplied(ctx, `Cost display ${enabled ? "enabled" : "disabled"}`);
+    },
+    showModel: (value) => {
+      const enabled = value === "on";
+      appliers.setShowModel(enabled);
+      settingsPersist.notifyApplied(ctx, `Model display ${enabled ? "enabled" : "disabled"}`);
+    },
+    viewerMarkdown: (value) => {
+      appliers.setViewerMarkdown(value as ViewerMarkdownMode);
+      settingsPersist.notifyApplied(ctx, `Viewer markdown set to ${value}`);
+    },
+    fleetView: (value) => {
+      const enabled = value === "on";
+      appliers.setFleetView(enabled);
+      settingsPersist.notifyApplied(ctx, `Fleet view ${enabled ? "enabled" : "disabled"}`);
+    },
+    agentMentions: (value) => {
+      const mode = value as AgentMentionMode;
+      appliers.setAgentMentions(mode);
+      settingsPersist.notifyApplied(
+        ctx,
+        mode === "off"
+          ? "Agent mentions disabled"
+          : mode === "model"
+            ? "Agent mentions on — a conversation clone starts a mentioned agent off-screen"
+            : "Agent mentions on — a mentioned agent starts here, with no model call",
+      );
+    },
+    rememberAgents: (value) => {
+      const enabled = value === "on";
+      setRememberAgents(enabled);
+      settingsPersist.notifyApplied(ctx, `Remember agents ${enabled ? "enabled" : "disabled"}`);
+    },
+    widgetMode: (value) => {
+      appliers.setWidgetMode(value as WidgetMode);
+      settingsPersist.notifyApplied(ctx, `Widget set to ${value}`);
+    },
+  };
+  return new Map(Object.entries(handlers));
+}
+
+/** Apply one setting change from the menu. Unknown ids and out-of-range numbers are ignored. */
+export function applySettingValue(ctx: ExtensionCommandContext, deps: SettingsMenuDeps, id: string, value: string): void {
+  settingHandlers(ctx, deps).get(id)?.(value);
+}
+
 export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Promise<void> {
-  const { settings, appliers, manager, scheduler, settingsPersist, isStrictAgentFiles } = deps;
+  const { settings, manager, isStrictAgentFiles } = deps;
 
   function buildItems(): SettingItem[] {
     const mc = manager.getMaxConcurrent();
@@ -233,153 +423,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
     ];
   }
 
-  function applyValue(id: string, value: string) {
-    if (id === "maxConcurrent") {
-      const n = parseInt(value, 10);
-      if (n >= 1) {
-        manager.setMaxConcurrent(n);
-        settingsPersist.notifyApplied(ctx, `Max concurrency set to ${n}`);
-      }
-    } else if (id === "maxConcurrentForeground") {
-      // 0 is meaningful here, unlike maxConcurrent above: it means unlimited.
-      const n = parseInt(value, 10);
-      if (n >= 0) {
-        manager.setMaxConcurrentForeground(n);
-        settingsPersist.notifyApplied(ctx, n === 0
-          ? "Max foreground concurrency set to unlimited"
-          : `Max foreground concurrency set to ${n}`);
-      }
-    } else if (id === "defaultMaxTurns") {
-      const n = parseInt(value, 10);
-      if (n === 0) {
-        setDefaultMaxTurns(undefined);
-        settingsPersist.notifyApplied(ctx, "Default max turns set to unlimited");
-      } else if (n >= 1) {
-        setDefaultMaxTurns(n);
-        settingsPersist.notifyApplied(ctx, `Default max turns set to ${n}`);
-      }
-    } else if (id === "graceTurns") {
-      const n = parseInt(value, 10);
-      if (n >= 1) {
-        setGraceTurns(n);
-        settingsPersist.notifyApplied(ctx, `Grace turns set to ${n}`);
-      }
-    } else if (id === "maxSubagentDepth") {
-      const n = parseInt(value, 10);
-      if (n >= 0) {
-        setMaxSubagentDepth(n);
-        settingsPersist.notifyApplied(
-          ctx,
-          n <= 1
-            ? "Nested delegation disabled"
-            : `Nested depth set to ${n}. Applies to agents started from now on.`,
-        );
-      }
-    } else if (id === "joinMode") {
-      appliers.setDefaultJoinMode(value as JoinMode);
-      settingsPersist.notifyApplied(ctx, `Default join mode set to ${value}`);
-    } else if (id === "backgroundByDefault") {
-      const enabled = value === "on";
-      appliers.setBackgroundByDefault(enabled);
-      settingsPersist.notifyApplied(
-        ctx,
-        enabled
-          ? "Agent calls run in the background unless they pass run_in_background: false"
-          : "Agent calls block and return inline unless they pass run_in_background: true",
-      );
-    } else if (id === "schedulingEnabled") {
-      const enabled = value === "on";
-      if (enabled === settings.schedulingEnabled) {
-        ctx.ui.notify(`Scheduling already ${enabled ? "enabled" : "disabled"}.`, "info");
-      } else {
-        appliers.setSchedulingEnabled(enabled);
-        if (!enabled) scheduler.stop();  // immediate kill — outstanding fires stop ticking
-        settingsPersist.notifyApplied(
-          ctx,
-          `Scheduling ${enabled ? "enabled" : "disabled"}. Tool spec change takes effect on next pi session.`,
-        );
-      }
-    } else if (id === "scopeModels") {
-      const enabled = value === "on";
-      setScopeModelsEnabled(enabled);
-      settingsPersist.notifyApplied(ctx, `Scope models ${enabled ? "enabled" : "disabled"}`);
-    } else if (id === "strictAgentFiles") {
-      const enabled = value === "on";
-      appliers.setStrictAgentFiles(enabled);
-      settingsPersist.notifyApplied(ctx, `Strict agent files ${enabled ? "enabled" : "disabled"}. Takes effect on next pi session.`);
-    } else if (id === "disableDefaultAgents") {
-      const enabled = value === "on";
-      appliers.setDisableDefaultAgents(enabled);
-      settingsPersist.notifyApplied(ctx, `Default agents ${enabled ? "disabled" : "enabled"}. Tool spec change takes effect on next pi session.`);
-    } else if (id === "fallbackSubagent") {
-      setFallbackSubagent(value);
-      settingsPersist.notifyApplied(
-        ctx,
-        value === NO_FALLBACK
-          ? "Unknown or disabled agent types will now be rejected"
-          : `Unknown agent types will fall back to ${value}`,
-      );
-    } else if (id === "outputTranscript") {
-      const enabled = value === "on";
-      setOutputTranscriptDefault(enabled);
-      settingsPersist.notifyApplied(ctx, `Output transcript ${enabled ? "enabled" : "disabled"} by default`);
-    } else if (id === "worktreeIsolation") {
-      const enabled = value === "on";
-      setWorktreeIsolationEnabled(enabled);
-      // The refusal is live, but the tool schema is built at registration, so
-      // the isolation parameter only appears/disappears next session.
-      settingsPersist.notifyApplied(
-        ctx,
-        `Worktree isolation ${enabled ? "enabled" : "disabled"}. Tool parameter updates on next pi session.`,
-      );
-    } else if (id === "toolDescriptionMode") {
-      appliers.setToolDescriptionMode(value as ToolDescriptionMode);
-      settingsPersist.notifyApplied(ctx, `Tool description set to ${value}. Takes effect on next pi session.`);
-    } else if (id === "reportUsage") {
-      const enabled = value === "on";
-      appliers.setReportUsage(enabled);
-      settingsPersist.notifyApplied(
-        ctx,
-        enabled
-          ? "Subagent usage now counted in this session's totals"
-          : "Subagent usage no longer counted in this session's totals",
-      );
-    } else if (id === "showCost") {
-      const enabled = value === "on";
-      appliers.setShowCost(enabled);
-      settingsPersist.notifyApplied(ctx, `Cost display ${enabled ? "enabled" : "disabled"}`);
-    } else if (id === "showModel") {
-      const enabled = value === "on";
-      appliers.setShowModel(enabled);
-      settingsPersist.notifyApplied(ctx, `Model display ${enabled ? "enabled" : "disabled"}`);
-    } else if (id === "viewerMarkdown") {
-      appliers.setViewerMarkdown(value as ViewerMarkdownMode);
-      settingsPersist.notifyApplied(ctx, `Viewer markdown set to ${value}`);
-    } else if (id === "fleetView") {
-      const enabled = value === "on";
-      appliers.setFleetView(enabled);
-      settingsPersist.notifyApplied(ctx, `Fleet view ${enabled ? "enabled" : "disabled"}`);
-    } else if (id === "agentMentions") {
-      const mode = value as AgentMentionMode;
-      appliers.setAgentMentions(mode);
-      settingsPersist.notifyApplied(
-        ctx,
-        mode === "off"
-          ? "Agent mentions disabled"
-          : mode === "model"
-            ? "Agent mentions on — a conversation clone starts a mentioned agent off-screen"
-            : "Agent mentions on — a mentioned agent starts here, with no model call",
-      );
-    } else if (id === "rememberAgents") {
-      const enabled = value === "on";
-      setRememberAgents(enabled);
-      settingsPersist.notifyApplied(ctx, `Remember agents ${enabled ? "enabled" : "disabled"}`);
-    } else if (id === "widgetMode") {
-      appliers.setWidgetMode(value as WidgetMode);
-      settingsPersist.notifyApplied(ctx, `Widget set to ${value}`);
-    }
-  }
-
   let list: SettingsList;
   // Track current selection index directly (SettingsList doesn't expose it).
   // Updated on arrow keys so Enter knows which field is selected immediately.
@@ -393,7 +436,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       items.length + 2,
       getSettingsListTheme(),
       (id, newValue) => {
-        applyValue(id, newValue);
+        applySettingValue(ctx, deps, id, newValue);
       },
       () => done(undefined as undefined),
     );
@@ -453,7 +496,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       const trimmed = input.trim();
       const n = Number(trimmed);
       if (trimmed !== "" && Number.isInteger(n)) {
-        applyValue(result, String(n));
+        applySettingValue(ctx, deps, result, String(n));
         await showSettings(ctx, deps);
         return;
       }
