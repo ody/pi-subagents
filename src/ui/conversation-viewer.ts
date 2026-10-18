@@ -296,6 +296,41 @@ export class ConversationViewer implements Component {
 
     // Header
     lines.push(hrTop);
+    lines.push(row(this.headerLine()));
+    const invocationLine = this.invocationLine();
+    if (invocationLine) lines.push(row(invocationLine));
+    lines.push(hrMid);
+
+    // Content area — rebuild every render (live data, no cache needed)
+    const contentLines = this.buildContentLines(innerW);
+    const viewportHeight = this.viewportHeight();
+    const maxScroll = Math.max(0, contentLines.length - viewportHeight);
+
+    if (this.autoScroll) {
+      this.scrollOffset = maxScroll;
+    }
+
+    const visibleStart = Math.min(this.scrollOffset, maxScroll);
+    const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
+
+    for (let i = 0; i < viewportHeight; i++) {
+      lines.push(row(visible[i] ?? ""));
+    }
+
+    // Footer
+    lines.push(hrMid);
+    const footer = this.composer
+      ? this.composerFooter(innerW)
+      : this.idleFooter(innerW, { lineCount: contentLines.length, viewportHeight, visibleStart });
+    for (const content of footer) lines.push(row(content));
+    lines.push(hrBot);
+
+    return lines;
+  }
+
+  /** Unframed header content: status icon, name, description and run stats. */
+  private headerLine(): string {
+    const th = this.theme;
     const modeLabel = getPromptModeLabel(this.record.type);
     const modeTag = modeLabel ? ` ${th.fg("dim", `(${modeLabel})`)}` : "";
     const statusIcon = this.record.status === "running"
@@ -321,71 +356,54 @@ export class ConversationViewer implements Component {
     const cost = this.showCost ? formatCost(getLifetimeCost(this.record.lifetimeUsage)) : "";
     if (cost) headerParts.push(cost);
 
-    lines.push(row(
-      `${statusIcon} ${renderAgentName(this.record.type, th, { bold: true })}${modeTag}  ${th.fg("muted", this.record.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`,
-    ));
-    const invocationLine = this.invocationLine();
-    if (invocationLine) lines.push(row(invocationLine));
-    lines.push(hrMid);
+    return `${statusIcon} ${renderAgentName(this.record.type, th, { bold: true })}${modeTag}  ${th.fg("muted", this.record.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`;
+  }
 
-    // Content area — rebuild every render (live data, no cache needed)
-    const contentLines = this.buildContentLines(innerW);
-    const viewportHeight = this.viewportHeight();
-    const maxScroll = Math.max(0, contentLines.length - viewportHeight);
+  /** Unframed footer rows while composing: the input row, then the hint row. */
+  private composerFooter(innerW: number): string[] {
+    const th = this.theme;
+    // Composer row: the Input renders its own `> ` prompt and cursor.
+    const input = this.composer?.render(innerW)[0] ?? "";
+    const composeHint = th.fg("dim", "Enter send · Esc cancel");
+    const composeLeft = th.fg("accent", "✎ steer");
+    const composeGap = Math.max(1, innerW - visibleWidth(composeLeft) - visibleWidth(composeHint));
+    return [input, composeLeft + " ".repeat(composeGap) + composeHint];
+  }
 
-    if (this.autoScroll) {
-      this.scrollOffset = maxScroll;
+  /** Unframed footer row when idle: actions left, navigation right. */
+  private idleFooter(
+    innerW: number,
+    scroll: { lineCount: number; viewportHeight: number; visibleStart: number },
+  ): string[] {
+    const th = this.theme;
+    // Actions on the left, navigation on the right. The scroll hint keeps its
+    // full key list so the less-obvious bindings stay discoverable; it leads
+    // the right group so "Esc close" is the only part that truncates first.
+    const sep = th.fg("dim", " · ");
+    const actions: string[] = [];
+    if (this.canSteer()) actions.push(th.fg("dim", "Enter steer"));
+    if (this.isStoppable()) {
+      actions.push(this.stopArmed ? th.fg("error", "x again to STOP") : th.fg("dim", "x stop"));
     }
+    // Abbreviated (`raw`/`md`/`md+`) because the idle footer is already full
+    // at 80 columns with steer + stop present, and this group has no
+    // degradation step below "drop the line-count readout".
+    actions.push(th.fg("dim", `m ${MARKDOWN_MODE_LABELS[this.markdownMode()]}`));
+    const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn or Shift+↑↓ · Esc close");
 
-    const visibleStart = Math.min(this.scrollOffset, maxScroll);
-    const visible = contentLines.slice(visibleStart, visibleStart + viewportHeight);
+    // Prepend the line-count/scroll-% readout only when there's spare width —
+    // it's the first thing dropped so it never crowds out the hints.
+    const scrollPct = scroll.lineCount <= scroll.viewportHeight
+      ? "100%"
+      : `${Math.round(((scroll.visibleStart + scroll.viewportHeight) / scroll.lineCount) * 100)}%`;
+    const count = th.fg("dim", `${scroll.lineCount} lines · ${scrollPct}`);
+    const withCount = [count, ...actions].join(sep);
+    const footerLeft = visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
+      ? withCount
+      : actions.join(sep);
 
-    for (let i = 0; i < viewportHeight; i++) {
-      lines.push(row(visible[i] ?? ""));
-    }
-
-    // Footer
-    lines.push(hrMid);
-    if (this.composer) {
-      // Composer row: the Input renders its own `> ` prompt and cursor.
-      lines.push(row(this.composer.render(innerW)[0] ?? ""));
-      const composeHint = th.fg("dim", "Enter send · Esc cancel");
-      const composeLeft = th.fg("accent", "✎ steer");
-      const composeGap = Math.max(1, innerW - visibleWidth(composeLeft) - visibleWidth(composeHint));
-      lines.push(row(composeLeft + " ".repeat(composeGap) + composeHint));
-    } else {
-      // Actions on the left, navigation on the right. The scroll hint keeps its
-      // full key list so the less-obvious bindings stay discoverable; it leads
-      // the right group so "Esc close" is the only part that truncates first.
-      const sep = th.fg("dim", " · ");
-      const actions: string[] = [];
-      if (this.canSteer()) actions.push(th.fg("dim", "Enter steer"));
-      if (this.isStoppable()) {
-        actions.push(this.stopArmed ? th.fg("error", "x again to STOP") : th.fg("dim", "x stop"));
-      }
-      // Abbreviated (`raw`/`md`/`md+`) because the idle footer is already full
-      // at 80 columns with steer + stop present, and this group has no
-      // degradation step below "drop the line-count readout".
-      actions.push(th.fg("dim", `m ${MARKDOWN_MODE_LABELS[this.markdownMode()]}`));
-      const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn or Shift+↑↓ · Esc close");
-
-      // Prepend the line-count/scroll-% readout only when there's spare width —
-      // it's the first thing dropped so it never crowds out the hints.
-      const scrollPct = contentLines.length <= viewportHeight
-        ? "100%"
-        : `${Math.round(((visibleStart + viewportHeight) / contentLines.length) * 100)}%`;
-      const count = th.fg("dim", `${contentLines.length} lines · ${scrollPct}`);
-      const withCount = [count, ...actions].join(sep);
-      const footerLeft = visibleWidth(withCount) + visibleWidth(footerRight) + 1 <= innerW
-        ? withCount
-        : actions.join(sep);
-
-      const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
-      lines.push(row(footerLeft + " ".repeat(footerGap) + footerRight));
-    }
-    lines.push(hrBot);
-
-    return lines;
+    const footerGap = Math.max(1, innerW - visibleWidth(footerLeft) - visibleWidth(footerRight));
+    return [footerLeft + " ".repeat(footerGap) + footerRight];
   }
 
   /** Stoppable only when a stop handler exists and the agent is still active. */
