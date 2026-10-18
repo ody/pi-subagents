@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addUsage, getLifetimeCost, getLifetimeTotal, getSessionContextPercent, getSessionTokens, PendingUsagePool } from "../src/usage.js";
+import { addUsage, assistantUsage, getLifetimeCost, getLifetimeTotal, getSessionContextPercent, getSessionTokens, PendingUsagePool } from "../src/usage.js";
 
 // Regression for issue #38 — token semantics + context indicator
 describe("usage", () => {
@@ -199,5 +199,21 @@ describe("usage", () => {
 
       expect(pool.drain()).toBeUndefined();
     });
+  });
+});
+
+describe("assistantUsage", () => {
+  it("returns undefined when the message has no usage", () => {
+    expect(assistantUsage({})).toBeUndefined();
+  });
+
+  it("maps all fields, taking cost from cost.total", () => {
+    expect(
+      assistantUsage({ usage: { input: 1, output: 2, cacheWrite: 3, cacheRead: 4, cost: { total: 0.5 } } }),
+    ).toEqual({ input: 1, output: 2, cacheWrite: 3, cacheRead: 4, cost: 0.5 });
+  });
+
+  it("defaults missing fields to 0", () => {
+    expect(assistantUsage({ usage: {} })).toEqual({ input: 0, output: 0, cacheWrite: 0, cacheRead: 0, cost: 0 });
   });
 });

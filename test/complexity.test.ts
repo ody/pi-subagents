@@ -14,7 +14,7 @@ const ROOT = join(import.meta.dirname, "..");
 const MAX_SCORE = 30;
 
 const PINS: Record<string, number[]> = {
-  "src/agent-runner.ts": [98, 38],
+  "src/agent-runner.ts": [98],
   "src/agent-tool.ts": [84],
   "src/nested-tools.ts": [35],
   "src/ui/agent-widget.ts": [68],

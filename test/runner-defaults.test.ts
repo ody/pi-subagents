@@ -12,6 +12,7 @@ import {
   resolveEffectiveMaxTurns,
   setDefaultMaxTurns,
   setGraceTurns,
+  turnLimitAction,
 } from "../src/runner-defaults.js";
 
 function makeAgentConfig(overrides: Record<string, unknown> = {}) {
@@ -156,5 +157,30 @@ describe("resolveEffectiveMaxTurns", () => {
     // falling through to the default would impose one it asked not to have.
     setDefaultMaxTurns(20);
     expect(resolveEffectiveMaxTurns("test-agent", 0)).toBeUndefined();
+  });
+});
+
+describe("turnLimitAction", () => {
+  it("is undefined when there is no limit", () => {
+    expect(turnLimitAction(100, undefined, false, 5)).toBeUndefined();
+  });
+
+  it("is undefined below the limit", () => {
+    expect(turnLimitAction(4, 5, false, 5)).toBeUndefined();
+  });
+
+  it("steers at the limit", () => {
+    expect(turnLimitAction(5, 5, false, 5)).toBe("steer");
+    expect(turnLimitAction(7, 5, false, 5)).toBe("steer");
+  });
+
+  it("waits through the grace turns once soft limit is reached", () => {
+    expect(turnLimitAction(5, 5, true, 3)).toBeUndefined();
+    expect(turnLimitAction(7, 5, true, 3)).toBeUndefined();
+  });
+
+  it("aborts after the grace turns", () => {
+    expect(turnLimitAction(8, 5, true, 3)).toBe("abort");
+    expect(turnLimitAction(12, 5, true, 3)).toBe("abort");
   });
 });

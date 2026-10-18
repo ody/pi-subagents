@@ -59,3 +59,19 @@ let graceTurns = 5;
 export function getGraceTurns(): number { return graceTurns; }
 /** Set the grace turns value (minimum 1). */
 export function setGraceTurns(n: number): void { graceTurns = Math.max(1, n); }
+
+/**
+ * What to do after a turn ends under a turn limit: steer the agent to wrap up at
+ * the limit, abort once `graceTurns` more turns pass, else nothing.
+ */
+export function turnLimitAction(
+  turnCount: number,
+  maxTurns: number | undefined,
+  softLimitReached: boolean,
+  graceTurns: number,
+): "steer" | "abort" | undefined {
+  if (maxTurns == null) return undefined;
+  if (!softLimitReached && turnCount >= maxTurns) return "steer";
+  if (softLimitReached && turnCount >= maxTurns + graceTurns) return "abort";
+  return undefined;
+}
