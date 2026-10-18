@@ -14,7 +14,6 @@ const ROOT = join(import.meta.dirname, "..");
 const MAX_SCORE = 30;
 
 const PINS: Record<string, number[]> = {
-  "src/agent-runner.ts": [98],
 };
 
 interface Diagnostic {
@@ -23,7 +22,7 @@ interface Diagnostic {
   location: { path: string };
 }
 
-function overLimitScores(): Map<string, number[]> {
+function overLimitScores(): { scores: Map<string, number[]>; reported: number } {
   const result = spawnSync(
     join(ROOT, "node_modules/.bin/biome"),
     ["lint", "--max-diagnostics=none", "--reporter=json", "--only=complexity/noExcessiveCognitiveComplexity", "src"],
@@ -31,8 +30,10 @@ function overLimitScores(): Map<string, number[]> {
   );
   const report = JSON.parse(result.stdout) as { diagnostics: Diagnostic[] };
   const scores = new Map<string, number[]>();
+  let reported = 0;
   for (const d of report.diagnostics) {
     if (!d.category.endsWith("noExcessiveCognitiveComplexity")) continue;
+    reported++;
     const score = Number(/complexity of (\d+)/.exec(d.message)?.[1]);
     if (!(score > MAX_SCORE)) continue;
     const list = scores.get(d.location.path) ?? [];
@@ -40,14 +41,15 @@ function overLimitScores(): Map<string, number[]> {
     scores.set(d.location.path, list);
   }
   for (const list of scores.values()) list.sort((a, b) => b - a);
-  return scores;
+  return { scores, reported };
 }
 
-const actual = overLimitScores();
+const { scores: actual, reported } = overLimitScores();
 
 describe(`cognitive complexity ceiling of ${MAX_SCORE} (ADR 0004)`, () => {
   it("parses the Biome report", () => {
-    expect(actual.size).toBeGreaterThan(0);
+    // Functions between 16 and 30 are reported at info severity, so an empty report means a parse failure.
+    expect(reported).toBeGreaterThan(0);
   });
 
   for (const [file, scores] of actual) {

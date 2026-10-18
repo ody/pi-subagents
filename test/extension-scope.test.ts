@@ -6,8 +6,11 @@ import {
   EXCLUDED_TOOL_NAMES,
   extensionCanonicalName,
   extensionCanonicalNames,
+  extensionConfigWarnings,
   parseExtensionsSpec,
   parseExtSelectors,
+  planExtensionLoad,
+  resolveSessionToolScope,
   SUBAGENT_TOOL_NAMES,
 } from "../src/extension-scope.js";
 
@@ -182,5 +185,126 @@ describe("parseExtSelectors", () => {
     const { extNames, narrowing } = parseExtSelectors(["ext:Mcp/SomeTool", "ext:FOO"]);
     expect(extNames).toEqual(new Set(["mcp", "foo"]));
     expect(narrowing.get("mcp")).toEqual(new Set(["SomeTool"]));
+  });
+});
+
+describe("planExtensionLoad", () => {
+  const ext = (path: string) => ({ path }) as never;
+  const base = (...paths: string[]) => ({ extensions: paths.map(ext), errors: [], runtime: {} }) as never;
+
+  it("needs no override for extensions: false", () => {
+    const plan = planExtensionLoad(false, undefined, "/cwd");
+    expect(plan.noExtensions).toBe(true);
+    expect(plan.extensionsOverride).toBeUndefined();
+  });
+  it("needs no override for extensions: true without excludes", () => {
+    expect(planExtensionLoad(true, undefined, "/cwd").extensionsOverride).toBeUndefined();
+    expect(planExtensionLoad(["*"], [], "/cwd").extensionsOverride).toBeUndefined();
+  });
+  it("keeps only named extensions and records the pre-filter set after the override runs", () => {
+    const plan = planExtensionLoad(["foo"], undefined, "/cwd");
+    expect(plan.discoveredNames()).toBeUndefined();
+    const out = plan.extensionsOverride?.(base("/x/foo.ts", "/x/bar.ts"));
+    expect(out?.extensions.map((e) => e.path)).toEqual(["/x/foo.ts"]);
+    expect(plan.discoveredNames()).toEqual(new Set(["foo", "bar"]));
+  });
+  it("exclude wins over include and over true", () => {
+    const named = planExtensionLoad(["foo", "bar"], ["Foo"], "/cwd");
+    expect(named.hasExcludes).toBe(true);
+    expect(named.excludeNames).toEqual(new Set(["foo"]));
+    expect(named.extensionsOverride?.(base("/x/foo.ts", "/x/bar.ts")).extensions).toHaveLength(1);
+    const all = planExtensionLoad(true, ["foo"], "/cwd");
+    expect(all.extensionsOverride?.(base("/x/foo.ts", "/x/bar.ts")).extensions.map((e) => e.path)).toEqual(["/x/bar.ts"]);
+  });
+  it("exposes keepNames and additional paths", () => {
+    const plan = planExtensionLoad(["foo", "/abs/baz.ts"], undefined, "/cwd");
+    expect(plan.keepNames).toEqual(new Set(["foo", "baz"]));
+    expect(plan.additionalExtensionPaths).toEqual(["/abs/baz.ts"]);
+    expect(planExtensionLoad(["foo"], undefined, "/cwd").additionalExtensionPaths).toBeUndefined();
+  });
+});
+
+describe("extensionConfigWarnings", () => {
+  const args = (over: Record<string, unknown> = {}) => ({
+    type: "T",
+    noExtensions: false,
+    keepNames: new Set<string>(),
+    excludeNames: new Set<string>(),
+    extNames: new Set<string>(),
+    discoveredNames: undefined as Set<string> | undefined,
+    getSurvivingNames: () => new Set<string>(),
+    ...over,
+  });
+
+  it("returns nothing for a clean config and never reads surviving names", () => {
+    let called = false;
+    const getSurvivingNames = () => {
+      called = true;
+      return new Set<string>();
+    };
+    expect(extensionConfigWarnings(args({ getSurvivingNames }))).toEqual([]);
+    expect(called).toBe(false);
+  });
+  it("warns when excludes meet extensions: false", () => {
+    const w = extensionConfigWarnings(args({ noExtensions: true, excludeNames: new Set(["a"]) }));
+    expect(w).toEqual(['extension-error:exclude_extensions has no effect for agent "T" — extensions: false loads nothing']);
+  });
+  it("warns on exclude typos against the discovered set", () => {
+    const w = extensionConfigWarnings(
+      args({ excludeNames: new Set(["a", "b"]), discoveredNames: new Set(["a"]) }),
+    );
+    expect(w).toEqual(['extension-error:exclude_extensions: "b" for agent "T" did not match any discovered extension']);
+  });
+  it("warns on unloaded keep and ext names, in order, with exclude-wins variant", () => {
+    const w = extensionConfigWarnings(
+      args({
+        keepNames: new Set(["k", "x"]),
+        excludeNames: new Set(["x"]),
+        extNames: new Set(["e"]),
+        discoveredNames: new Set(["x"]),
+        getSurvivingNames: () => new Set(["ok"]),
+      }),
+    );
+    expect(w).toEqual([
+      'extension-error:extension "k" requested by agent "T" was not loaded',
+      'extension-error:extension "x" is in both extensions: and exclude_extensions: for agent "T" — exclude wins',
+      'extension-error:ext:e referenced by agent "T" but extension "e" is not loaded (check extensions:/exclude_extensions:)',
+    ]);
+  });
+});
+
+describe("resolveSessionToolScope", () => {
+  it("builds a strict allowlist under noExtensions, re-admitting nested tools", () => {
+    const scope = resolveSessionToolScope({
+      noExtensions: true,
+      toolNames: ["read", "bash", "Agent"],
+      disallowedSet: new Set(["bash", "steer_subagent"]),
+      nestedToolNames: new Set(["Agent", "steer_subagent"]),
+    });
+    expect(scope).toEqual({ sessionTools: ["read", "Agent"], sessionExcludeTools: undefined });
+  });
+  it("builds a deny list when extensions are in play", () => {
+    const scope = resolveSessionToolScope({
+      noExtensions: false,
+      toolNames: ["read"],
+      disallowedSet: new Set(["foo"]),
+      nestedToolNames: new Set(["Agent"]),
+    });
+    expect(scope.sessionTools).toBeUndefined();
+    const deny = new Set(scope.sessionExcludeTools);
+    expect(deny.has("Agent")).toBe(false);
+    expect(deny.has("get_subagent_result")).toBe(true);
+    expect(deny.has("foo")).toBe(true);
+    expect(deny.has("read")).toBe(false);
+    expect(deny.has("bash")).toBe(true);
+  });
+  it("disallowed_tools wins over an opt-in nested tool", () => {
+    const scope = resolveSessionToolScope({
+      noExtensions: false,
+      toolNames: [],
+      disallowedSet: new Set(["Agent"]),
+      nestedToolNames: new Set(["Agent"]),
+    });
+    expect(scope.sessionExcludeTools).toContain("Agent");
   });
 });
