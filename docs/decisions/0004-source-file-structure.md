@@ -14,7 +14,7 @@ Size limits are triggers to look at a file, never targets to hit. The goal is th
 - A `src/` file must stay under 800 lines and 40 KB.
 - `test/file-size.test.ts` enforces both rules. Existing offenders sit in an allowlist that pins each file's line count and byte size. Neither may grow. An entry may shrink or be removed.
 - Function size is judged by Biome's `complexity/noExcessiveCognitiveComplexity` at its default of 15, enabled at `info` severity. It reports and never fails `npm run check`. A long flat sequence, such as a list of registrations, is fine.
-- A function scoring over 30 fails `test/complexity.test.ts`. Existing offenders sit in a pin list of scores per file, matched by rank so line numbers can move. A list may shrink, never grow, and no score may rise. A pin is lowered or removed when its function improves. Biome cannot set a second threshold, so the test parses `biome lint --reporter=json`.
+- A function scoring over 30 fails `test/complexity.test.ts`. Biome cannot set a second threshold, so the test parses `biome lint --reporter=json`.
 - A report means read the function and decide. Record a function judged acceptable with `// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <reason>`. Never shorten code only to silence the rule.
 
 Split along a seam that already exists, and only when the new module passes these checks:
@@ -39,8 +39,8 @@ Done check:
 - `npm run check` passes, including `test/file-size.test.ts` and `test/complexity.test.ts`.
 - `biome.json` sets `linter.rules.complexity.noExcessiveCognitiveComplexity` to `"info"`.
 
-Rejected: Biome's `noExcessiveLinesPerFunction`, because it rewards fragmenting. Rejected: making the complexity rule an error at 15, because it would fail on many existing functions and on ordinary event-handler code. Only scores over 30 fail, through a ratchet. Rejected: guidance in `AGENTS.md` alone, because nothing enforces it.
+Rejected: Biome's `noExcessiveLinesPerFunction`, because it rewards fragmenting. Rejected: making the complexity rule an error at 15, because it would fail on many existing functions and on ordinary event-handler code. Only scores over 30 fail. Rejected: guidance in `AGENTS.md` alone, because nothing enforces it.
 
 ## Consequences
 
-The ratchet makes oversized files visible and stops them growing, without forcing a rewrite. Splitting `index.ts` is separate backlog work. Revisit the numbers if the `Read` truncation limit changes, or if a split produces modules that need wide deps objects.
+The file-size ratchet makes oversized files visible and stops them growing, without forcing a rewrite. Splitting `index.ts` is separate backlog work. Revisit the numbers if the `Read` truncation limit changes, or if a split produces modules that need wide deps objects.
