@@ -25,6 +25,46 @@ export interface AgentControlToolsDeps {
   usageReporting: UsageReportingDeps;
 }
 
+/**
+ * Wait for a running or queued agent to settle. Cancellation stops only this
+ * tool call; the background agent keeps running and remains unconsumed so its
+ * completion notification can still be delivered.
+ * Queued agents have no promise yet (it's created when the queue starts
+ * them), so poll until they leave the queue, then await like a running one.
+ */
+async function waitForAgentSettled(record: AgentRecord, signal: AbortSignal | undefined): Promise<void> {
+  while (record.status === "queued") {
+    await abortable(
+      new Promise<void>((resolve) => setTimeout(resolve, QUEUE_WAIT_POLL_MS)),
+      signal,
+    );
+  }
+  if (record.promise) await abortable(record.promise, signal);
+}
+
+/** The ` | `-joined stats line of a `get_subagent_result` reply. */
+export function formatResultStats(record: AgentRecord, showCost: boolean): string {
+  const tokens = formatLifetimeTokens(record);
+  const contextPercent = getSessionContextPercent(record.session);
+  const statsParts = [`Tool uses: ${record.toolUses}`];
+  if (tokens) statsParts.push(tokens);
+  if (showCost) {
+    const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
+    if (costText) statsParts.push(`Cost: ${costText}`);
+  }
+  if (contextPercent !== null) statsParts.push(`Context: ${Math.round(contextPercent)}%`);
+  if (record.compactionCount) statsParts.push(`Compactions: ${record.compactionCount}`);
+  statsParts.push(`Duration: ${formatDuration(record.startedAt, record.completedAt)}`);
+  return statsParts.join(" | ");
+}
+
+/** The body of a `get_subagent_result` reply, by agent status. */
+export function resultBody(record: AgentRecord): string {
+  if (record.status === "running") return "Agent is still running. Use wait: true or check back later.";
+  if (record.status === "error") return `Error: ${record.error}${partialOutputSuffix(record)}`;
+  return record.result?.trim() || "No output.";
+}
+
 export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlToolsDeps): void {
   const { manager, notifier, settings, resolveAgentRef, usageReporting } = deps;
 
@@ -61,47 +101,14 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
       }
 
-      // Wait for completion if requested. Cancellation stops only this tool
-      // call; the background agent keeps running and remains unconsumed so its
-      // completion notification can still be delivered.
-      // Queued agents have no promise yet (it's created when the queue starts
-      // them), so poll until they leave the queue, then await like a running one.
       if (params.wait && (record.status === "running" || record.status === "queued")) {
-        while (record.status === "queued") {
-          await abortable(
-            new Promise<void>((resolve) => setTimeout(resolve, QUEUE_WAIT_POLL_MS)),
-            signal,
-          );
-        }
-        if (record.promise) await abortable(record.promise, signal);
+        await waitForAgentSettled(record, signal);
       }
-
-      const displayName = getDisplayName(record.type);
-      const duration = formatDuration(record.startedAt, record.completedAt);
-      const tokens = formatLifetimeTokens(record);
-      const contextPercent = getSessionContextPercent(record.session);
-      const statsParts = [`Tool uses: ${record.toolUses}`];
-      if (tokens) statsParts.push(tokens);
-      if (settings.showCost) {
-        const costText = formatCost(getLifetimeCost(record.lifetimeUsage));
-        if (costText) statsParts.push(`Cost: ${costText}`);
-      }
-      if (contextPercent !== null) statsParts.push(`Context: ${Math.round(contextPercent)}%`);
-      if (record.compactionCount) statsParts.push(`Compactions: ${record.compactionCount}`);
-      statsParts.push(`Duration: ${duration}`);
 
       let output =
         `Agent: ${record.id}\n` +
-        `Type: ${displayName} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${statsParts.join(" | ")}\n` +
-        `Description: ${record.description}\n\n`;
-
-      if (record.status === "running") {
-        output += "Agent is still running. Use wait: true or check back later.";
-      } else if (record.status === "error") {
-        output += `Error: ${record.error}${partialOutputSuffix(record)}`;
-      } else {
-        output += record.result?.trim() || "No output.";
-      }
+        `Type: ${getDisplayName(record.type)} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${formatResultStats(record, settings.showCost)}\n` +
+        `Description: ${record.description}\n\n${resultBody(record)}`;
 
       // Mark result as consumed — suppresses the completion notification
       if (record.status !== "running" && record.status !== "queued") {
