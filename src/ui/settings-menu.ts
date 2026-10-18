@@ -43,9 +43,30 @@ export interface SettingsMenuDeps {
   isStrictAgentFiles: () => boolean;
 }
 
-const NUMERIC_IDS = new Set([
-  "maxConcurrent", "maxConcurrentForeground", "defaultMaxTurns", "graceTurns", "maxSubagentDepth",
-]);
+const NUMERIC_SETTING_IDS = ["maxConcurrent", "maxConcurrentForeground", "defaultMaxTurns", "graceTurns", "maxSubagentDepth"] as const;
+type NumericSettingId = (typeof NUMERIC_SETTING_IDS)[number];
+
+function isNumericSettingId(id: string | undefined): id is NumericSettingId {
+  return (NUMERIC_SETTING_IDS as readonly string[]).includes(id as string);
+}
+
+const NUMERIC_PROMPT_LABELS: Record<NumericSettingId, string> = {
+  maxConcurrent: "Max concurrency (1+)",
+  maxConcurrentForeground: "Max foreground concurrency (0 = unlimited)",
+  defaultMaxTurns: "Default max turns (0 = unlimited)",
+  graceTurns: "Grace turns (1+)",
+  maxSubagentDepth: "Nested depth (0/1 = nesting off)",
+};
+
+function readNumericSetting(id: NumericSettingId, manager: SettingsMenuDeps["manager"]): string {
+  switch (id) {
+    case "maxConcurrent": return String(manager.getMaxConcurrent());
+    case "maxConcurrentForeground": return String(manager.getMaxConcurrentForeground());
+    case "defaultMaxTurns": return String(getDefaultMaxTurns() ?? 0);
+    case "graceTurns": return String(getGraceTurns());
+    case "maxSubagentDepth": return String(getMaxSubagentDepth());
+  }
+}
 
 type SettingId =
   | "maxConcurrent" | "maxConcurrentForeground" | "defaultMaxTurns" | "graceTurns" | "maxSubagentDepth"
@@ -240,11 +261,11 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
   const { settings, manager, isStrictAgentFiles } = deps;
 
   function buildItems(): SettingItem[] {
-    const mc = manager.getMaxConcurrent();
-    const mcf = manager.getMaxConcurrentForeground();
-    const dmt = getDefaultMaxTurns() ?? 0;
-    const gt = getGraceTurns();
-    const msd = getMaxSubagentDepth();
+    const mc = readNumericSetting("maxConcurrent", manager);
+    const mcf = readNumericSetting("maxConcurrentForeground", manager);
+    const dmt = readNumericSetting("defaultMaxTurns", manager);
+    const gt = readNumericSetting("graceTurns", manager);
+    const msd = readNumericSetting("maxSubagentDepth", manager);
     // Label what unset actually does — it targets general-purpose even when
     // that is unregistered (the permissive hardcoded tier), so showing "none"
     // there would advertise strict dispatch for the most permissive state.
@@ -258,36 +279,36 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         id: "maxConcurrent",
         label: "Max concurrency",
         description: "Max concurrent background agents (Enter to type)",
-        currentValue: String(mc),
-        values: [String(mc)],
+        currentValue: mc,
+        values: [mc],
       },
       {
         id: "maxConcurrentForeground",
         label: "Max foreground concurrency",
         description: "Max concurrent foreground (blocking) agents (0 = unlimited, Enter to type)",
-        currentValue: String(mcf),
-        values: [String(mcf)],
+        currentValue: mcf,
+        values: [mcf],
       },
       {
         id: "defaultMaxTurns",
         label: "Default max turns",
         description: "Default max turns before wrap-up (0 = unlimited, Enter to type)",
-        currentValue: String(dmt),
-        values: [String(dmt)],
+        currentValue: dmt,
+        values: [dmt],
       },
       {
         id: "graceTurns",
         label: "Grace turns",
         description: "Grace turns after wrap-up steer (Enter to type)",
-        currentValue: String(gt),
-        values: [String(gt)],
+        currentValue: gt,
+        values: [gt],
       },
       {
         id: "maxSubagentDepth",
         label: "Nested depth",
         description: "Hard cap on nested delegation — main is 0, its subagents 1 (0/1 = nesting off, Enter to type)",
-        currentValue: String(msd),
-        values: [String(msd)],
+        currentValue: msd,
+        values: [msd],
       },
       {
         id: "joinMode",
@@ -458,7 +479,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         }
 
         // Enter on numeric field → close and prompt for typed input
-        if (matchesKey(data, Key.enter) && NUMERIC_IDS.has(items[currentIndex].id)) {
+        if (matchesKey(data, Key.enter) && isNumericSettingId(items[currentIndex].id)) {
           done(items[currentIndex].id);
           return;
         }
@@ -468,26 +489,9 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
   });
 
   // If a numeric field ID was returned, prompt for typed input
-  if (result && NUMERIC_IDS.has(result)) {
-    const current = result === "maxConcurrent"
-      ? String(manager.getMaxConcurrent())
-      : result === "maxConcurrentForeground"
-        ? String(manager.getMaxConcurrentForeground())
-        : result === "defaultMaxTurns"
-          ? String(getDefaultMaxTurns() ?? 0)
-          : result === "maxSubagentDepth"
-            ? String(getMaxSubagentDepth())
-            : String(getGraceTurns());
-
-    const label = result === "maxConcurrent"
-      ? "Max concurrency (1+)"
-      : result === "maxConcurrentForeground"
-        ? "Max foreground concurrency (0 = unlimited)"
-        : result === "defaultMaxTurns"
-          ? "Default max turns (0 = unlimited)"
-          : result === "maxSubagentDepth"
-            ? "Nested depth (0/1 = nesting off)"
-            : "Grace turns (1+)";
+  if (isNumericSettingId(result)) {
+    const current = readNumericSetting(result, manager);
+    const label = NUMERIC_PROMPT_LABELS[result];
 
     // Loop until user enters a valid integer or cancels (Esc / null).
     // Silently trims whitespace; rejects non-numeric input by re-prompting.
