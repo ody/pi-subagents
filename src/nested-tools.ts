@@ -144,6 +144,81 @@ function formatRecord(record: AgentRecord, position: ResultPosition): string {
   return note ? `Nested agent${note}.\n\n${text}` : text;
 }
 
+async function resumeOwned(
+  manager: NestedAgentManager,
+  parentAgentId: string,
+  id: string,
+  prompt: string,
+  signal: AbortSignal | undefined,
+) {
+  const existing = manager.getRecord(id);
+  if (!ownsRecord(existing, parentAgentId)) {
+    return textResult(`Nested agent not found or not owned by this parent: "${id}".`, true);
+  }
+  const resumed = await manager.resume(id, prompt, signal);
+  return resumed
+    ? textResult(formatRecord(resumed, "inline"), resumed.status === "error")
+    : textResult(`Failed to resume nested agent "${id}".`, true);
+}
+
+/**
+ * Strict resolve, never the fallback policy: a project-level `fallbackSubagent`
+ * must not hand a nested caller an agent its allowlist never named. The list
+ * stays allowlist-filtered so a typo can't enumerate agents this parent may not
+ * reach.
+ */
+export function resolveNestedType(
+  registry: Map<string, AgentConfig>,
+  rawType: string,
+  allowed: Set<string> | undefined,
+): { type: string } | { error: string } {
+  const resolvedType = resolveEnabledTypeIn(registry, rawType);
+  if (resolvedType === undefined) {
+    const available = getAvailableTypesIn(registry).filter(name => allowed === undefined || allowed.has(name));
+    return { error: `Unknown or disabled nested agent type: "${rawType}". Allowed: ${available.join(", ") || "none"}.` };
+  }
+  if (allowed !== undefined && !allowed.has(resolvedType)) {
+    return { error: `Nested agent type "${resolvedType}" is not allowed for this parent. Allowed: ${[...allowed].join(", ")}.` };
+  }
+  return { type: resolvedType };
+}
+
+/** An unresolved model from params is an error; from config it falls back to the context model. */
+export function resolveNestedModel(
+  invocation: { modelInput?: string; modelFromParams: boolean },
+  ctxModel: Model<any> | undefined,
+  modelRegistry: ExtensionContext["modelRegistry"],
+): { model: Model<any> | undefined } | { error: string } {
+  if (!invocation.modelInput) return { model: ctxModel };
+  const resolved = resolveModel(invocation.modelInput, modelRegistry);
+  if (typeof resolved !== "string") return { model: resolved };
+  return invocation.modelFromParams ? { error: resolved } : { model: ctxModel };
+}
+
+/**
+ * Nested children are hidden from every reporting surface, so their spend would
+ * otherwise be unattributable. Fold it into every ancestor's record: the
+ * top-level one appears in lifecycle events, completion notifications, and
+ * `/agents`, and those all read `lifetimeUsage`. The whole chain is walked, not
+ * just the immediate parent — a spawn callback only fires for that child's OWN
+ * turns, so stopping at one level would hide a great-grandchild from the only
+ * record anyone can see. (The live widget/fleet counters read their own
+ * per-agent activity tracker, which still sees only the top-level agent's own
+ * turns.)
+ */
+export function addUsageToAncestors(
+  manager: Pick<NestedAgentManager, "getRecord">,
+  parentAgentId: string,
+  usage: { input: number; output: number; cacheWrite: number },
+): void {
+  for (let id: string | undefined = parentAgentId; id !== undefined; ) {
+    const ancestor = manager.getRecord(id);
+    if (!ancestor) break;
+    addUsage(ancestor.lifetimeUsage, usage);
+    id = ancestor.parentAgentId;
+  }
+}
+
 /** Build child-safe orchestration tools scoped to one parent agent instance. */
 export function createNestedSubagentTools(context: NestedToolContext): ToolDefinition[] {
   // Agents resolve from a registry built for THIS branch's config root (under
@@ -184,14 +259,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
     }),
     execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
       if (params.resume) {
-        const existing = context.manager.getRecord(params.resume);
-        if (!ownsRecord(existing, context.parentAgentId)) {
-          return textResult(`Nested agent not found or not owned by this parent: "${params.resume}".`, true);
-        }
-        const resumed = await context.manager.resume(params.resume, params.prompt, signal);
-        return resumed
-          ? textResult(formatRecord(resumed, "inline"), resumed.status === "error")
-          : textResult(`Failed to resume nested agent "${params.resume}".`, true);
+        return resumeOwned(context.manager, context.parentAgentId, params.resume, params.prompt, signal);
       }
 
       if (context.depth >= context.maxSubagentDepth) {
@@ -203,25 +271,9 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
 
       // Reloaded per call so new agent files are picked up without a restart.
       const registry = loadRegistry();
-      const rawType = params.subagent_type;
-      // Strict resolve, never the fallback policy: a project-level
-      // `fallbackSubagent` must not hand a nested caller an agent its allowlist
-      // never named. The list stays allowlist-filtered so a typo can't enumerate
-      // agents this parent may not reach.
-      const resolvedType = resolveEnabledTypeIn(registry, rawType);
-      if (resolvedType === undefined) {
-        return textResult(
-          `Unknown or disabled nested agent type: "${rawType}". Allowed: ${availableIn(registry).join(", ") || "none"}.`,
-          true,
-        );
-      }
-      const allowed = allowedTypesIn(registry);
-      if (allowed !== undefined && !allowed.has(resolvedType)) {
-        return textResult(
-          `Nested agent type "${resolvedType}" is not allowed for this parent. Allowed: ${[...allowed].join(", ")}.`,
-          true,
-        );
-      }
+      const typeResult = resolveNestedType(registry, params.subagent_type, allowedTypesIn(registry));
+      if ("error" in typeResult) return textResult(typeResult.error, true);
+      const resolvedType = typeResult.type;
 
       const config = getAgentConfigIn(registry, resolvedType);
       // Foreground regardless of `backgroundByDefault` — see the reasoning on
@@ -230,15 +282,9 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         worktreeAllowed: isWorktreeIsolationEnabled(),
         defaultRunInBackground: false,
       });
-      let model = ctx.model;
-      if (invocation.modelInput) {
-        const resolvedModel = resolveModel(invocation.modelInput, ctx.modelRegistry);
-        if (typeof resolvedModel === "string") {
-          if (invocation.modelFromParams) return textResult(resolvedModel, true);
-        } else {
-          model = resolvedModel;
-        }
-      }
+      const modelResult = resolveNestedModel(invocation, ctx.model, ctx.modelRegistry);
+      if ("error" in modelResult) return textResult(modelResult.error, true);
+      const model = modelResult.model;
 
       // Same scopeModels policy as the top-level Agent tool — a nested spawn
       // must not escape the allowlist. A "warn" verdict proceeds silently:
@@ -273,23 +319,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           runInBackground: invocation.runInBackground,
           isolation: invocation.isolation,
         },
-        // Nested children are hidden from every reporting surface, so their spend
-        // would otherwise be unattributable. Fold it into every ancestor's record:
-        // the top-level one appears in lifecycle events, completion notifications,
-        // and `/agents`, and those all read `lifetimeUsage`. The whole chain is
-        // walked, not just the immediate parent — a spawn callback only fires for
-        // that child's OWN turns, so stopping at one level would hide a
-        // great-grandchild from the only record anyone can see. (The live
-        // widget/fleet counters read their own per-agent activity tracker, which
-        // still sees only the top-level agent's own turns.)
-        onAssistantUsage: (usage) => {
-          for (let id: string | undefined = context.parentAgentId; id !== undefined; ) {
-            const ancestor = context.manager.getRecord(id);
-            if (!ancestor) break;
-            addUsage(ancestor.lifetimeUsage, usage);
-            id = ancestor.parentAgentId;
-          }
-        },
+        onAssistantUsage: usage => addUsageToAncestors(context.manager, context.parentAgentId, usage),
         depth: childDepth,
         parentAgentId: context.parentAgentId,
         maxSubagentDepth: context.maxSubagentDepth,

@@ -2,10 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getAvailableTypes, registerAgents, setFallbackSubagent } from "../src/agent-types.js";
+import { buildAgentRegistry, getAvailableTypes, registerAgents, setFallbackSubagent } from "../src/agent-types.js";
 import { loadCustomAgents } from "../src/custom-agents.js";
 import { setScopeModelsEnabled } from "../src/model-scope.js";
-import { createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, setMaxSubagentDepth } from "../src/nested-tools.js";
+import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/nested-tools.js";
 import { encodeCwd } from "../src/output-file.js";
 
 let cwd: string;
@@ -561,5 +561,59 @@ describe("setMaxSubagentDepth clamping", () => {
   it("stores a valid depth unchanged", () => {
     setMaxSubagentDepth(3);
     expect(getMaxSubagentDepth()).toBe(3);
+  });
+});
+
+describe("resolveNestedModel", () => {
+  const registry = ctx().modelRegistry;
+  const fallback = { provider: "fallback", id: "model" } as any;
+
+  it("returns ctx model when no model input", () => {
+    expect(resolveNestedModel({ modelInput: undefined, modelFromParams: false }, fallback, registry)).toEqual({ model: fallback });
+  });
+
+  it("resolves a known model", () => {
+    const r = resolveNestedModel({ modelInput: "anthropic/allowed", modelFromParams: true }, fallback, registry);
+    expect(r).toEqual({ model: { provider: "anthropic", id: "allowed" } });
+  });
+
+  it("errors when an unresolved model came from params", () => {
+    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: true }, fallback, registry);
+    expect(r).toEqual({ error: expect.any(String) });
+  });
+
+  it("falls back to ctx model when an unresolved model came from config", () => {
+    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: false }, fallback, registry);
+    expect(r).toEqual({ model: fallback });
+  });
+});
+
+describe("resolveNestedType", () => {
+  const registry = buildAgentRegistry(new Map());
+
+  it("rejects unknown types with the allowed list", () => {
+    const r = resolveNestedType(registry, "nope", undefined);
+    expect(r).toEqual({ error: expect.stringContaining('Unknown or disabled nested agent type: "nope"') });
+  });
+
+  it("rejects a type outside the allowlist", () => {
+    const r = resolveNestedType(registry, "general-purpose", new Set(["Explore"]));
+    expect(r).toEqual({ error: expect.stringContaining("is not allowed for this parent. Allowed: Explore.") });
+  });
+
+  it("resolves an allowed type", () => {
+    expect(resolveNestedType(registry, "general-purpose", undefined)).toEqual({ type: "general-purpose" });
+    expect(resolveNestedType(registry, "general-purpose", new Set(["general-purpose"]))).toEqual({ type: "general-purpose" });
+  });
+});
+
+describe("addUsageToAncestors", () => {
+  it("adds usage to every ancestor, stopping at a missing record", () => {
+    const mk = (parentAgentId?: string) => ({ parentAgentId, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 } }) as any;
+    const recs = new Map<string, any>([["a", mk("b")], ["b", mk(undefined)]]);
+    addUsageToAncestors({ getRecord: (id: string) => recs.get(id) } as any, "a", { input: 1, output: 2, cacheWrite: 3 });
+    expect(recs.get("a").lifetimeUsage.input).toBe(1);
+    expect(recs.get("b").lifetimeUsage.output).toBe(2);
+    expect(() => addUsageToAncestors({ getRecord: () => undefined } as any, "x", { input: 1, output: 1, cacheWrite: 1 })).not.toThrow();
   });
 });
