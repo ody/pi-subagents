@@ -364,6 +364,30 @@ describe("FleetList navigation", () => {
     expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
   });
 
+  it("↑ from a lower row moves up one row and stays active", () => {
+    const h = harness([
+      makeRecord({ id: "a1", description: "one" }),
+      makeRecord({ id: "a2", description: "two" }),
+    ]);
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(DOWN); // a2
+    expect(h.press(UP)).toEqual({ consume: true });
+    expect(h.render().find(l => l.includes("one"))).toContain("●");
+    expect(h.render().some(l => l.includes("enter view"))).toBe(true);
+  });
+
+  it("consumes → on a leaf and ← on main without changing selection", () => {
+    const h = harness([makeRecord({ id: "a1", description: "one" })]);
+    h.press(DOWN); // main
+    expect(h.press(LEFT)).toEqual({ consume: true });
+    expect(h.render().find(l => l.includes("main"))).toContain("●");
+    expect(h.press(RIGHT)).toEqual({ consume: true });
+    h.press(DOWN); // a1 (leaf)
+    expect(h.press(RIGHT)).toEqual({ consume: true });
+    expect(h.render().find(l => l.includes("one"))).toContain("●");
+  });
+
   it("passes non-nav keys through and cancels navigation", () => {
     const h = harness([makeRecord()]);
     h.press(DOWN);
