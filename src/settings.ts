@@ -331,6 +331,7 @@ const GRACE_TURNS_CEILING = 1_000;
 const SUBAGENT_DEPTH_CEILING = 16;
 
 /** Drop fields that don't match the expected shape. Silent — garbage becomes absent. */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flat per-field allowlist, one independent check per setting, no nesting
 function sanitize(raw: unknown): SubagentsSettings {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
