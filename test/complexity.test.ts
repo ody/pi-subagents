@@ -15,7 +15,6 @@ const MAX_SCORE = 30;
 
 const PINS: Record<string, number[]> = {
   "src/agent-runner.ts": [98],
-  "src/agent-tool.ts": [84],
   "src/ui/settings-menu.ts": [37],
 };
 
