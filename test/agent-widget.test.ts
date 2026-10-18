@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderRunningAgentStatus } from "../src/agent-tool-render.js";
 import type { AgentActivity, WidgetMode } from "../src/types.js";
 import { fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-format.js";
-import { AgentWidget } from "../src/ui/agent-widget.js";
+import { AgentWidget, statusBarText } from "../src/ui/agent-widget.js";
 
 /** Fold an activity map into a fake manager: the widget reads `getActivity`. */
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
@@ -254,6 +254,51 @@ describe("AgentWidget", () => {
 // footer under-reports and — worse — the queue vanishes from the UI entirely.
 // That happens exactly when the concurrency limit is saturated, i.e. when the
 // queue is the thing the user most needs to see.
+describe("statusBarText", () => {
+  it("formats running and queued counts", () => {
+    expect(statusBarText(1, 0)).toBe("1 running agent");
+    expect(statusBarText(2, 1)).toBe("2 running, 1 queued agents");
+    expect(statusBarText(0, 1)).toBe("1 queued agent");
+    expect(statusBarText(0, 2)).toBe("2 queued agents");
+  });
+});
+
+describe("AgentWidget status bar and teardown", () => {
+  function rec(id: string, status: string) {
+    return { id, type: "general-purpose", description: id, status, toolUses: 0, startedAt: Date.now() };
+  }
+
+  it("sets status on change, clears it and unregisters the widget when the fleet empties", () => {
+    let agents: any[] = [rec("a", "running"), rec("b", "running"), rec("c", "queued")];
+    const widget = new AgentWidget({ listAgents: () => agents, getActivity: () => undefined } as any, () => "all");
+    const statuses: (string | undefined)[] = [];
+    const widgets: unknown[] = [];
+    widget.setUICtx({
+      setStatus: (_k: string, text: string | undefined) => { statuses.push(text); },
+      setWidget: (_k: string, content: unknown) => { widgets.push(content); },
+    } as any);
+
+    widget.update();
+    expect(statuses).toEqual(["2 running, 1 queued agents"]);
+    expect(widgets).toHaveLength(1);
+    expect(widgets[0]).toBeTypeOf("function");
+
+    widget.update();
+    expect(statuses).toHaveLength(1);
+
+    agents = [rec("a", "running")];
+    widget.update();
+    expect(statuses).toEqual(["2 running, 1 queued agents", "1 running agent"]);
+
+    agents = [];
+    widget.update();
+    expect(statuses).toHaveLength(3);
+    expect(statuses.at(-1)).toBeUndefined();
+    expect(widgets).toHaveLength(2);
+    expect(widgets[1]).toBeUndefined();
+  });
+});
+
 describe("formatCost", () => {
   it("keeps the precision that distinguishes one run from another", () => {
     // Rounding to cents would print the same figure for a run that cost four
