@@ -26,11 +26,11 @@ import { detectEnv } from "./env.js";
 import { EXCLUDED_TOOL_NAMES, extensionCanonicalNames, installExtensionToolScope, parseExtensionsSpec, parseExtSelectors } from "./extension-scope.js";
 import { createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager } from "./nested-tools.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
-import { getGraceTurns, getRememberAgents, resolveEffectiveMaxTurns } from "./runner-defaults.js";
+import { getGraceTurns, getRememberAgents, resolveEffectiveMaxTurns, turnLimitAction } from "./runner-defaults.js";
 import { collectResponseText, finalTurnError, getLastAssistantText } from "./session-text.js";
 import { preloadSkills } from "./skill-loader.js";
 import type { AgentConfig, SubagentType, ThinkingLevel } from "./types.js";
-import type { LifetimeUsage } from "./usage.js";
+import { assistantUsage, type LifetimeUsage } from "./usage.js";
 
 /**
  * Try to find the right model for an agent type.
@@ -184,6 +184,26 @@ function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => 
   const onAbort = () => session.abort();
   signal.addEventListener("abort", onAbort, { once: true });
   return () => signal.removeEventListener("abort", onAbort);
+}
+
+interface SessionEventCallbacks {
+  onToolActivity?: (activity: ToolActivity) => void;
+  onAssistantUsage?: (usage: LifetimeUsage) => void;
+  onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
+}
+
+/** Forward tool activity, assistant usage and compaction events to the caller's callbacks. */
+function forwardSessionEvent(event: AgentSessionEvent, callbacks: SessionEventCallbacks): void {
+  if (event.type === "tool_execution_start") {
+    callbacks.onToolActivity?.({ type: "start", toolName: event.toolName });
+  } else if (event.type === "tool_execution_end") {
+    callbacks.onToolActivity?.({ type: "end", toolName: event.toolName });
+  } else if (event.type === "message_end" && event.message.role === "assistant") {
+    const usage = assistantUsage(event.message);
+    if (usage) callbacks.onAssistantUsage?.(usage);
+  } else if (event.type === "compaction_end" && !event.aborted && event.result) {
+    callbacks.onCompaction?.({ reason: event.reason, tokensBefore: event.result.tokensBefore });
+  }
 }
 
 function resolveConfiguredSessionDir(sessionDir: string | undefined, cwd: string): string | undefined {
@@ -597,14 +617,13 @@ export async function runAgent(
     if (event.type === "turn_end") {
       turnCount++;
       options.onTurnEnd?.(turnCount);
-      if (maxTurns != null) {
-        if (!softLimitReached && turnCount >= maxTurns) {
-          softLimitReached = true;
-          session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
-        } else if (softLimitReached && turnCount >= maxTurns + getGraceTurns()) {
-          aborted = true;
-          session.abort();
-        }
+      const action = turnLimitAction(turnCount, maxTurns, softLimitReached, getGraceTurns());
+      if (action === "steer") {
+        softLimitReached = true;
+        session.steer("You have reached your turn limit. Wrap up immediately — provide your final answer now.");
+      } else if (action === "abort") {
+        aborted = true;
+        session.abort();
       }
     }
     if (event.type === "message_start") {
@@ -614,25 +633,7 @@ export async function runAgent(
       currentMessageText += event.assistantMessageEvent.delta;
       options.onTextDelta?.(event.assistantMessageEvent.delta, currentMessageText);
     }
-    if (event.type === "tool_execution_start") {
-      options.onToolActivity?.({ type: "start", toolName: event.toolName });
-    }
-    if (event.type === "tool_execution_end") {
-      options.onToolActivity?.({ type: "end", toolName: event.toolName });
-    }
-    if (event.type === "message_end" && event.message.role === "assistant") {
-      const u = (event.message as any).usage;
-      if (u) options.onAssistantUsage?.({
-        input: u.input ?? 0,
-        output: u.output ?? 0,
-        cacheWrite: u.cacheWrite ?? 0,
-        cacheRead: u.cacheRead ?? 0,
-        cost: u.cost?.total ?? 0,
-      });
-    }
-    if (event.type === "compaction_end" && !event.aborted && event.result) {
-      options.onCompaction?.({ reason: event.reason, tokensBefore: event.result.tokensBefore });
-    }
+    forwardSessionEvent(event, options);
   });
 
   const collector = collectResponseText(session);
@@ -689,23 +690,7 @@ export async function resumeAgent(
   const cleanupAbort = forwardAbortSignal(session, options.signal);
 
   const unsubEvents = (options.onToolActivity || options.onAssistantUsage || options.onCompaction)
-    ? session.subscribe((event: AgentSessionEvent) => {
-        if (event.type === "tool_execution_start") options.onToolActivity?.({ type: "start", toolName: event.toolName });
-        if (event.type === "tool_execution_end") options.onToolActivity?.({ type: "end", toolName: event.toolName });
-        if (event.type === "message_end" && event.message.role === "assistant") {
-          const u = (event.message as any).usage;
-          if (u) options.onAssistantUsage?.({
-            input: u.input ?? 0,
-            output: u.output ?? 0,
-            cacheWrite: u.cacheWrite ?? 0,
-            cacheRead: u.cacheRead ?? 0,
-            cost: u.cost?.total ?? 0,
-          });
-        }
-        if (event.type === "compaction_end" && !event.aborted && event.result) {
-          options.onCompaction?.({ reason: event.reason, tokensBefore: event.result.tokensBefore });
-        }
-      })
+    ? session.subscribe((event: AgentSessionEvent) => forwardSessionEvent(event, options))
     : () => {};
 
   try {

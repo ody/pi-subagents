@@ -38,6 +38,19 @@ export function getLifetimeCost(u?: LifetimeUsage): number {
   return u?.cost ?? 0;
 }
 
+/** Map an assistant message's pi `usage` to a LifetimeUsage delta, or undefined when absent. */
+export function assistantUsage(message: { usage?: any }): LifetimeUsage | undefined {
+  const u = message.usage;
+  if (!u) return undefined;
+  return {
+    input: u.input ?? 0,
+    output: u.output ?? 0,
+    cacheWrite: u.cacheWrite ?? 0,
+    cacheRead: u.cacheRead ?? 0,
+    cost: u.cost?.total ?? 0,
+  };
+}
+
 /** Add a usage delta into a target accumulator (mutates target). */
 export function addUsage(into: LifetimeUsage, delta: LifetimeUsage): void {
   into.input += delta.input;
