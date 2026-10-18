@@ -41,6 +41,14 @@ export type UICtx = {
   ): void;
 };
 
+/** Status bar text for the active fleet, e.g. "2 running, 1 queued agents". */
+export function statusBarText(running: number, queued: number): string {
+  const parts: string[] = [];
+  if (running > 0) parts.push(`${running} running`);
+  if (queued > 0) parts.push(`${queued} queued`);
+  return `${parts.join(", ")} agent${running + queued === 1 ? "" : "s"}`;
+}
+
 // ---- Widget manager ----
 
 export class AgentWidget {
@@ -412,58 +420,60 @@ export class AgentWidget {
 
     // Nothing to show — clear widget
     if (!hasActive && !hasFinished) {
-      if (this.widgetRegistered) {
-        this.uiCtx.setWidget("agents", undefined);
-        this.widgetRegistered = false;
-        this.tui = undefined;
-      }
-      if (this.lastStatusText !== undefined) {
-        this.uiCtx.setStatus("subagents", undefined);
-        this.lastStatusText = undefined;
-      }
-      if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
-      // Clean up stale entries
-      for (const [id] of this.finishedTurnAge) {
-        if (!allAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
-      }
+      this.clearWidget(allAgents);
       return;
     }
 
     // Status bar — only call setStatus when the text actually changes
-    let newStatusText: string | undefined;
-    if (hasActive) {
-      const statusParts: string[] = [];
-      if (runningCount > 0) statusParts.push(`${runningCount} running`);
-      if (queuedCount > 0) statusParts.push(`${queuedCount} queued`);
-      const total = runningCount + queuedCount;
-      newStatusText = `${statusParts.join(", ")} agent${total === 1 ? "" : "s"}`;
-    }
+    const newStatusText = hasActive ? statusBarText(runningCount, queuedCount) : undefined;
     if (newStatusText !== this.lastStatusText) {
       this.uiCtx.setStatus("subagents", newStatusText);
       this.lastStatusText = newStatusText;
     }
 
     this.widgetFrame++;
+    this.registerWidget(this.uiCtx);
+  }
 
-    // Register widget callback once; subsequent updates use requestRender()
-    // which re-invokes render() without replacing the component (avoids layout thrashing).
-    if (!this.widgetRegistered) {
-      this.uiCtx.setWidget("agents", (tui, theme) => {
-        this.tui = tui;
-        return {
-          render: () => this.renderWidget(tui, theme),
-          invalidate: () => {
-            // Theme changed — force re-registration so factory captures fresh theme.
-            this.widgetRegistered = false;
-            this.tui = undefined;
-          },
-        };
-      }, { placement: "aboveEditor" });
-      this.widgetRegistered = true;
-    } else {
+  /** Unregister the widget, clear the status bar and timers, and drop stale finished-agent entries. */
+  private clearWidget(allAgents: AgentRecord[]) {
+    if (this.uiCtx && this.widgetRegistered) {
+      this.uiCtx.setWidget("agents", undefined);
+      this.widgetRegistered = false;
+      this.tui = undefined;
+    }
+    if (this.uiCtx && this.lastStatusText !== undefined) {
+      this.uiCtx.setStatus("subagents", undefined);
+      this.lastStatusText = undefined;
+    }
+    if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
+    for (const [id] of this.finishedTurnAge) {
+      if (!allAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
+    }
+  }
+
+  /**
+   * Register the widget callback once; subsequent updates use requestRender()
+   * which re-invokes render() without replacing the component (avoids layout thrashing).
+   */
+  private registerWidget(uiCtx: UICtx) {
+    if (this.widgetRegistered) {
       // Widget already registered — just request a re-render of existing components.
       this.tui?.requestRender();
+      return;
     }
+    uiCtx.setWidget("agents", (tui, theme) => {
+      this.tui = tui;
+      return {
+        render: () => this.renderWidget(tui, theme),
+        invalidate: () => {
+          // Theme changed — force re-registration so factory captures fresh theme.
+          this.widgetRegistered = false;
+          this.tui = undefined;
+        },
+      };
+    }, { placement: "aboveEditor" });
+    this.widgetRegistered = true;
   }
 
   dispose() {
