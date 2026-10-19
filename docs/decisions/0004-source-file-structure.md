@@ -2,7 +2,7 @@
 
 ## Context
 
-`src/index.ts` is several times the 50 KB limit of an agent's `Read` call, and one factory function holds tool registration, menus, settings and notification logic over shared closure state. Editing it takes chunked reads, long anchors and whole-file rewrites. Large files also hide coupling.
+A file past the 50 KB limit of an agent's `Read` call takes chunked reads, long anchors and whole-file rewrites to edit. Large files also hide coupling, as does one factory function that holds unrelated concerns over shared closure state.
 
 A bare line limit invites bad fixes: arbitrary `part2.ts` splits, dumping grounds named `utils.ts`, one-call helpers, or packing code into long lines to fit. Each meets the number and makes the code harder to follow.
 
@@ -12,7 +12,7 @@ Size limits are triggers to look at a file, never targets to hit. The goal is th
 
 - A `src/` file over 500 lines needs a header comment line `Size: <one-sentence reason>`, or a split.
 - A `src/` file must stay under 800 lines and 40 KB.
-- `test/file-size.test.ts` enforces both rules. Existing offenders sit in an allowlist that pins each file's line count and byte size. Neither may grow. An entry may shrink or be removed.
+- `test/file-size.test.ts` enforces both rules. Exceptions sit in an allowlist that pins each file's line count and byte size. Neither may grow. An entry may shrink or be removed.
 - Function size is judged by Biome's `complexity/noExcessiveCognitiveComplexity` at its default of 15, enabled at `info` severity. It reports and never fails `npm run check`. A long flat sequence, such as a list of registrations, is fine.
 - A function scoring over 30 fails `test/complexity.test.ts`. Biome cannot set a second threshold, so the test parses `biome lint --reporter=json`.
 - A report means read the function and decide. Record a function judged acceptable with `// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <reason>`. Never shorten code only to silence the rule.
@@ -32,15 +32,15 @@ Never do these to meet a limit:
 - Add barrel files or re-export shims.
 - Shorten code by lengthening lines, deleting blank lines or comments, or writing dense one-liners.
 
-A split changes no behavior. It moves code, updates imports, moves the matching tests and updates the `src/` file map in `README.md`, in one commit with no other change. New per-concern code goes in a module that exposes `registerX(pi, deps)`, and `index.ts` only wires.
+A split changes no behavior. It moves code, updates imports, updates the matching tests and updates the `src/` file map in `README.md`, in one commit with no other change. New per-concern code goes in a module that exposes `registerX(pi, deps)`, and `index.ts` only wires.
 
 Done check:
 
 - `npm run check` passes, including `test/file-size.test.ts` and `test/complexity.test.ts`.
 - `biome.json` sets `linter.rules.complexity.noExcessiveCognitiveComplexity` to `"info"`.
 
-Rejected: Biome's `noExcessiveLinesPerFunction`, because it rewards fragmenting. Rejected: making the complexity rule an error at 15, because it would fail on many existing functions and on ordinary event-handler code. Only scores over 30 fail. Rejected: guidance in `AGENTS.md` alone, because nothing enforces it.
+Rejected: Biome's `noExcessiveLinesPerFunction`, because it rewards fragmenting. Rejected: making the complexity rule an error at 15, because it would fail on ordinary event-handler code. Only scores over 30 fail. Rejected: guidance in `AGENTS.md` alone, because nothing enforces it.
 
 ## Consequences
 
-The file-size ratchet makes oversized files visible and stops them growing, without forcing a rewrite. Splitting `index.ts` is separate backlog work. Revisit the numbers if the `Read` truncation limit changes, or if a split produces modules that need wide deps objects.
+The file-size ratchet makes oversized files visible and stops them growing, without forcing a rewrite. Revisit the numbers if the `Read` truncation limit changes, or if a split produces modules that need wide deps objects.
