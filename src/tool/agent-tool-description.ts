@@ -6,34 +6,10 @@ import { getModelLabelFromConfig } from "../config/model-resolver.js";
 import type { ToolDescriptionMode } from "../config/settings.js";
 import type { AgentConfig } from "../types.js";
 
-/**
- * Format an agent's tool scope for the Agent tool description.
- *
- * This suffix describes BUILT-IN scope only — extension tools are resolved when
- * the agent runs (extensions can register asynchronously), so they cannot be
- * enumerated while the description is being built. That is why an agent with
- * `tools: "*, ext:mcp/search"` renders "*" and always has.
- *
- * Two distinctions matter, both of them capability claims the orchestrator acts on:
- *
- * - absent vs empty. `builtinToolNames: undefined` means the agent never narrowed
- *   its tools (the shipped defaults); `[]` is what `tools: none` and an `ext:`-only
- *   `tools:` parse to, and the runtime really does hand those agents no built-ins.
- *   Rendering both "*" tells the orchestrator a tool-less agent can run `bash`.
- * - empty-with-extensions vs empty-without. Zero built-ins does NOT imply zero
- *   tools: `tools: none` alongside `extensions:` still surfaces every extension
- *   tool (see test/fixtures/.pi/agents/tools-none.md, which expects three). Calling
- *   that "none" understates the agent instead of overstating it — better, but still
- *   wrong, and it would route work away from the only agent able to do it. "none"
- *   is therefore reserved for agents that genuinely can call nothing: `isolated`
- *   agents and those with `extensions: false`.
- */
 export function formatToolsSuffix(cfg: AgentConfig | undefined): string {
   const tools = cfg?.builtinToolNames;
   if (!tools) return "*";
   if (tools.length === 0) {
-    // `isolated` overrides extensions to false in the runner, so both mean the
-    // agent has no extension tools either — and then it truly has nothing.
     const noExtensionTools = cfg?.isolated === true || cfg?.extensions === false;
     return noExtensionTools ? "none" : "no built-ins, extension tools only";
   }
@@ -43,7 +19,6 @@ export function formatToolsSuffix(cfg: AgentConfig | undefined): string {
   return isFullSet ? "*" : tools.join(", ");
 }
 
-/** Build the full type list text dynamically from available agents only. */
 const buildTypeListText = () => {
   const available = getAvailableTypes();
 
@@ -55,24 +30,17 @@ const buildTypeListText = () => {
   }).join("\n");
 };
 
-/** First sentence of an agent description — for the compact type list. */
 export const firstSentence = (text: string): string => {
   const match = text.match(/^.*?[.!?](?=\s|$)/s);
   return (match ? match[0] : text).replace(/\s+/g, " ").trim();
 };
 
-/** Compact type list: one line per agent, first sentence only. */
 const buildCompactTypeListText = () =>
   getAvailableTypes().map((name) => {
     const cfg = getAgentConfig(name);
     return `- ${name}: ${firstSentence(cfg?.description ?? name)} (Tools: ${formatToolsSuffix(cfg)})`;
   }).join("\n");
 
-/**
- * Build the Agent tool description for the given mode. Read once at tool
- * definition: scheduling and worktree isolation follow the persisted settings
- * at that moment.
- */
 export function buildAgentToolDescription(o: {
   mode: ToolDescriptionMode;
   schedulingEnabled: boolean;
@@ -82,13 +50,6 @@ export function buildAgentToolDescription(o: {
     ? `\n- Use \`schedule\` only when the user explicitly asked for scheduled / recurring / delayed execution (e.g. "every Monday", "in an hour"). Don't auto-schedule from vague intent like "monitor X" — run once now or ask.`
     : "";
 
-  // Same trade as scheduleParam/scheduleGuideline above: `isolationParam` drops
-  // the field from the schema when the project set `worktreeIsolation: false`,
-  // so the prose has to go with it. Left in, it would teach the model to pass a
-  // parameter that isn't declared — accepted (TypeBox sets no
-  // `additionalProperties: false`) and then silently dropped by the resolver.
-  // With no per-result note by design, the model would have every reason to go
-  // on reporting a `pi-agent-*` branch that was never created.
   const isolationGuideline = o.worktreeEnabled
     ? `\n- Use isolation: "worktree" to give the agent its own git worktree (safe parallel file modifications); leave it unset, or pass "off", for none. The worktree is removed when the agent finishes; if it made changes, they are committed to a branch and the branch is named in the result.`
     : "";
@@ -97,9 +58,6 @@ export function buildAgentToolDescription(o: {
     ? `\n- isolation: "worktree" gives the agent its own git worktree (removed on completion); changes land on a branch named in the result.`
     : "";
 
-  // Compact Agent tool description (#91, `toolDescriptionMode: "compact"`) —
-  // the same load-bearing facts as the full version at ~75% fewer tokens, for
-  // small/local models. Per-option details live in the param descriptions.
   const compactAgentToolDescription = `Launch an autonomous agent for complex, multi-step tasks. Agent types:
 ${buildCompactTypeListText()}
 
@@ -155,10 +113,6 @@ Terse command-style prompts produce shallow, generic work.
 
 **Never delegate understanding.** Don't write "based on your findings, fix the bug" or "based on the research, implement it." Those phrases push synthesis onto the agent instead of doing it yourself. Write prompts that prove you understood: include file paths, line numbers, what specifically to change.`;
 
-  // `toolDescriptionMode: "custom"` — user-authored description with live
-  // dynamic parts. Project file wins over global; missing/empty falls back to
-  // "full" (a stale fallback beats a blank tool description). Only the prose
-  // is customizable — the parameter schema stays code-owned.
   const renderToolDescriptionTemplate = (template: string): string => {
     const vars: Record<string, () => string> = {
       typeList: buildTypeListText,
@@ -167,7 +121,6 @@ Terse command-style prompts produce shallow, generic work.
       isolationGuideline: () => isolationGuideline,
       scheduleGuideline: () => scheduleGuideline,
     };
-    // Replacement callback (not a string) — agent descriptions may contain `$&` etc.
     return template.replace(/\{\{(\w+)\}\}/g, (raw, name: string) => {
       if (vars[name]) return vars[name]();
       console.warn(`[pi-subagents] agent-tool-description.md: unknown placeholder ${raw} left as-is`);

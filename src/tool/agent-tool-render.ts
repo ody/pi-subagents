@@ -28,14 +28,6 @@ export function renderAgentCall(
   theme: PiTheme,
   context: { isPartial: boolean; isError: boolean },
 ): Text {
-  // A badge closes its own background, which would clear the tool block's row tint
-  // for the rest of the line, so the badge restores it. The tint is opened here too:
-  // the TUI's Box paints it, but HTML export takes it from CSS, and restoring a
-  // background the line never opened is what banded the export before. The line is
-  // deliberately left open — Box.applyBackgroundToLine pads to width and *then*
-  // wraps, so closing here would leave that padding untinted, and HTML export closes
-  // any open span per line anyway. No badge means no tint, so an uncolored agent
-  // renders exactly the line it always did.
   const rowBackground = hasAgentBadge(args.subagent_type)
     ? theme.getBgAnsi(context.isPartial ? "toolPendingBg" : context.isError ? "toolErrorBg" : "toolSuccessBg")
     : "";
@@ -48,7 +40,6 @@ export function renderAgentCall(
   return new Text(rowBackground + "▸ " + name + (desc ? "  " + theme.fg("muted", desc) : ""), 0, 0);
 }
 
-/** Build "haiku · thinking: high · ↻5≤30 · 3 tool uses · 33.8k tokens". */
 function formatAgentStats(d: AgentDetails, theme: PiTheme, showCost: boolean): string {
   const parts: string[] = [];
   if (d.modelName) parts.push(d.modelName);
@@ -108,7 +99,6 @@ function renderFailedAgent(details: AgentDetails, theme: PiTheme, stats: string)
   return new Text(line, 0, 0);
 }
 
-/** `showCost` is read by the caller at render time so the cost setting stays live. */
 export function renderAgentResult(
   result: AgentToolResult<unknown>,
   { expanded, isPartial }: ToolRenderResultOptions,
@@ -118,9 +108,6 @@ export function renderAgentResult(
 ): Container | Text {
   const details = result.details as AgentDetails | undefined;
   const text = result.content[0]?.type === "text" ? result.content[0].text : "";
-  // Pi reports pre-execution failures (extension block, abort, argument
-  // validation) as `{ content: [reason], details: {} }` with isError set —
-  // no status to render, so show the reason instead of inventing one (#199).
   if (renderContext.isError || !details?.status) {
     return new Text(text, 0, 0);
   }
@@ -132,29 +119,23 @@ export function renderAgentResult(
     return renderRunningAgentStatus(frame, stats, details.activity ?? "thinking…", theme);
   }
 
-  // ---- Background agent launched ----
   if (details.status === "background") {
     return new Text(theme.fg("dim", `  ⎿  Running in background (ID: ${details.agentId})`), 0, 0);
   }
 
-  // ---- Completed / Steered ----
   if (details.status === "completed" || details.status === "steered") {
     return renderFinishedAgent(details, text, expanded, theme, stats);
   }
 
-  // ---- Stopped (user-initiated abort) ----
   if (details.status === "stopped") {
     let line = theme.fg("dim", "■") + (stats ? " " + stats : "");
     line += "\n" + theme.fg("dim", "  ⎿  Stopped");
     return new Text(line, 0, 0);
   }
 
-  // Anything left ("queued", or a status added later) has no rendering of
-  // its own — the turn-limit wording below must not be the catch-all.
   if (details.status !== "error" && details.status !== "aborted") {
     return new Text(text, 0, 0);
   }
 
-  // Error / Aborted (hard max_turns)
   return renderFailedAgent(details, theme, stats);
 }

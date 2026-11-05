@@ -1,17 +1,3 @@
-/**
- * stop-subagent-wiring.test.ts — the `stop_subagent` tool: the model's only
- * lever to end a run, as opposed to a human's `x` in FleetView/the viewer/
- * `/agents`, or another extension's `subagents:rpc:stop`.
- *
- * Two things this tool must get right that its siblings don't have to:
- *
- *   - An already-terminal agent is success, not an error — the model's intent
- *     ("that agent is not running") is already satisfied.
- *   - It must NOT consume the result or cancel the pending nudge: `record.result`
- *     doesn't exist yet at stop time (the settle path hasn't run), so the
- *     completion notification — fired once the phase-1 forced-settle timer
- *     runs — is the only way the full output ever reaches the model.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -30,10 +16,6 @@ beforeEach(() => {
   vi.mocked(runAgent).mockReset();
 });
 
-/**
- * A runAgent that never settles, capturing the manager's own onTextDelta so a
- * test can simulate streamed partial output before the stop.
- */
 function heldRun() {
   let deliverText: ((delta: string, fullText: string) => void) | undefined;
   vi.mocked(runAgent).mockImplementation(
@@ -68,12 +50,6 @@ const stop = (tools: Map<string, any>, agent_id: string) =>
 
 const managerRegistry = () => (globalThis as any)[Symbol.for("pi-subagents:manager")];
 
-/**
- * The raw `AgentManager` instance, reached the way the nested tools receive
- * it — the top-level registry (`managerRegistry()`) deliberately exposes only
- * `spawn`/`getRecord`/`waitForAll`/`hasRunning`, not `abort` or
- * `setMaxConcurrent`. Only available after at least one spawn.
- */
 function rawManager(): any {
   return vi.mocked(runAgent).mock.calls[0][3].nestedRuntime.manager;
 }
@@ -100,7 +76,7 @@ describe("stop_subagent", () => {
     subagentsExtension(pi);
     heldRun();
 
-    await spawnBackground(tools); // takes the only slot, once lowered below
+    await spawnBackground(tools);
     rawManager().setMaxConcurrent(1);
     const queuedId = await spawnBackground(tools);
     await flush();
@@ -131,7 +107,6 @@ describe("stop_subagent", () => {
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain("completed");
     expect(textOf(result)).toContain("get_subagent_result");
-    // Stopping an already-settled agent must not disturb its status.
     expect(managerRegistry().getRecord(id).status).toBe("completed");
 
     await lifecycle.get("session_shutdown")?.();
@@ -145,8 +120,6 @@ describe("stop_subagent", () => {
     const unknown = await stop(tools, "does-not-exist");
     expect(textOf(unknown)).toContain("Agent not found");
 
-    // A nested child, spawned directly through the raw manager the way the
-    // nested Agent tool does — hidden from every top-level surface.
     const topId = await spawnBackground(tools);
     await flush();
     const manager = rawManager();
@@ -161,7 +134,6 @@ describe("stop_subagent", () => {
 
     const nested = await stop(tools, childId);
     expect(textOf(nested)).toContain("Agent not found");
-    // Untouched — the top-level tool must not reach through the ownership boundary.
     expect(manager.getRecord(childId)?.status).toBe("running");
 
     await lifecycle.get("session_shutdown")?.();
@@ -228,8 +200,6 @@ describe("stop_subagent", () => {
       await stop(tools, id);
       expect(managerRegistry().getRecord(id).resultConsumed).toBeFalsy();
 
-      // Nothing has notified yet — the forced-settle grace period hasn't
-      // elapsed, so onComplete (and the nudge it schedules) hasn't fired.
       expect(pi.sendMessage).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(FORCED_SETTLE_GRACE_MS);
@@ -264,17 +234,10 @@ describe("stop_subagent", () => {
       const notified = vi.mocked(pi.sendMessage).mock.calls
         .find(([message]: any[]) => message?.customType === "subagent-notification");
       expect(notified).toBeDefined();
-      // A smart-join batch notification can land BEFORE the forced settle, when
-      // there is no result to preview yet. The forced settle is what supplies
-      // the partial output, so the last notification is the one to read.
       const content = String((vi.mocked(pi.sendMessage).mock.calls.at(-1) as any[])[0].content);
-      // The stop came from the model, not a human — the notification must not
-      // read as if someone was watching over the agent's shoulder.
       expect(content).toContain("STOPPED BY THE ORCHESTRATING AGENT");
       expect(content).not.toContain("STOPPED BY THE USER");
       expect(content).toContain("<status>Stopped</status>");
-      // The forced settle copies the streamed text into record.result, so the
-      // notification carries what the agent produced instead of "No output.".
       expect(content).toContain("partial thinking so far");
       expect(content).not.toContain("No output.");
 
@@ -309,8 +272,6 @@ describe("stop_subagent", () => {
 
     const id = await spawnBackground(tools);
     await flush();
-    // The FleetView/viewer/`/agents` path: manager.abort() directly, never
-    // through stop_subagent, so stoppedBy is never set.
     rawManager().abort(id);
 
     const readBack = await tools.get("get_subagent_result").execute(

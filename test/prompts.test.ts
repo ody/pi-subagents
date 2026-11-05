@@ -15,7 +15,6 @@ const envNoGit: EnvInfo = {
   platform: "linux",
 };
 
-// Initialize default agents
 beforeEach(() => {
   registerAgents(new Map());
 });
@@ -62,7 +61,6 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("<sub_agent_context>");
     expect(prompt).not.toContain("<inherited_system_prompt>");
     expect(prompt).not.toContain("READ-ONLY");
-    // Empty systemPrompt means no <agent_instructions> section
     expect(prompt).not.toContain("<agent_instructions>");
   });
 
@@ -278,9 +276,7 @@ describe("buildAgentPrompt", () => {
         isolated: false,
       };
       const prompt = buildAgentPrompt(config, "/workspace", env, "Parent prompt.");
-      // Parent prompt must form the verbatim, cacheable byte prefix.
       expect(prompt.startsWith("Parent prompt.")).toBe(true);
-      // The varying tag follows the static <sub_agent_context> bridge.
       const ctxIdx = prompt.indexOf("<sub_agent_context>");
       const tagIdx = prompt.indexOf('<active_agent name="my-agent"/>');
       expect(ctxIdx).toBeGreaterThan(-1);
@@ -326,8 +322,6 @@ describe("buildAgentPrompt", () => {
     });
   });
 
-  // #187: the inherited parent prompt names the main checkout as cwd, so a
-  // worktree agent needs to be told which of the two paths is really its own.
   describe("worktree isolation block", () => {
     function worktreeConfig(promptMode: "append" | "replace"): AgentConfig {
       return {

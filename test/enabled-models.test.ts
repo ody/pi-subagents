@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "../src/config/enabled-models.js";
 
-/** Mock models matching typical registry shape. */
 const MODELS = [
   { id: "gemma-4-31b-it", name: "Gemma 4 31B", provider: "google" },
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
@@ -76,7 +75,6 @@ describe("readEnabledModels", () => {
       enabledModels: ["anthropic/claude-sonnet-4-6", "anthropic/claude-opus-4-6"],
     }));
     writeProject({ enabledModels: ["anthropic/claude-haiku-4-5"] });
-    // Project replaces wholly — globals NOT merged in
     expect(readEnabledModels(projectDir)).toEqual(["anthropic/claude-haiku-4-5"]);
   });
 
@@ -84,7 +82,7 @@ describe("readEnabledModels", () => {
     writeFileSync(globalFile(), JSON.stringify({
       enabledModels: ["anthropic/claude-sonnet-4-6"],
     }));
-    writeProject({ defaultProvider: "anthropic" }); // project exists but no enabledModels
+    writeProject({ defaultProvider: "anthropic" });
     expect(readEnabledModels(projectDir)).toEqual(["anthropic/claude-sonnet-4-6"]);
   });
 
@@ -100,7 +98,6 @@ describe("readEnabledModels", () => {
 
   it("returns undefined when enabledModels is not an array (project)", () => {
     writeProject({ enabledModels: "anthropic/claude-haiku-4-5" });
-    // Project's non-array enabledModels is invalid → falls back to global; global empty → undefined
     expect(readEnabledModels(projectDir)).toBeUndefined();
   });
 });
@@ -117,7 +114,6 @@ describe("resolveEnabledModels", () => {
 
   it("skips empty string patterns", () => {
     const result = resolveEnabledModels(["", "anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-4-6"], makeRegistry());
-    // Empty string should not match — only exact patterns should match
     expect(result!.size).toBe(2);
   });
 
@@ -139,7 +135,7 @@ describe("resolveEnabledModels", () => {
       ["anthropic/claude-haiku-4-5", "anthropic/claude-haiku-4-5"],
       makeRegistry(),
     );
-    expect(result!.size).toBe(1); // duplicate resolves to one entry
+    expect(result!.size).toBe(1);
   });
 
   describe("exact provider/modelId", () => {
@@ -192,14 +188,13 @@ describe("resolveEnabledModels", () => {
 
   describe("getAvailable filtering", () => {
     it("resolves only against available models when getAvailable present", () => {
-      const available = [MODELS[0], MODELS[3]]; // google + haiku only
+      const available = [MODELS[0], MODELS[3]];
       const result = resolveEnabledModels(
         ["anthropic/claude-haiku-4-5", "anthropic/claude-sonnet-4-6", "google/gemma-4-31b-it"],
         makeRegistry(MODELS, available),
       );
-      // haiku and google are available; sonnet is not
       expect(result!.has("anthropic/claude-haiku-4-5".toLowerCase())).toBe(true);
-      expect(result!.has("anthropic/claude-sonnet-4-6".toLowerCase())).toBe(false); // not available
+      expect(result!.has("anthropic/claude-sonnet-4-6".toLowerCase())).toBe(false);
       expect(result!.has("google/gemma-4-31b-it".toLowerCase())).toBe(true);
     });
   });

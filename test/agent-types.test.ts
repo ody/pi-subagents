@@ -104,9 +104,6 @@ describe("agent type registry", () => {
       expect(cfg?.isDefault).toBe(true);
     });
 
-    // Regression guard for #37 — default agents must not bake in callsite-strategy fields.
-    // An explicit `false` here would silently win over the caller's `true` via `??` in
-    // resolveAgentInvocationConfig, breaking documented Agent tool params.
     it("default agents do not lock strategy fields (run_in_background / inherit_context / isolated)", () => {
       for (const name of ["general-purpose", "Explore", "Plan"]) {
         const cfg = getAgentConfig(name);
@@ -136,7 +133,6 @@ describe("agent type registry", () => {
   });
 
   describe("disable defaults", () => {
-    // Module-level flag — always reset so later describes see the default roster.
     afterEach(() => {
       setDefaultsDisabled(false);
       registerAgents(new Map());
@@ -262,7 +258,6 @@ describe("agent type registry", () => {
     });
 
     it("getToolNamesForType honors an explicit empty builtinToolNames as zero built-ins", () => {
-      // `tools: none` and `tools:` with only `ext:` entries both produce `[]`.
       const agents = new Map([["ext-only", makeAgentConfig({
         name: "ext-only",
         builtinToolNames: [],
@@ -320,18 +315,12 @@ describe("agent type registry", () => {
       registerAgents(agents);
 
       expect(isValidType("general-purpose")).toBe(false);
-      // getConfig fallback should still return something reasonable
       const config = getConfig("general-purpose");
       expect(config.displayName).toBe("Agent");
     });
   });
 
   describe("BUILTIN_TOOL_NAMES", () => {
-    // BUILTIN_TOOL_NAMES is derived dynamically from pi's tool factories
-    // (createCodingTools + createReadOnlyTools). This guards against pi-mono
-    // dropping/renaming a built-in: the set must still contain at least these
-    // 7. It's a superset check ("at least") — pi adding a new built-in is fine
-    // and won't fail this test.
     const EXPECTED = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 
     it("contains at least the 7 known built-ins", () => {
@@ -379,12 +368,10 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
     if (r.ok) throw new Error("expected rejection");
     expect(r.message).toContain('Unknown or disabled agent type: "typoo"');
     expect(r.message).toContain("scout");
-    expect(r.message).not.toContain("retired"); // disabled agents aren't offered
+    expect(r.message).not.toContain("retired");
   });
 
   it("treats a disabled type as unresolvable, not as a valid name", () => {
-    // Regression: the old path used resolveType(), which ignores `enabled`, so a
-    // disabled agent dispatched with its own prompt and general-purpose's tools.
     registerAgents(roster());
     expect(resolveSpawnType("retired")).toEqual({
       ok: true, type: "general-purpose", fellBackFrom: "retired",
@@ -398,9 +385,7 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
       ["Scout", makeAgentConfig({ name: "Scout" })],
       ["scout", makeAgentConfig({ name: "scout" })],
     ]));
-    // An exact match is still unambiguous...
     expect(resolveSpawnType("scout")).toEqual({ ok: true, type: "scout" });
-    // ...but a differently-cased spelling matches both, so it must not pick one.
     expect(resolveSpawnType("SCOUT").ok).toBe(true);
     expect(resolveSpawnType("SCOUT")).toEqual({
       ok: true, type: "general-purpose", fellBackFrom: "SCOUT",
@@ -416,8 +401,6 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
   });
 
   it("fails loudly when the configured fallback is itself unusable", () => {
-    // Explicit configuration that cannot work is a misconfiguration, not a
-    // second chance to guess — never a silent drop to general-purpose.
     registerAgents(roster());
     setFallbackSubagent("retired");
     const r = resolveSpawnType("typoo");
@@ -427,8 +410,6 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
   });
 
   it("treats a missing type like any other unresolvable one", () => {
-    // Before this setting existed an empty type fell back like a typo; only
-    // opting in should change that, so the default must stay permissive.
     registerAgents(roster());
     for (const empty of ["", "   ", undefined]) {
       expect(resolveSpawnType(empty)).toMatchObject({ ok: true, type: "general-purpose" });
@@ -444,14 +425,11 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
   });
 
   it("resolves strictly regardless of the setting, for nested delegation", () => {
-    // Nested delegation uses this seam so a project-level fallback can't hand a
-    // nested caller an agent its allowlist never named.
     const registry = roster();
     setFallbackSubagent("router");
     expect(resolveEnabledTypeIn(registry, "typoo")).toBeUndefined();
     expect(resolveEnabledTypeIn(registry, "retired")).toBeUndefined();
     expect(resolveEnabledTypeIn(registry, " SCOUT ")).toBe("scout");
-    // ...while the policy layer still honors it.
     expect(resolveSpawnTypeIn(registry, "typoo")).toEqual({
       ok: true, type: "router", fellBackFrom: "typoo",
     });

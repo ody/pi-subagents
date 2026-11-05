@@ -1,18 +1,3 @@
-/**
- * subagents-nested-print-mode-e2e.test.ts — remaining real-session coverage for
- * opt-in nested delegation after #164 landed.
- *
- * `test/nested-delegation-e2e.test.ts` already pins the happy path (tool
- * admission + two-hop foreground return + background poll/transcript). This
- * file covers the production-boundary cases that suite still leaves open:
- * default-off injection, depth-cap tool stripping, background parent holds
- * while a child nests, and cross-parent ownership denial against the published
- * root manager lifecycle.
- *
- * Extracted from codesoda/pi-subagents#2 (test-only follow-up to #164) and
- * reconciled with the merged #164 frontmatter contract (`allowed_subagents`
- * opt-in; no nested tools injected at the depth cap).
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -136,8 +121,6 @@ async function runWithAgents(
     ...options,
     cwd,
     respond,
-    // Pinned faux: every case here scripts exact tool calls, so the pre-publish
-    // smoke's global `PI_E2E_LIVE=1` must not swap a real model in.
     live: false,
     beforeRun: () => registerAgents(loadCustomAgents(cwd)),
   });
@@ -184,9 +167,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
   });
 
   it("strips nested tools at the depth cap instead of injecting always-failing ones", async () => {
-    // Default maxSubagentDepth is 2: main(0) → level_one(1) → level_two(2).
-    // #164 injects nested tools only while depth < max, so the agent at the cap
-    // never sees Agent/get/steer even when it opts in via allowed_subagents.
     const observed = new Map<string, string[]>();
     ({ run, cwd } = await runWithAgents(
       {
@@ -200,7 +180,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
         if (route === "level_three-child") return "UNEXPECTED_LEVEL_THREE";
         if (route === "level_two-child") {
           const nested = nestedToolsIn(tools(ctx));
-          // Cap agents must complete directly — they have no nested tools.
           return `AT_CAP tools=${nested.length === 0 ? "none" : nested.join(",")}`;
         }
         if (route === "level_one-child") {
@@ -299,10 +278,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
   });
 
   it("keeps nested get and steer ownership-scoped to the calling parent", async () => {
-    // #164 aborts nested children when their owner settles, so the owner must
-    // stay running while a foreign peer probes the live nested record. Spawn
-    // both owner and probe as top-level background agents (hold:false so the
-    // root can continue); the nested tools themselves enforce ownership.
     const probeResults: { get?: string; steer?: string } = {};
     let ownedChildBlocked = false;
     let releaseOwnedChild = () => {};
@@ -328,7 +303,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
       ({ run, cwd } = await runWithAgents(
         {
           owner: "allowed_subagents: owned_child\n",
-          // Unrestricted nested allowlist — still ownership-scoped at runtime.
           probe: "allowed_subagents: all\n",
           owned_child: "",
         },
@@ -354,13 +328,11 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             if (!id) throw new Error(`No nested ID in: ${agents[0]}`);
             nestedId = id;
             ownerHolding();
-            // Stay running so #164 does not abortOwnedChildren(owned_child).
             await ownerHold;
             return `OWNER_NESTED_ID:${id}`;
           }
           if (route === "probe-child") {
             await ownedChildReady;
-            // Wait until the owner has published the nested id.
             await waitForChildReady(ownerHoldingReady, 5_000);
             const id = nestedId;
             if (!id) throw new Error("Owner never published a nested agent id");
@@ -394,7 +366,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             });
           }
           if (agents.length === 1) {
-            // Fire probe without waiting for the background owner to finish.
             return agentCall({
               subagent_type: "probe",
               description: "foreign ownership probe",
@@ -404,7 +375,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
           }
           const results = toolResults(ctx, "get_subagent_result");
           if (results.length === 0) {
-            // Poll the probe (second background agent) for the denial outcome.
             const probeSpawn = agents[1];
             const probeId = probeSpawn.match(/Agent ID: ([^\s]+)/)?.[1];
             if (!probeId) throw new Error(`No probe ID in: ${probeSpawn}`);
@@ -424,7 +394,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
       expect(run.manager).toBeDefined();
       const manager = run.manager;
       if (!manager) throw new Error("Print-mode manager was not published");
-      // Owner (and its nested child) are still live — root finished without hold.
       expect(manager.hasRunning()).toBe(true);
       waitForAll = manager.waitForAll();
       let waitTimer: ReturnType<typeof setTimeout> | undefined;

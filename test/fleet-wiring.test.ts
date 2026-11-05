@@ -1,14 +1,3 @@
-/**
- * fleet-wiring.test.ts — end-to-end wiring of the FleetView through the REAL
- * extension (src/index.ts), not the FleetList class in isolation.
- *
- * The unit tests in fleet-list.test.ts drive FleetList with a fake ui/manager.
- * These prove the bits only the extension can: that `tool_execution_start`
- * hands the fleet the live UI (so it captures input), that spawning a background
- * agent actually registers the `belowEditor` widget once the agent has a session,
- * and that `session_shutdown` tears it down. runAgent is mocked (no LLM); the
- * manager, settings load, completion routing, and lifecycle handlers are real.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,7 +29,6 @@ function makePi() {
   return { pi, tools, lifecycle };
 }
 
-/** A UI context with the surfaces the widget + fleet touch; setWidget is spied. */
 function uiCtx() {
   return {
     setStatus: vi.fn(),
@@ -86,8 +74,6 @@ describe("FleetView wiring (real extension lifecycle)", () => {
     process.env.HOME = agentDir;
     prevCwd = process.cwd();
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
-    // async join → completion routes straight to sendIndividualNudge (no batch
-    // debounce), so fleet.onAgentFinished fires synchronously on the result.
     writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, defaultJoinMode: "async" }));
     process.chdir(tmpDir);
   });
@@ -123,7 +109,7 @@ describe("FleetView wiring (real extension lifecycle)", () => {
     subagentsExtension(pi);
 
     const ui = uiCtx();
-    await lifecycle.get("tool_execution_start")?.({}, ctxWith(ui)); // fleet captures THIS ui
+    await lifecycle.get("tool_execution_start")?.({}, ctxWith(ui));
 
     const spawn = await tools.get("Agent").execute(
       "tc",
@@ -133,12 +119,12 @@ describe("FleetView wiring (real extension lifecycle)", () => {
       ctxWith(uiCtx()),
     );
     expect(textOf(spawn)).toMatch(/Agent ID:/);
-    await flush(); // completion → fleet.onAgentFinished → update → widget registers
+    await flush();
 
     const fleetRegs = ui.setWidget.mock.calls.filter(c => c[0] === "fleet" && typeof c[1] === "function");
     expect(fleetRegs.length, "fleet widget should register with a render factory").toBeGreaterThan(0);
 
     await lifecycle.get("session_shutdown")?.({}, ctxWith(uiCtx()));
-    expect(ui.setWidget).toHaveBeenCalledWith("fleet", undefined); // dispose cleared it
+    expect(ui.setWidget).toHaveBeenCalledWith("fleet", undefined);
   });
 });

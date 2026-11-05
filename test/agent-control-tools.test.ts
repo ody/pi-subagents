@@ -16,7 +16,6 @@ function setup(record: AgentRecord) {
     manager: { abort: vi.fn(), getActivity: vi.fn() } as any,
     notifier: { cancelNudge },
     settings: { showCost: false },
-    // Mirrors the real resolver: an id, a handle or an alias all reach the record.
     resolveAgentRef: (ref: string) => (ref === record.id || ref === record.handle ? record : undefined),
     usageReporting: { settings: { reportUsage: false }, pendingUsage: new Map() } as any,
   });

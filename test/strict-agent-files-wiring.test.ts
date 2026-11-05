@@ -1,13 +1,3 @@
-/**
- * strict-agent-files-wiring.test.ts — proves `strictAgentFiles` gates the real
- * extension activation, and that it is a STARTUP decision only.
- *
- * The load-bearing pair: activating with the setting on must throw (that is the
- * whole point — pi refuses to start rather than run a substituted agent), while
- * a later reload of the same broken file must not. Agents reload once per
- * `Agent` call, so a strict reload would kill the session on an unrelated spawn
- * long after the bad edit, where the failure looks disconnected from its cause.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -59,8 +49,6 @@ describe("strictAgentFiles gates extension activation", () => {
     originalCwd = process.cwd();
     cwd = mkdtempSync(join(tmpdir(), "strict-agent-files-"));
     process.chdir(cwd);
-    // A developer's real ~/.pi/subagents.json would otherwise set this very
-    // setting under the tests, and their global agents would pollute the roster.
     originalAgentDir = process.env.PI_CODING_AGENT_DIR;
     originalHome = process.env.HOME;
     process.env.PI_CODING_AGENT_DIR = join(cwd, "agent-dir");
@@ -98,7 +86,6 @@ describe("strictAgentFiles gates extension activation", () => {
     const path = writeBrokenAgent();
     writeSettings({ strictAgentFiles: true });
 
-    // Start clean, so the session exists — then break the file underneath it.
     writeFileSync(path, "---\ndescription: Fixed\n---\n\nFixed.\n");
     const pi = makePi();
     expect(() => subagentsExtension(pi)).not.toThrow();
@@ -109,8 +96,6 @@ describe("strictAgentFiles gates extension activation", () => {
       .find((t: any) => t.name === "Agent");
     expect(agentTool).toBeDefined();
 
-    // The Agent tool reloads the registry per call. That reload must be
-    // non-strict: it returns a normal "unknown type" result, not a YAML throw.
     const uiCtx = {
       hasUI: false,
       ui: { setStatus: vi.fn(), setWidget: vi.fn(), notify: vi.fn() },

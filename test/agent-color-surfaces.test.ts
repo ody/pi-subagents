@@ -6,7 +6,6 @@ import { AgentWidget } from "../src/ui/agent-widget.js";
 import { ConversationViewer } from "../src/ui/conversation-viewer.js";
 import { FleetList, type FleetUICtx } from "../src/ui/fleet-list.js";
 
-/** Fold an activity map into a fake manager: the widget reads `getActivity`. */
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;
 }
@@ -128,12 +127,8 @@ describe("custom agent color runtime surfaces", () => {
 
       expect(output).toContain(DISPLAY_NAME);
       expect(output).toContain(PURPLE_BACKGROUND);
-      // The row tint is opened by the line itself and restored after the badge, so the
-      // line reads the same whether or not the caller paints one (HTML export does not).
       expect(output.indexOf("<toolSuccessBg>")).toBeLessThan(output.indexOf(PURPLE_BACKGROUND));
-      expect(output.split("<toolSuccessBg>")).toHaveLength(3); // opened once, restored after the badge
-      // Left open on purpose: Box pads to width and then wraps, so a reset here would
-      // leave the padding untinted. Nothing after the badge may close the background.
+      expect(output.split("<toolSuccessBg>")).toHaveLength(3);
       expect(output).not.toContain("\u001b[49m");
       expect(render({ isPartial: true, isError: false })).toContain("<toolPendingBg>");
       expect(render({ isPartial: false, isError: true })).toContain("<toolErrorBg>");
@@ -146,8 +141,6 @@ describe("custom agent color runtime surfaces", () => {
       expect(missingType).toContain("<toolTitle>*Agent*</toolTitle>");
       expect(missingType).not.toContain(PURPLE_BACKGROUND);
 
-      // An agent without a color must render the pre-badge line byte for byte:
-      // no badge, and no row background of our own for HTML export to pick up.
       registerAgents(new Map([[TYPE, { ...config, color: undefined }]]));
       const uncolored = render({ isPartial: false, isError: false });
       expect(uncolored.trimEnd()).toBe(`▸ <toolTitle>*${DISPLAY_NAME}*</toolTitle>  <muted>Review this change</muted>`);

@@ -1,21 +1,9 @@
-/**
- * session-text.ts — Reads a subagent's output text, final-turn failure and
- * transcript out of an AgentSession.
- */
-
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { extractText } from "./context.js";
 
-/**
- * Subscribe to a session and collect the last assistant message text.
- * Returns an object with a `getText()` getter and an `unsubscribe` function.
- */
 export function collectResponseText(session: AgentSession) {
   let text = "";
   const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
-    // message_start also fires for user and toolResult messages — resetting on
-    // those would wipe assistant text already collected. Reset only when a new
-    // ASSISTANT message begins, so getText() is the last assistant message's text.
     if (event.type === "message_start" && event.message.role === "assistant") {
       text = "";
     }
@@ -26,13 +14,6 @@ export function collectResponseText(session: AgentSession) {
   return { getText: () => text, unsubscribe };
 }
 
-/**
- * Get the last non-empty assistant text produced during THIS invocation.
- * `startIndex` is the message count captured before the prompt, so the walk-back
- * never crosses into a previous turn: on a resume whose new turn failed empty,
- * this returns "" instead of the prior turn's answer (#144). Defaults to 0 (a
- * fresh spawn, where the whole history belongs to this run).
- */
 export function getLastAssistantText(session: AgentSession, startIndex = 0): string {
   for (let i = session.messages.length - 1; i >= startIndex; i--) {
     const msg = session.messages[i];
@@ -43,20 +24,6 @@ export function getLastAssistantText(session: AgentSession, startIndex = 0): str
   return "";
 }
 
-/**
- * Error message of THIS invocation's final assistant message, when that turn
- * failed. Two failure shapes, both keyed off how the final turn STOPPED:
- *   - stopReason "error": a provider failure pi resolved instead of rejecting
- *     (any text; partial output is surfaced separately).
- *   - stopReason "length" with NO text: a silent max-token death — the run hit
- *     the output-token ceiling before writing anything, which would otherwise
- *     land as a "completed" run with an empty result (the #144 symptom).
- * Everything else completes: a clean "stop"/"toolUse" final, and — crucially — a
- * "length" stop that DID produce text (a legitimate truncated-but-useful answer).
- * "aborted" is handled by the manager's abort flag / "stopped" guard, not here.
- * Bounded by `startIndex` (like the text fallback) so a resume that produced no
- * assistant message of its own never inherits a PRIOR turn's stop reason.
- */
 export function finalTurnError(session: AgentSession, startIndex = 0): string | undefined {
   for (let i = session.messages.length - 1; i >= startIndex; i--) {
     const msg = session.messages[i];
@@ -72,9 +39,6 @@ export function finalTurnError(session: AgentSession, startIndex = 0): string | 
   return undefined;
 }
 
-/**
- * Get the subagent's conversation messages as formatted text.
- */
 export function getAgentConversation(session: AgentSession): string {
   const parts: string[] = [];
 
@@ -102,7 +66,6 @@ function formatUserMessage(msg: Extract<SessionMessage, { role: "user" }>): stri
   return text.trim() ? [`[User]: ${text.trim()}`] : [];
 }
 
-/** 0-2 parts: assistant text first, then the tool calls block. */
 function formatAssistantMessage(msg: Extract<SessionMessage, { role: "assistant" }>): string[] {
   const textParts: string[] = [];
   const toolCalls: string[] = [];

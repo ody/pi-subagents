@@ -1,12 +1,3 @@
-/**
- * agent-model-display.test.ts — the model and thinking level the surfaces claim
- * an agent ran with must be the ones it actually ran with.
- *
- * Three ways they used to drift: a subagent that inherited the parent's model
- * showed no model at all, a level pi clamped or an agent file overrode was
- * reported as though it had been honored (#182), and a resume rendered the
- * parameters of the call rather than the session it reopened.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -41,7 +32,6 @@ function agentTool() {
   return tools.get("Agent");
 }
 
-/** A parent session on a model of its own, so "inherited" is a real case. */
 function ctx() {
   return {
     hasUI: false,
@@ -58,7 +48,6 @@ function ctx() {
   } as any;
 }
 
-/** What a child session reports about itself once pi has resolved it. */
 function session(provider: string, id: string, thinkingLevel: string, name?: string) {
   return { model: { provider, id, name: name ?? MODEL_NAMES[id] }, thinkingLevel, dispose: vi.fn() } as never;
 }
@@ -81,11 +70,6 @@ function render(tool: any, result: any, expanded = false): string {
   ).render(200).join("\n");
 }
 
-/**
- * Write a real agent file. In-memory registration is not enough: the Agent tool
- * reloads the registry from `process.cwd()` on every call, so a pinned setting
- * only survives if it is on disk where that reload will find it.
- */
 function pinnedAgent(frontmatter: string): void {
   const dir = join(cwd, ".pi", "agents");
   mkdirSync(dir, { recursive: true });
@@ -101,7 +85,6 @@ beforeEach(() => {
   originalCwd = process.cwd();
   cwd = mkdtempSync(join(tmpdir(), "agent-model-display-"));
   process.chdir(cwd);
-  // A developer's own ~/.pi agents and settings would otherwise leak in.
   originalAgentDir = process.env.PI_CODING_AGENT_DIR;
   originalHome = process.env.HOME;
   process.env.PI_CODING_AGENT_DIR = join(cwd, "agent-dir");
@@ -122,8 +105,6 @@ afterEach(() => {
 
 describe("Agent tool result — effective model", () => {
   it("names the model even when the child inherited the parent's", async () => {
-    // The old rule was "show it only when it differs from the parent", which
-    // left `thinking: high` attached to nothing on the common path.
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
       const s = session("anthropic", "claude-opus-4-6", "high");
       options.onSessionCreated?.(s);
@@ -145,9 +126,6 @@ describe("Agent tool result — effective model", () => {
   });
 
   it("names the inherited model while streaming, before a session exists", async () => {
-    // The streaming row renders from the pre-session snapshot, which the old
-    // "only when it differs from the parent" rule left empty for every agent
-    // that inherited — the level had nothing to attach itself to.
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
       options.onToolActivity?.({ type: "start", toolName: "Read" });
       const s = session("anthropic", "claude-opus-4-6", "high");
@@ -172,8 +150,6 @@ describe("Agent tool result — effective model", () => {
   });
 
   it("keeps the twin label beside the model", async () => {
-    // The mode label hangs off the agent type, not the invocation, so anything
-    // that rebuilds tags from the invocation alone silently drops it.
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
       const s = session("anthropic", "claude-opus-4-6", "high");
       options.onSessionCreated?.(s);
@@ -212,10 +188,6 @@ describe("Agent tool result — effective model", () => {
     expect(result.details.tags).toContain("thinking: high (asked max)");
   });
 
-  // Asserted on the immediate background result, which renders BEFORE a session
-  // exists. That is the only place the two causes of a mismatch are separable:
-  // a clamp cannot have happened yet, so "(asked max)" here can only come from
-  // the agent file outranking the parameter.
   it("discloses a level an agent file pinned over the caller's (#182)", async () => {
     pinnedAgent("thinking: low\n");
     const tool = agentTool();
@@ -255,9 +227,6 @@ describe("Agent tool result — effective model", () => {
   });
 
   it("keeps the disclosure suffix out of the text the model reads", async () => {
-    // Requirement 2: the widget and the viewer may say which pin was displaced;
-    // the tool result the LLM reads may not, or it learns the capability from
-    // its own output.
     pinnedAgent("model: anthropic/claude-haiku-4-5\n");
     const tool = agentTool();
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
@@ -282,9 +251,6 @@ describe("Agent tool result — effective model", () => {
   });
 
   it("never advertises the pin override in the Agent tool schema", async () => {
-    // The other half of requirement 2. The parameter is usable when the user
-    // names a model; the schema says nothing about pins or precedence, and it
-    // tells the model not to reach for it on its own.
     const tool = agentTool();
     const description = tool.parameters.properties.model.description as string;
 
@@ -296,9 +262,6 @@ describe("Agent tool result — effective model", () => {
   });
 
   it("stays quiet when the caller's spelling names the model that won", async () => {
-    // Model input is fuzzy: `"haiku"` and `"anthropic/claude-haiku-4-5"` are the
-    // same model, and the frontmatter did not take anything away from the
-    // caller. Comparing the raw strings would print "haiku 4.5 (asked haiku)".
     pinnedAgent("model: anthropic/claude-haiku-4-5\n");
     const tool = agentTool();
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
@@ -315,8 +278,6 @@ describe("Agent tool result — effective model", () => {
   });
 
   it("refuses a caller spelling that names no available model, pin or no pin", async () => {
-    // Fail loud rather than demote to the pin: silently running on a model other
-    // than the one asked for is the substitution caller-wins exists to remove.
     pinnedAgent("model: anthropic/claude-haiku-4-5\n");
     const tool = agentTool();
     const run = vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
@@ -357,9 +318,6 @@ describe("Agent tool result — effective model", () => {
 
 describe("Agent tool result — resume", () => {
   it("renders the reopened session's settings, not the resume call's", async () => {
-    // resumeAgent only prompts the existing session: model and thinking on a
-    // resume call cannot take effect, so rendering them advertises a
-    // configuration the run never had.
     const s = session("anthropic", "claude-haiku-4-5", "low");
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
       options.onSessionCreated?.(s);

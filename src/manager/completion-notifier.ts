@@ -1,6 +1,3 @@
-// When completion nudges for finished agents are delivered: the cancellable
-// hold window, group joining, and smart-join batch tracking.
-
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentRecord, JoinMode, NotificationDetails } from "../types.js";
@@ -10,11 +7,7 @@ import type { AgentManager } from "./agent-manager.js";
 import { GroupJoinManager } from "./group-join.js";
 import { buildNotificationDetails, formatTaskNotification } from "./notification-format.js";
 
-// Holds notifications briefly so get_subagent_result can cancel them
-// before they reach pi.sendMessage (fire-and-forget).
 const NUDGE_HOLD_MS = 200;
-// A queued result wait must observe completion before its held notification
-// can fire, so successful waits can still suppress that redundant nudge.
 export const QUEUE_WAIT_POLL_MS = Math.floor(NUDGE_HOLD_MS / 4);
 
 export interface CompletionNotifierDeps {
@@ -31,14 +24,8 @@ export class CompletionNotifier {
   private readonly widget: Pick<AgentWidget, "markFinished" | "update">;
   private readonly fleet: Pick<FleetList, "onAgentFinished">;
   private readonly settings: Readonly<Pick<RuntimeSettings, "showCost">>;
-  // ---- Cancellable pending notifications ----
   private readonly pendingNudges = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly groupJoin: GroupJoinManager;
-  // ---- Batch tracking for smart join mode ----
-  // Collects background agent IDs spawned in the current turn for smart grouping.
-  // Uses a debounced timer: each new agent resets the 100ms window so that all
-  // parallel tool calls (which may be dispatched across multiple microtasks by the
-  // framework) are captured in the same batch.
   private currentBatchAgents: { id: string; joinMode: JoinMode }[] = [];
   private batchFinalizeTimer: ReturnType<typeof setTimeout> | undefined;
   private batchCounter = 0;
@@ -50,14 +37,12 @@ export class CompletionNotifier {
     this.fleet = deps.fleet;
     this.settings = deps.settings;
 
-    // ---- Group join manager ----
     this.groupJoin = new GroupJoinManager(
       (records, partial) => {
         for (const r of records) { this.widget.markFinished(r.id); this.fleet.onAgentFinished(r.id); }
 
         const groupKey = `group:${records.map(r => r.id).join(",")}`;
         this.scheduleNudge(groupKey, () => {
-          // Re-check at send time
           const unconsumed = records.filter(r => !r.resultConsumed);
           if (unconsumed.length === 0) { this.widget.update(); return; }
 
@@ -85,9 +70,7 @@ export class CompletionNotifier {
     );
   }
 
-  // Background completion: route through group join or send individual nudge
   onAgentComplete = (record: AgentRecord): void => {
-    // Skip notification if result was already consumed via get_subagent_result
     if (record.resultConsumed) {
       this.widget.markFinished(record.id);
       this.fleet.onAgentFinished(record.id);
@@ -95,8 +78,6 @@ export class CompletionNotifier {
       return;
     }
 
-    // If this agent is pending batch finalization (debounce window still open),
-    // don't send an individual nudge — finalizeBatch will pick it up retroactively.
     if (this.currentBatchAgents.some(a => a.id === record.id)) {
       this.widget.update();
       return;
@@ -106,16 +87,11 @@ export class CompletionNotifier {
     if (result === 'pass') {
       this.sendIndividualNudge(record);
     }
-    // 'held' → do nothing, group will fire later
-    // 'delivered' → group callback already fired
     this.widget.update();
   };
 
-  /** Add a spawned agent to the current smart-join batch. */
   addToBatch = (id: string, joinMode: JoinMode): void => {
     this.currentBatchAgents.push({ id, joinMode });
-    // Debounce: reset timer on each new agent so parallel tool calls
-    // dispatched across multiple event loop ticks are captured together
     if (this.batchFinalizeTimer) clearTimeout(this.batchFinalizeTimer);
     this.batchFinalizeTimer = setTimeout(() => this.finalizeBatch(), 100);
   };
@@ -137,13 +113,12 @@ export class CompletionNotifier {
     this.cancelNudge(key);
     this.pendingNudges.set(key, setTimeout(() => {
       this.pendingNudges.delete(key);
-      try { send(); } catch { /* ignore stale completion side-effect errors */ }
+      try { send(); } catch { }
     }, delay));
   }
 
-  // ---- Individual nudge helper (async join mode) ----
   private emitIndividualNudge(record: AgentRecord) {
-    if (record.resultConsumed) return;  // re-check at send time
+    if (record.resultConsumed) return;
 
     const notification = formatTaskNotification(record, 500, this.settings.showCost);
     const footer = record.outputFile ? `\nFull transcript available at: ${record.outputFile}` : '';
@@ -163,7 +138,6 @@ export class CompletionNotifier {
     this.widget.update();
   }
 
-  /** Finalize the current batch: if 2+ smart-mode agents, register as a group. */
   private finalizeBatch() {
     this.batchFinalizeTimer = undefined;
     const batchAgents = [...this.currentBatchAgents];
@@ -174,9 +148,6 @@ export class CompletionNotifier {
       const groupId = `batch-${++this.batchCounter}`;
       const ids = smartAgents.map(a => a.id);
       this.groupJoin.registerGroup(groupId, ids);
-      // Retroactively process agents that already completed during the debounce window.
-      // Their onComplete fired but was deferred (agent was in currentBatchAgents),
-      // so we feed them into the group now.
       for (const id of ids) {
         const record = this.manager.getRecord(id);
         if (!record) continue;
@@ -186,8 +157,6 @@ export class CompletionNotifier {
         }
       }
     } else {
-      // No group formed — send individual nudges for any agents that completed
-      // during the debounce window and had their notification deferred.
       for (const { id } of batchAgents) {
         const record = this.manager.getRecord(id);
         if (record?.completedAt != null && !record.resultConsumed) {

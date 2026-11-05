@@ -1,6 +1,3 @@
-// Scheduled Agent calls: validate the combination of parameters and register a
-// job with the scheduler instead of spawning now.
-
 import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentCallResolution } from "./agent-call-resolution.js";
 import { textResult } from "./tool-result.js";
@@ -23,11 +20,6 @@ export interface ScheduleAgentInput {
   call: Extract<AgentCallResolution, { ok: true }>;
 }
 
-/**
- * The refusal text for a `schedule` call that cannot be honoured, or undefined.
- * Checks run in a fixed order, so a call with several conflicts always reports
- * the same one.
- */
 export function scheduleConflict(
   params: Pick<ScheduleAgentInput["params"], "resume" | "inherit_context" | "run_in_background">,
   state: { schedulingEnabled: boolean; schedulerActive: boolean },
@@ -50,7 +42,6 @@ export function scheduleConflict(
   return undefined;
 }
 
-/** Register a scheduled job for one Agent call and return its tool result. */
 export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentInput) {
   const { scheduler, settings } = deps;
   const { params, call } = input;
@@ -67,8 +58,6 @@ export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentI
       name: params.description,
       description: params.description,
       schedule: params.schedule as string,
-      // The caller's own name, not the substitute — the scheduler re-resolves
-      // at fire time, and the original is what a user edits.
       subagent_type: requestedType,
       prompt: params.prompt,
       model: params.model,

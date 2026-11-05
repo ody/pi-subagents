@@ -1,18 +1,3 @@
-// src/ui/schedule-menu.ts had 0% coverage — every one of its 50 statements.
-// That is not a cosmetic gap: the menu's only action is DESTRUCTIVE (cancel a
-// scheduled job), and it identifies the chosen job by matching the selected
-// label string back against the label list.
-//
-// Labels are built by `formatJob`, which truncates the name to 18 characters
-// (`j.name.padEnd(18).slice(0, 18)`). Job names come from the `Agent` call's
-// `description`, which is LLM-authored and routinely shares a prefix. Two jobs
-// whose names agree in the first 18 chars, with the same schedule, type, run
-// count and run times, produce byte-identical labels — and `labels.indexOf`
-// then resolves to the FIRST of them regardless of which the user picked.
-//
-// The menu is documented as letting you cancel any one scheduled job, so this
-// contradicts documented intent rather than merely being unspecified.
-
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,7 +6,6 @@ import { SubagentScheduler } from "../src/triggers/schedule.js";
 import { ScheduleStore } from "../src/triggers/schedule-store.js";
 import { showSchedulesMenu } from "../src/ui/schedule-menu.js";
 
-/** ctx.ui stub: `select` returns whichever label index we tell it to. */
 function makeCtx(opts: { pick?: (labels: string[]) => string | undefined; confirm?: boolean } = {}) {
   const notify = vi.fn();
   const select = vi.fn(async (_title: string, labels: string[]) => opts.pick?.(labels));
@@ -84,16 +68,11 @@ describe("showSchedulesMenu", () => {
     expect(scheduler.list().map(j => j.id)).not.toContain(b.id);
   });
 
-  // Names are truncated to 18 chars for column alignment, and they come from the
-  // LLM-authored `Agent` description, so two rows formatting identically is
-  // ordinary. Resolving the pick by string match then cancelled whichever came
-  // first — silently, with the confirm dialog showing the wrong job's details.
   describe("rows that format identically after truncation", () => {
     const NAME_A = "review the auth module A";
     const NAME_B = "review the auth module B";
 
     it("gives every row a distinct label", () => {
-      // The invariant the fix rests on. Everything below depends on it.
       addJob(NAME_A);
       addJob(NAME_B);
       const { ctx, select } = makeCtx({ pick: () => undefined });
@@ -115,8 +94,6 @@ describe("showSchedulesMenu", () => {
     });
 
     it("cancels the first job when the first row is picked", async () => {
-      // The other direction — an off-by-one or a last-match resolver would pass
-      // the test above and fail this one.
       const first = addJob(NAME_A);
       const second = addJob(NAME_B);
       const { ctx } = makeCtx({ pick: (labels) => labels[0] });
@@ -128,8 +105,6 @@ describe("showSchedulesMenu", () => {
     });
 
     it("shows the SELECTED job's untruncated details in the confirm dialog", async () => {
-      // Guards the half of the bug the user could never catch: deleting the
-      // right job while confirming against the wrong one, or vice versa.
       addJob(NAME_A);
       addJob(NAME_B);
       const { ctx, confirm } = makeCtx({ pick: (labels) => labels[1] });
@@ -141,8 +116,6 @@ describe("showSchedulesMenu", () => {
     });
 
     it("cancels the right job past the single-digit boundary", async () => {
-      // 11 rows: insurance against any refactor that parses the number back out
-      // of the label and confuses "1" with "11".
       const jobs = Array.from({ length: 11 }, (_, i) => addJob(`review the auth module ${i}`));
       const { ctx } = makeCtx({ pick: (labels) => labels[10] });
 

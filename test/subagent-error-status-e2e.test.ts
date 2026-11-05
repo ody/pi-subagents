@@ -1,14 +1,3 @@
-/**
- * subagent-error-status-e2e.test.ts — regression for issue #144: a subagent
- * whose final assistant turn is a provider error must be reported as a
- * failure, not as "completed" with an empty (or stale) result.
- *
- * Full-stack: real pi loader + real extension + real runAgent + real child
- * sessions on a faux model. Faux is the point, not a shortcut — the scenario is
- * a provider error with zero content, which no live model will produce on
- * request. Each run pins `live: false` so the pre-publish smoke's global
- * `PI_E2E_LIVE=1` can't swap a real model in and turn this suite red.
- */
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,7 +8,6 @@ import {
   runPrintMode,
 } from "./helpers/print-mode-runner.js";
 
-/** Text of the parent's Agent tool result — what the orchestrator LLM sees. */
 function agentToolResult(session: AgentSession): string {
   const msg = [...session.messages].reverse().find(
     (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
@@ -29,7 +17,6 @@ function agentToolResult(session: AgentSession): string {
 
 vi.setConfig({ testTimeout: 30_000 });
 
-// Not matched by pi's transient-error patterns → no auto-retry, deterministic.
 const FATAL = "invalid request: provider rejected the prompt";
 
 describe("issue #144 — empty-error final turns must not be 'completed'", () => {
@@ -45,14 +32,11 @@ describe("issue #144 — empty-error final turns must not be 'completed'", () =>
       respond: routeBySession({
         parentInitial: agentCall({ run_in_background: false, description: "doomed", prompt: "Do work." }),
         parentFinal: "parent done",
-        // The child's one and only turn: provider error, zero content.
         subagent: () => fauxAssistantMessage([], { stopReason: "error", errorMessage: FATAL }),
       }),
       live: false,
     });
 
-    // DESIRED: the orchestrator sees a failure naming the provider error —
-    // not a clean success reading "No output.".
     const toolResult = agentToolResult(run.parentSession);
     expect(toolResult).toContain(FATAL);
     expect(toolResult).not.toContain("No output.");
@@ -66,8 +50,6 @@ describe("issue #144 — empty-error final turns must not be 'completed'", () =>
         parentFinal: "parent done",
         subagent: (ctx) => {
           const hasToolResult = ctx.messages.some((m) => m.role === "toolResult");
-          // Turn 1: real text + a tool call. Turn 2 (after the tool result):
-          // provider error with zero content.
           return hasToolResult
             ? fauxAssistantMessage([], { stopReason: "error", errorMessage: FATAL })
             : fauxAssistantMessage([
@@ -79,14 +61,10 @@ describe("issue #144 — empty-error final turns must not be 'completed'", () =>
       live: false,
     });
 
-    // The orchestrator sees the failure (not the earlier text as a clean
-    // answer), AND the partial output is salvaged, clearly labeled as
-    // pre-failure so it can't be mistaken for the final answer.
     const toolResult = agentToolResult(run.parentSession);
     expect(toolResult).toContain(FATAL);
     expect(toolResult).toContain("Partial output before the failure:");
     expect(toolResult).toContain("EARLIER-PARTIAL-TEXT");
-    // The failure headline comes before the salvaged partial output.
     expect(toolResult.indexOf(FATAL)).toBeLessThan(toolResult.indexOf("EARLIER-PARTIAL-TEXT"));
   });
 

@@ -99,8 +99,8 @@ describe("print mode background notifications", () => {
       makeHeadlessCtx(),
     );
 
-    await vi.advanceTimersByTimeAsync(100); // smart-join batch debounce
-    await vi.advanceTimersByTimeAsync(200); // notification hold window
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(200);
 
     expect(pi.sendMessage).toHaveBeenCalled();
 

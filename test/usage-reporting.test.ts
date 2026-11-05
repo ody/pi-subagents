@@ -1,15 +1,3 @@
-/**
- * usage-reporting.test.ts — proves subagent spend actually reaches the parent
- * session (#193), through the real registered tools.
- *
- * Pi folds `toolResult.usage` into `getSessionStats()`, which is what the
- * footer, the statusline and `/cost` read. So the observable contract is not
- * "we tracked a number" but "the tool result carries a complete pi `Usage`" —
- * and every assertion here is about that object: that it appears, that it
- * appears exactly once per message of spend, that it never appears when the
- * user did not ask for it, and that it is complete enough for pi to consume
- * without throwing.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -23,7 +11,6 @@ import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 import { addUsage } from "../src/usage.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi } from "./helpers/boot-extension.js";
 
-/** Drive one foreground run that spends `usage` on a single assistant message. */
 function runSpending(usage: { input: number; output: number; cacheWrite: number; cacheRead?: number; cost?: number }) {
   vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, opts: any) => {
     opts.onAssistantUsage?.(usage);
@@ -31,7 +18,6 @@ function runSpending(usage: { input: number; output: number; cacheWrite: number;
   });
 }
 
-/** Nothing spent — the agent errored before any message_end fired. */
 function runSpendingNothing() {
   vi.mocked(runAgent).mockImplementation(async () => (
     { responseText: "done", session: { dispose: vi.fn(), messages: [] } as any, aborted: false, steered: false }
@@ -72,14 +58,9 @@ describe("reporting subagent usage back to the parent session", () => {
 
     const result = await spawn(tools, "tc-1");
 
-    // Every field pi's `addUsageToTotals` touches must exist: it reads
-    // `usage.cost.total` with no guard, so a partial object throws inside pi.
     expect(result.usage).toEqual({
       input: 100,
       output: 50,
-      // Included, unlike our own display total (#38): pi sums cacheRead across
-      // the parent's own messages into this same figure, so withholding it
-      // would make a subagent's rows count differently from every other row.
       cacheRead: 900,
       cacheWrite: 10,
       totalTokens: 1060,
@@ -95,9 +76,6 @@ describe("reporting subagent usage back to the parent session", () => {
     runSpendingNothing();
     const second = await spawn(tools, "tc-2");
 
-    // Not "the second result is smaller" — a pool that failed to reset would
-    // re-report the first run's spend here, and the parent's totals would climb
-    // on every later tool call for work that happened once.
     expect(second.usage).toBeUndefined();
   });
 
@@ -120,8 +98,6 @@ describe("reporting subagent usage back to the parent session", () => {
     const result = await spawn(tools, "tc-1");
 
     expect(result.usage).toBeUndefined();
-    // And the text result is untouched — the setting must not change what the
-    // orchestrator reads.
     expect(result.content[0].text).toContain("Agent completed");
   });
 
@@ -133,16 +109,12 @@ describe("reporting subagent usage back to the parent session", () => {
   });
 
   it("attaches nothing to a call with no tool-call id, and loses none of it", async () => {
-    // The `@handle` mention path: a fork of the conversation calls the
-    // registered tool with `undefined`, and its session is discarded. Usage hung
-    // on that result is spend the user paid for and nobody counted.
     const { tools } = boot({ reportUsage: true });
     runSpending({ input: 100, output: 50, cacheWrite: 10, cost: 0.0123 });
 
     const cloned = await spawn(tools, undefined);
     expect(cloned.usage).toBeUndefined();
 
-    // It was not dropped — the next result the real session gets carries it.
     runSpendingNothing();
     const real = await spawn(tools, "tc-2");
     expect(real.usage.cost.total).toBe(0.0123);
@@ -167,9 +139,6 @@ describe("reporting subagent usage back to the parent session", () => {
   });
 
   it("reports what a background resume spends, on the next call", async () => {
-    // Resuming detached is the default since #237, and it runs through a
-    // different manager path again — one whose result is an ID, not the spend.
-    // The next tool call is what has to carry it.
     const { pi, tools } = boot({ reportUsage: true });
     runSpending({ input: 100, output: 50, cacheWrite: 0, cost: 0.01 });
     await spawn(tools, "tc-1");
@@ -190,9 +159,6 @@ describe("reporting subagent usage back to the parent session", () => {
     runSpendingNothing();
     const next = await spawn(tools, "tc-3");
 
-    // Which of the two carries it depends on how fast the detached run
-    // finishes, so the invariant is that it is reported once and in full —
-    // not that it lands on a particular call.
     const reported = [started.usage, next.usage].filter(Boolean);
     expect(reported).toHaveLength(1);
     expect(reported[0].cost.total).toBe(0.002);
@@ -200,11 +166,6 @@ describe("reporting subagent usage back to the parent session", () => {
   });
 
   it("counts a nested child's spend once, on the top-level agent's report", async () => {
-    // Nested agents are hidden from every reporting surface, so their spend is
-    // deliberately double-booked into every ancestor record to stay visible
-    // somewhere. Anything that summed those records would bill this session
-    // twice for one child message — which is why the pool is fed from the
-    // manager hook instead.
     const { pi, tools } = boot({ reportUsage: true });
     let nested = false;
 
@@ -212,14 +173,11 @@ describe("reporting subagent usage back to the parent session", () => {
       opts.onAssistantUsage?.({ input: 100, output: 50, cacheWrite: 0, cost: 0.01 });
       if (!nested) {
         nested = true;
-        // `nestedRuntime` is exactly what nested-tools.ts is handed: the real
-        // manager and the id of the agent that owns the child.
         const { manager, parentAgentId } = opts.nestedRuntime;
         const childId = manager.spawn(pi, ctx(), "general-purpose", "sub", {
           description: "nested",
           isBackground: false,
           parentAgentId,
-          // The ancestor walk, verbatim from nested-tools.
           onAssistantUsage: (u: any) => addUsage(manager.getRecord(parentAgentId).lifetimeUsage, u),
         });
         await manager.getRecord(childId).promise;
@@ -229,17 +187,12 @@ describe("reporting subagent usage back to the parent session", () => {
 
     const result = await spawn(tools, "tc-1");
 
-    // Two messages, one per agent — not three, which is what summing the
-    // double-booked parent record would have produced.
     expect(nested).toBe(true);
     expect(result.usage.totalTokens).toBe(300);
     expect(result.usage.cost.total).toBeCloseTo(0.02, 10);
   });
 
   it("reports what a resume spends, not only the first run", async () => {
-    // A resumed agent runs through a different manager path from a spawn, with
-    // its own usage wiring. Miss it and every continuation of an agent is free
-    // as far as the parent session is concerned.
     const { pi, tools } = boot({ reportUsage: true });
     runSpending({ input: 100, output: 50, cacheWrite: 0, cost: 0.01 });
     await spawn(tools, "tc-1");
@@ -262,7 +215,6 @@ describe("reporting subagent usage back to the parent session", () => {
   });
 
   describe("the lifecycle event payload", () => {
-    /** The payload `subagents:completed` was emitted with. */
     async function completedPayload(pi: any) {
       await flush();
       const call = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "subagents:completed");
@@ -270,10 +222,6 @@ describe("reporting subagent usage back to the parent session", () => {
     }
 
     it("carries the run's spend as a pi Usage", async () => {
-      // pi's convention for handing spend to a consumer: every extension-facing
-      // payload that carries it takes the whole object. Following it means
-      // `usage.cost.total` is where a listener already looks, and whatever pi
-      // adds to `Usage` later needs no change here.
       const { pi, tools } = boot({});
       runSpending({ input: 100, output: 50, cacheWrite: 10, cacheRead: 900, cost: 0.0123 });
 
@@ -290,8 +238,6 @@ describe("reporting subagent usage back to the parent session", () => {
     });
 
     it("carries it regardless of either setting", async () => {
-      // Both settings govern what a human is shown or what the session counts.
-      // A listener subscribed to the event asked for the data itself.
       const { pi, tools } = boot({ reportUsage: false, showCost: false });
       runSpending({ input: 100, output: 50, cacheWrite: 0, cost: 0.01 });
 
@@ -301,9 +247,6 @@ describe("reporting subagent usage back to the parent session", () => {
     });
 
     it("keeps `tokens` as the display total it has always been", async () => {
-      // The other convention — a flat view model like pi's own SessionStats,
-      // excluding cacheRead (#38). It is not derived from `usage` and must not
-      // start matching it.
       const { pi, tools } = boot({});
       runSpending({ input: 100, output: 50, cacheWrite: 10, cacheRead: 900, cost: 0.0123 });
 
@@ -313,7 +256,6 @@ describe("reporting subagent usage back to the parent session", () => {
     });
 
     it("omits usage entirely when nothing was spent", async () => {
-      // So a listener can tell "spent nothing" from "never ran".
       const { pi, tools } = boot({});
       runSpendingNothing();
 
@@ -337,12 +279,10 @@ describe("reporting subagent usage back to the parent session", () => {
   });
 
   it("reports spend through get_subagent_result too", async () => {
-    // Background agents finish with no tool result of their own to ride on;
-    // whichever of our tools is called next has to carry them.
     const { tools } = boot({ reportUsage: true });
     runSpending({ input: 100, output: 50, cacheWrite: 10, cost: 0.0123 });
 
-    await spawn(tools, undefined);   // spend accumulates, nothing attached
+    await spawn(tools, undefined);
     await flush();
 
     const result = await tools.get("get_subagent_result").execute(

@@ -1,12 +1,3 @@
-/**
- * agent-startup-error.test.ts — a spawn that never starts must fail the tool
- * call, not return a message (#179).
- *
- * The assertion is `rejects`, and that is the whole point: pi marks a tool
- * result failed only when `execute` throws (`isError` on a returned result is
- * discarded), so a returned diagnostic reaches the parent model as a subagent
- * that ran and reported this — and the model retries the same doomed call.
- */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

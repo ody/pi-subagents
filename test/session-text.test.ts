@@ -5,8 +5,6 @@ function fakeSession(messages: unknown[]) {
   return { messages } as never;
 }
 
-// collectResponseText keeps only the LAST assistant message's streamed text:
-// a non-assistant message_start must not wipe what was already collected.
 describe("collectResponseText", () => {
   function eventSession() {
     const listeners: Array<(event: unknown) => void> = [];
@@ -120,9 +118,6 @@ describe("finalTurnError", () => {
   });
 });
 
-// getAgentConversation renders the subagent transcript shown in the /agents
-// inspect overlay. Pure function over session.messages - no mocks needed
-// beyond a literal-object session.
 describe("getAgentConversation", () => {
   it("returns an empty string for a session with no messages", () => {
     expect(getAgentConversation(fakeSession([]))).toBe("");
@@ -176,7 +171,6 @@ describe("getAgentConversation", () => {
     );
     expect(out.startsWith("[Tool Result (bash)]: ")).toBe(true);
     expect(out.endsWith("...")).toBe(true);
-    // prefix + 200 chars + "..."
     expect(out.length).toBe("[Tool Result (bash)]: ".length + 200 + 3);
   });
 

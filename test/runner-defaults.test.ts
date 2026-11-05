@@ -86,9 +86,6 @@ describe("setGraceTurns / getGraceTurns", () => {
   });
 
   it("round-trips the value this suite set up", () => {
-    // NOT a default assertion — the beforeEach above sets 5, so this only
-    // proves the setter/getter pair agree. The real module default is asserted
-    // against a freshly-imported module in test/documented-defaults.test.ts.
     expect(getGraceTurns()).toBe(5);
   });
 
@@ -113,10 +110,6 @@ describe("setGraceTurns / getGraceTurns", () => {
   });
 });
 
-// The limit a run will enforce, resolved before the run starts. The widget's
-// turn counter has to predict it for agents spawned outside the Agent tool
-// (mentions, cross-extension RPC), and a second copy of the expression there
-// would drift from the one runAgent enforces — so both call this.
 describe("resolveEffectiveMaxTurns", () => {
   let prevDefault: number | undefined;
 
@@ -153,8 +146,6 @@ describe("resolveEffectiveMaxTurns", () => {
   });
 
   it("treats an explicit 0 as unlimited rather than as 'no opinion'", () => {
-    // Not the same as omitting it: 0 is how a caller says "no limit", and
-    // falling through to the default would impose one it asked not to have.
     setDefaultMaxTurns(20);
     expect(resolveEffectiveMaxTurns("test-agent", 0)).toBeUndefined();
   });

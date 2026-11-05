@@ -8,8 +8,6 @@ vi.mock("../src/session/agent-runner.js", async () => {
   return { ...actual, runAgent: vi.fn() };
 });
 
-// Only the filesystem side is faked; the transcript default is real module
-// state (both spawn paths read it there), so it must be reset between tests.
 vi.mock("../src/platform/output-file.js", async () => {
   const actual = await vi.importActual<typeof import("../src/platform/output-file.js")>("../src/platform/output-file.js");
   return {
@@ -157,7 +155,6 @@ describe("output_transcript agent wiring", () => {
   });
 
   it("suppresses the transcript project-wide when subagents.json sets outputTranscript false", async () => {
-    // A plain default agent (no frontmatter) inherits the project default.
     writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false }));
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);

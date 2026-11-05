@@ -41,8 +41,6 @@ describe("resolveAgentInvocationConfig", () => {
       },
     );
 
-    // `model` is the one field the caller wins, so it is excluded from the
-    // locked set the rest of this case asserts.
     expect(resolved.modelInput).toBe("provider/param-model");
     expect(resolved.modelFromParams).toBe(true);
     expect(resolved.thinking).toBe("high");
@@ -108,16 +106,11 @@ describe("resolveAgentInvocationConfig", () => {
     expect(resolved.isolated).toBe(false);
   });
 
-  // "off" exists so a model that cannot bring itself to omit an optional field
-  // has a legal way to say no (#231). It is an input spelling only — the
-  // resolver collapses it to undefined so no consumer downstream grows a branch.
   it('collapses a param isolation of "off" to undefined', () => {
     const resolved = resolveAgentInvocationConfig(makeConfig({ isolation: undefined }), { isolation: "off" });
     expect(resolved.isolation).toBeUndefined();
   });
 
-  // Agent config outranks tool-call params, so "off" in frontmatter is the only
-  // way to veto a caller's worktree — before #231 no value could do this.
   it('lets a config isolation of "off" veto a param "worktree"', () => {
     const resolved = resolveAgentInvocationConfig(makeConfig({ isolation: "off" }), { isolation: "worktree" });
     expect(resolved.isolation).toBeUndefined();
@@ -153,8 +146,6 @@ describe("resolveJoinMode", () => {
 
 describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
   it("records the losing side of each disagreement", () => {
-    // Opposite provenance per field, because the precedence is opposite:
-    // frontmatter outranks a caller's `thinking`, a caller outranks a `model` pin.
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ model: "provider/config-model", thinking: "low" }),
       { model: "provider/param-model", thinking: "max" },
@@ -173,10 +164,6 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
   });
 
   it("reports a winning caller model as caller-supplied even against a pin", () => {
-    // The scope-policy regression guard. `modelFromParams` is what splits
-    // `checkModelScope` between hard refusal and warn-and-proceed; a caller model
-    // that wins precedence while reporting itself as frontmatter-sourced would
-    // downgrade an out-of-scope refusal to a toast.
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ model: "provider/config-model" }),
       { model: "provider/param-model" },
@@ -186,7 +173,6 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
   });
 
   it("still lets a pinned thinking level outrank the caller's", () => {
-    // Requirement 4: only `model` flipped.
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ thinking: "low" }),
       { thinking: "max" },
@@ -205,8 +191,6 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
   });
 
   it("records nothing when only one side named a value", () => {
-    // Config-only is the agent's own default, not an override; param-only won
-    // outright. Neither is a request that went unhonored.
     expect(resolveAgentInvocationConfig(
       makeConfig({ model: "provider/config-model", thinking: "low" }),
       {},

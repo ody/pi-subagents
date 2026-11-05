@@ -1,13 +1,3 @@
-/**
- * mention.test.ts — the `@handle` grammar.
- *
- * Both halves are load-bearing in a way that fails silently. A handle that
- * isn't `[\w-]` can never be typed back (the trigger regex would not match it),
- * and a collision that reuses a name makes an older sibling permanently
- * unreachable. On the parse side, every rejection here is a case where being
- * too eager would swallow input the user meant for the main model — a leading
- * file path, a bare handle, a mention mid-sentence.
- */
 import { describe, expect, it } from "vitest";
 import { agentMentionReminder, assignHandle, describeMention, handleBase, isReservedHandle, MENTION_TRIGGER, parseMention, resolveHandleToType, stripAgentPrefix } from "../src/triggers/mention.js";
 
@@ -26,8 +16,6 @@ describe("handleBase", () => {
   });
 
   it("always produces something typeable", () => {
-    // A type made entirely of stripped characters would otherwise slug to "",
-    // and `@` alone can address nothing.
     expect(handleBase("!!!")).toBe("agent");
     expect(handleBase("")).toBe("agent");
   });
@@ -38,7 +26,6 @@ describe("handleBase", () => {
   });
 
   it("never leaves a trailing hyphen the cap sliced into", () => {
-    // 63 chars, then a hyphen run: a naive slice(0, 64) keeps that hyphen.
     expect(handleBase(`${"x".repeat(63)}   tail`).endsWith("-")).toBe(false);
   });
 
@@ -63,14 +50,10 @@ describe("assignHandle", () => {
   });
 
   it("never hands out the reserved main handle", () => {
-    // `@main` addresses the main conversation. An agent holding that name
-    // would silently swallow the one escape hatch out of the mention grammar.
     expect(assignHandle("main", new Set())).toBe("main-2");
   });
 
   it("skips a gap rather than reusing a live handle", () => {
-    // explore-2 finished and was evicted; reusing it is fine, but explore-3
-    // is still running and must not be shadowed.
     expect(assignHandle("explore", new Set(["explore", "explore-3"]))).toBe("explore-2");
   });
 });
@@ -97,9 +80,6 @@ describe("resolveHandleToType", () => {
   });
 
   it("refuses to resolve the reserved handle, even to a type named for it", () => {
-    // Otherwise `@main do this` would start an agent instead of reaching the
-    // main model — and `assignHandle` already denies its instances that name,
-    // so resolving the type here would promise something unreachable.
     expect(resolveHandleToType("main", ["main", ...TYPES])).toBeUndefined();
   });
 });
@@ -133,8 +113,6 @@ describe("stripAgentPrefix", () => {
   });
 
   it("only unwraps a prefix at the very start", () => {
-    // `@sub-agent-explore` names an agent called `sub-agent-explore`. Matching
-    // `agent-` anywhere would silently redirect it to `@explore`.
     expect(stripAgentPrefix("sub-agent-explore")).toBeUndefined();
   });
 });
@@ -187,10 +165,6 @@ describe("parseMention", () => {
 
 describe("agentMentionReminder", () => {
   it("is Claude Code's string, byte for byte", () => {
-    // Ported from the 2.1.233 bundle rather than paraphrased, so the model gets
-    // the wording it was trained against. Asserted whole — including the
-    // trailing space before the closing newline, which is in the original
-    // template literal and is exactly the kind of thing a tidy-up would drop.
     expect(agentMentionReminder("code-review")).toBe(
       '<system-reminder>\nThe user has expressed a desire to invoke the agent "code-review". Please invoke the agent appropriately, passing in the required context to it. \n</system-reminder>',
     );

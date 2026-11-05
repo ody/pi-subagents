@@ -1,20 +1,3 @@
-/**
- * background-by-default.test.ts — the `backgroundByDefault` flip, asserted at
- * the tool boundary rather than at the resolver.
- *
- * `documented-defaults.test.ts` pins `resolveAgentInvocationConfig`'s arguments;
- * this pins what the orchestrator actually receives back from a real `Agent`
- * call, which is the part the tool description makes promises about:
- *
- *   - an unqualified spawn hands back an ID instead of the agent's output,
- *   - `run_in_background: false` still blocks and returns the output inline,
- *   - a fan-out sized like the ones the description tells the model to send
- *     runs concurrently instead of queueing behind `maxConcurrent`.
- *
- * That last one is the reason the concurrency default moved 4 → 10: foreground
- * agents bypass the pool, so the limit only started applying to ordinary
- * parallel work once background became the default.
- */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -86,8 +69,6 @@ describe("backgroundByDefault", () => {
     const out = textOf(await spawn(tools));
 
     expect(out).toContain("Agent ID:");
-    // The whole point of backgrounding: the orchestrator does NOT get the
-    // output here — it arrives later as a notification preview.
     expect(out).not.toContain("THE-PAYLOAD");
   });
 
@@ -103,11 +84,8 @@ describe("backgroundByDefault", () => {
   });
 
   it("starts a six-way fan-out concurrently instead of queueing the tail", async () => {
-    // Six is the shape the Agent tool description tells the model to send.
-    // With maxConcurrent at its old 4 this queued two of them.
     const { pi, tools } = makePi();
     subagentsExtension(pi);
-    // Never settles — every agent stays occupying its slot for the whole test.
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
 
     const outs: string[] = [];

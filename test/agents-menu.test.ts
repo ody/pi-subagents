@@ -43,14 +43,6 @@ describe("detailMenuOptions", () => {
   });
 });
 
-/**
- * The eject and disable WRITES live inside the `/agents` command closure, so
- * reaching them means booting the command and walking the screens it shows:
- * top menu, agent-type list, detail screen, action. `ctx.ui.custom` renders the
- * SettingsList in the real UI; here it yields the queued agent name, which is
- * what that list returns when a row is activated. `ctx.ui.select` answers from a
- * queue too, and records the titles so a test can see which screens ran.
- */
 function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; lists?: (string | undefined)[] }) {
   const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
   const pi = {
@@ -102,8 +94,6 @@ describe("/agents on a skill-embedded agent", () => {
   let previousHome: string | undefined;
   let previousAgentDir: string | undefined;
 
-  // Deliberately carries what `serializeAgentFile` would drop: a YAML comment
-  // and a key it does not know. Only a verbatim copy keeps them.
   const agentFile = [
     "---",
     "description: Scout the repo",
@@ -133,7 +123,6 @@ describe("/agents on a skill-embedded agent", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  /** A skill under $PI_CODING_AGENT_DIR/skills that ships one agent. Returns its agent path. */
   function writeSkill(): string {
     const skillDir = join(tmpDir, ".pi", "agent", "skills", "sdd");
     mkdirSync(join(skillDir, "agents"), { recursive: true });
@@ -143,7 +132,6 @@ describe("/agents on a skill-embedded agent", () => {
     return agentPath;
   }
 
-  /** The list and location answers every run below uses. */
   const personalLocation = () => `Personal (${personalAgentsDir()})`;
 
   it("Eject writes the skill file verbatim to a user location", async () => {
@@ -159,7 +147,6 @@ describe("/agents on a skill-embedded agent", () => {
     const target = join(personalAgentsDir(), "sdd-scout.md");
     expect(readFileSync(target, "utf-8")).toBe(agentFile);
     expect(readFileSync(target, "utf-8")).toContain("hand_written: true");
-    // The skill's own file is often on a read-only store; it is never rewritten.
     expect(readFileSync(skillPath, "utf-8")).toBe(agentFile);
   });
 
@@ -172,12 +159,9 @@ describe("/agents on a skill-embedded agent", () => {
 
     await menu.run();
 
-    // A skill agent has no user file, so Disable takes the stub branch: the stub
-    // goes at the user path a Disable of a built-in default would use.
     const stubPath = join(personalAgentsDir(), "sdd-scout.md");
     expect(readFileSync(stubPath, "utf-8")).toBe("---\nenabled: false\n---\n");
 
-    // And it wins on load, because every user file outranks a skill agent.
     const loaded = loadCustomAgents(tmpDir).get("sdd-scout");
     expect(loaded?.enabled).toBe(false);
     expect(loaded?.source).toBe("global");

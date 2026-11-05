@@ -1,15 +1,3 @@
-/**
- * schedule.test.ts — SubagentScheduler engine.
- *
- * Tests:
- *   - Static format parsers (cron / relative / interval / detection)
- *   - Job lifecycle (add / update / remove / cleanup)
- *   - Fire path (interval, one-shot) with mocked AgentManager + fake timers
- *   - Past-timestamp rejection
- *   - One-shot auto-disable
- *   - Concurrency-bypass option flows through to manager.spawn
- */
-
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,7 +42,6 @@ describe("SubagentScheduler — static format parsers", () => {
     expect(SubagentScheduler.parseRelativeTime("+1h")).not.toBeNull();
     expect(SubagentScheduler.parseRelativeTime("+2d")).not.toBeNull();
 
-    // Bare digits / wrong unit / no plus → null
     expect(SubagentScheduler.parseRelativeTime("10s")).toBeNull();
     expect(SubagentScheduler.parseRelativeTime("+5x")).toBeNull();
     expect(SubagentScheduler.parseRelativeTime("hello")).toBeNull();
@@ -66,13 +53,13 @@ describe("SubagentScheduler — static format parsers", () => {
     expect(SubagentScheduler.parseInterval("1h")).toBe(3_600_000);
     expect(SubagentScheduler.parseInterval("2d")).toBe(172_800_000);
 
-    expect(SubagentScheduler.parseInterval("+5m")).toBeNull();   // relative isn't an interval
+    expect(SubagentScheduler.parseInterval("+5m")).toBeNull();
     expect(SubagentScheduler.parseInterval("5x")).toBeNull();
     expect(SubagentScheduler.parseInterval("five-minutes")).toBeNull();
   });
 
   it("validateCronExpression rejects non-6-field expressions", () => {
-    expect(SubagentScheduler.validateCronExpression("* * * * *").valid).toBe(false);  // 5 fields
+    expect(SubagentScheduler.validateCronExpression("* * * * *").valid).toBe(false);
     expect(SubagentScheduler.validateCronExpression("0 0 9 * * 1").valid).toBe(true);
     expect(SubagentScheduler.validateCronExpression("0 0 9 * * *").valid).toBe(true);
     expect(SubagentScheduler.validateCronExpression("not-a-cron").valid).toBe(false);
@@ -156,9 +143,6 @@ describe("SubagentScheduler — lifecycle", () => {
     expect(scheduler.getNextRun(job.id)).toBeUndefined();
   });
 
-  // Regression: getNextRun on a freshly-created interval used to return undefined
-  // (the lastRun-based branch needs lastRun, which is undefined before first fire),
-  // surfacing as "Next run: (unknown)" in the agent's create-response.
   it("getNextRun returns an approximate future time for a fresh interval (no lastRun yet)", () => {
     const before = Date.now();
     const job = scheduler.addJob({
@@ -168,18 +152,16 @@ describe("SubagentScheduler — lifecycle", () => {
     const next = scheduler.getNextRun(job.id);
     expect(next).toBeDefined();
     const t = new Date(next!).getTime();
-    // Should be ~now + 1h, with a small tolerance for the time spent in the call
     expect(t - before).toBeGreaterThanOrEqual(3_600_000 - 1_000);
     expect(t - before).toBeLessThanOrEqual(3_600_000 + 1_000);
   });
 
-  // Once a fire happens and `lastRun` is set, getNextRun should pivot to it.
   it("getNextRun uses lastRun when present for interval jobs", () => {
     const job = scheduler.addJob({
       name: "ran-once", description: "x", schedule: "1h",
       subagent_type: "general-purpose", prompt: "p",
     });
-    const lastRun = new Date(Date.now() - 30 * 60_000).toISOString(); // 30m ago
+    const lastRun = new Date(Date.now() - 30 * 60_000).toISOString();
     scheduler.updateJob(job.id, { lastRun });
     const next = scheduler.getNextRun(job.id);
     expect(next).toBe(new Date(new Date(lastRun).getTime() + 3_600_000).toISOString());
@@ -190,18 +172,11 @@ describe("SubagentScheduler — lifecycle", () => {
     expect(() => scheduler.addJob({
       name: "past", description: "x", schedule: past, subagent_type: "general-purpose", prompt: "p",
     })).toThrow(/in the past/);
-    // No dead-on-arrival record left behind
     expect(scheduler.list()).toEqual([]);
   });
 
-  // The safety net in scheduleJob's past-branch only fires on store reload —
-  // a once-job persisted with a future ISO whose time has now passed (process
-  // restart after the trigger window). detectSchedule rejects past timestamps
-  // at create time, so this is the only remaining production path.
   it("disables a previously-enabled one-shot reloaded from disk past its time", () => {
     const past = new Date(Date.now() - 60_000).toISOString();
-    // Direct store insert bypasses addJob's upfront validation, mimicking a
-    // record that was valid when written but is now stale on reload.
     store.add({
       id: "reload-test",
       name: "reload",
@@ -214,8 +189,6 @@ describe("SubagentScheduler — lifecycle", () => {
       createdAt: past,
       runCount: 0,
     });
-    // Re-arm: stop drops timers, start re-reads store.list() and calls scheduleJob
-    // for every enabled job → the past-branch fires for our seeded record.
     scheduler.stop();
     scheduler.start(pi, ctx, manager, store);
 
@@ -250,8 +223,6 @@ describe("SubagentScheduler — fire path", () => {
   afterEach(() => {
     scheduler.stop();
     vi.useRealTimers();
-    // Module-global: restore here, not at the end of a test body, so a failing
-    // assertion can't leak strict dispatch into every test that follows.
     setFallbackSubagent(undefined);
     registerAgents(new Map());
     rmSync(tmp, { recursive: true, force: true });
@@ -271,8 +242,6 @@ describe("SubagentScheduler — fire path", () => {
   });
 
   it("refuses at fire time when the job's agent type no longer resolves", () => {
-    // The registry is what production populates at activation; a job outliving
-    // its agent must not silently run something else (#183).
     registerAgents(new Map());
     setFallbackSubagent(NO_FALLBACK);
     const job = scheduler.addJob({
@@ -285,8 +254,6 @@ describe("SubagentScheduler — fire path", () => {
     expect(manager.spawn).not.toHaveBeenCalled();
     const stored = store.get(job.id);
     expect(stored?.lastStatus).toBe("error");
-    // Pin WHY it failed — "didn't spawn" alone would be satisfied by any
-    // unrelated pre-spawn throw.
     expect(pi.events.emit).toHaveBeenCalledWith(
       "subagents:scheduled",
       expect.objectContaining({
@@ -305,10 +272,8 @@ describe("SubagentScheduler — fire path", () => {
     vi.advanceTimersByTime(2_000);
     expect(manager.spawn).toHaveBeenCalledTimes(1);
 
-    // The auto-disable update happens synchronously inside the timer callback
     expect(scheduler.list().find(j => j.id === job.id)?.enabled).toBe(false);
 
-    // Subsequent ticks shouldn't fire again
     vi.advanceTimersByTime(60_000);
     expect(manager.spawn).toHaveBeenCalledTimes(1);
   });
@@ -327,10 +292,6 @@ describe("SubagentScheduler — fire path", () => {
   });
 
   it("fire passes the job's configuration as the invocation snapshot", () => {
-    // A scheduled run has no tool call to build one, so without this the
-    // conversation viewer can say nothing about how the job was configured.
-    // The model is left out on purpose: agent-manager fills in the effective one
-    // once the session reports it.
     scheduler.addJob({
       name: "every-1s", description: "x", schedule: "1s",
       subagent_type: "general-purpose", prompt: "x",
@@ -349,7 +310,6 @@ describe("SubagentScheduler — fire path", () => {
   });
 
   it("fire normalizes an unlimited turn budget out of the snapshot", () => {
-    // 0 means unlimited; "max turns: 0" would read as a limit of none.
     scheduler.addJob({
       name: "unlimited", description: "x", schedule: "1s",
       subagent_type: "general-purpose", prompt: "x", max_turns: 0,
@@ -388,7 +348,6 @@ describe("SubagentScheduler — fire path", () => {
     });
     vi.advanceTimersByTime(2_000);
 
-    // Update is synchronous in the spawn-throw path
     expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");
     expect(pi.events.emit).toHaveBeenCalledWith("subagents:scheduled", expect.objectContaining({
       type: "error", jobId: job.id, error: "no slots",
@@ -396,9 +355,6 @@ describe("SubagentScheduler — fire path", () => {
   });
 
   it("records lastStatus error when the agent fails to start after spawn returns", async () => {
-    // Under isolation: "worktree" the agent is not running when spawn() returns
-    // — the repo copy is awaited. A failure there must be recorded as a failed
-    // run, not as the success the missing run promise would otherwise imply.
     manager.awaitStartup.mockRejectedValueOnce(new Error('Cannot run with isolation: "worktree"'));
     const job = scheduler.addJob({
       name: "no-worktree", description: "x", schedule: "+1s",
@@ -410,10 +366,6 @@ describe("SubagentScheduler — fire path", () => {
     expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");
   });
 
-  // ── Status reflection from record.status (regression for bug #1) ────
-  // The real AgentManager's promise *always* resolves (its .catch returns ""),
-  // so the schedule's success/error must be inferred from `record.status`,
-  // not from promise resolution. These two tests model that contract.
   describe("infers success vs error from record.status, not promise resolution", () => {
     type FakeRecord = { status: string; promise: Promise<string>; resolve: () => void };
 
@@ -440,12 +392,10 @@ describe("SubagentScheduler — fire path", () => {
       vi.advanceTimersByTime(2_000);
       expect(manager.spawn).toHaveBeenCalledTimes(1);
 
-      // The agent ran and ended in error — same shape the real AgentManager produces.
       const r = [...records.values()][0];
       r.status = "error";
       r.resolve();
 
-      // Flush microtasks so .then(finalize) runs.
       await vi.advanceTimersByTimeAsync(0);
 
       expect(scheduler.list().find(j => j.id === job.id)?.lastStatus).toBe("error");

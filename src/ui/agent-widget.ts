@@ -1,10 +1,3 @@
-/**
- * agent-widget.ts — Persistent widget showing running/completed agents above the editor.
- *
- * Displays a tree of agents with animated spinners, live stats, and activity descriptions.
- * Uses the callback form of setWidget for themed rendering.
- */
-
 import { truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
@@ -26,12 +19,7 @@ import {
 } from "./agent-format.js";
 import { layoutWidgetBody } from "./widget-layout.js";
 
-// ---- Constants ----
-
-/** Maximum number of rendered lines before overflow collapse kicks in. */
 const MAX_WIDGET_LINES = 12;
-
-// ---- Types ----
 
 export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
@@ -42,7 +30,6 @@ export type UICtx = {
   ): void;
 };
 
-/** Status bar text for the active fleet, e.g. "2 running, 1 queued agents". */
 export function statusBarText(running: number, queued: number): string {
   const parts: string[] = [];
   if (running > 0) parts.push(`${running} running`);
@@ -50,59 +37,24 @@ export function statusBarText(running: number, queued: number): string {
   return `${parts.join(", ")} agent${running + queued === 1 ? "" : "s"}`;
 }
 
-// ---- Widget manager ----
-
 export class AgentWidget {
   private uiCtx: UICtx | undefined;
   private widgetFrame = 0;
   private widgetInterval: ReturnType<typeof setInterval> | undefined;
-  /** Tracks how many turns each finished agent has survived. Key: agent ID, Value: turns since finished. */
   private finishedTurnAge = new Map<string, number>();
-  /** How many extra turns errors/aborted agents linger (completed agents clear after 1 turn). */
   private static readonly ERROR_LINGER_TURNS = 2;
 
-  /** Whether the widget callback is currently registered with the TUI. */
   private widgetRegistered = false;
-  /** Cached TUI reference from widget factory callback, used for requestRender(). */
   private tui: any | undefined;
-  /** Last status bar text, used to avoid redundant setStatus calls. */
   private lastStatusText: string | undefined;
 
   constructor(
     private manager: AgentManager,
-    /**
-     * Read live at render time. Selects which agents the widget shows — see
-     * `WidgetMode`. Defaults to `"all"` when a caller supplies no policy; the
-     * extension supplies one defaulting to `"background"`.
-     */
     private mode: () => WidgetMode = () => "all",
-    /**
-     * Read live at render time, like `mode`. Whether running agents show an
-     * estimated cost beside their token count. Defaults to off — the extension
-     * supplies the user's `showCost` setting.
-     */
     private showCost: () => boolean = () => false,
-    /**
-     * Read live at render time, like `mode`. Whether running agents name the
-     * model driving them and the thinking level it is running at. Defaults to
-     * off — the extension supplies the user's `showModel` setting — because the
-     * row is already dense and the same pair is on the tool result and in the
-     * conversation viewer unconditionally.
-     */
     private showModel: () => boolean = () => false,
   ) {}
 
-  /**
-   * Agents eligible for the widget, per the current `WidgetMode`:
-   *   - `off`: none (the widget's existing empty-state path hides it entirely).
-   *   - `background`: drop only agents *known* to be foreground
-   *     (`isBackground === false`); keep everything else — background, queued,
-   *     scheduled, or RPC-spawned (`undefined`). Keying off the `isBackground`
-   *     record flag rather than the UI-only `invocation` snapshot (which only the
-   *     Agent-tool path sets), and excluding rather than allow-listing, means
-   *     only proven-foreground runs drop out — nothing else silently vanishes.
-   *   - `all`: every agent.
-   */
   private widgetAgents() {
     const all = this.manager.listAgents().filter(isTopLevelAgent);
     switch (this.mode()) {
@@ -112,16 +64,6 @@ export class AgentWidget {
     }
   }
 
-  /**
-   * The running agents to draw, each with its indentation depth: every row in
-   * `tops`, followed by that agent's own running descendants.
-   *
-   * Nested children were dropped from the widget entirely, so a coordinator
-   * that had delegated its work looked idle while its children did all of it.
-   * Only *running* descendants appear — a finished or queued one is detail for
-   * FleetView, and putting it here would spend the widget's 12-line budget on
-   * rows nobody is waiting for.
-   */
   private runningRows(tops: readonly AgentRecord[]): { record: AgentRecord; depth: number }[] {
     const byParent = new Map<string, AgentRecord[]>();
     for (const record of this.manager.listAgents()) {
@@ -135,19 +77,14 @@ export class AgentWidget {
     const rows: { record: AgentRecord; depth: number }[] = [];
     const walk = (record: AgentRecord, depth: number): void => {
       rows.push({ record, depth });
-      // Depth is bounded by `maxSubagentDepth`, and the parent chain is built
-      // from records that exist, so this cannot run away.
       for (const child of byParent.get(record.id) ?? []) walk(child, depth + 1);
     };
     for (const top of tops) walk(top, 0);
     return rows;
   }
 
-  /** Set the UI context (grabbed from first tool execution). */
   setUICtx(ctx: UICtx) {
     if (ctx !== this.uiCtx) {
-      // UICtx changed — the widget registered on the old context is gone.
-      // Force re-registration on next update().
       this.uiCtx = ctx;
       this.widgetRegistered = false;
       this.tui = undefined;
@@ -155,52 +92,35 @@ export class AgentWidget {
     }
   }
 
-  /**
-   * Called on each new turn (tool_execution_start).
-   * Ages finished agents and clears those that have lingered long enough.
-   */
   onTurnStart() {
-    // Age all finished agents
     for (const [id, age] of this.finishedTurnAge) {
       this.finishedTurnAge.set(id, age + 1);
     }
-    // Trigger a widget refresh (will filter out expired agents)
     this.update();
   }
 
-  /** Ensure the widget update timer is running. */
   ensureTimer() {
     if (!this.widgetInterval) {
       this.widgetInterval = setInterval(() => this.update(), 80);
     }
   }
 
-  /** Check if a finished agent should still be shown in the widget. */
   private shouldShowFinished(agentId: string, status: string): boolean {
     const age = this.finishedTurnAge.get(agentId) ?? 0;
     const maxAge = ERROR_STATUSES.has(status) ? AgentWidget.ERROR_LINGER_TURNS : 1;
     return age < maxAge;
   }
 
-  /** Record an agent as finished (call when agent completes). */
   markFinished(agentId: string) {
     if (!this.finishedTurnAge.has(agentId)) {
       this.finishedTurnAge.set(agentId, 0);
     }
   }
 
-  /**
-   * Drop an agent's finished-age (call when a settled agent starts running
-   * again, i.e. a background resume). markFinished only seeds an age it has not
-   * seen before, so a resumed agent would otherwise keep the age from its
-   * previous run — already past the linger limit, hiding the new run's
-   * completion line entirely.
-   */
   markRunning(agentId: string) {
     this.finishedTurnAge.delete(agentId);
   }
 
-  /** Render a finished agent line. */
   private renderFinishedLine(a: { id: string; type: SubagentType; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string; lifetimeUsage?: LifetimeUsage }, theme: Theme): string {
     const modeLabel = getPromptModeLabel(a.type);
     const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
@@ -221,7 +141,6 @@ export class AgentWidget {
       const errMsg = a.error ? `: ${a.error.slice(0, 60)}` : "";
       statusText = theme.fg("error", ` error${errMsg}`);
     } else {
-      // aborted
       icon = theme.fg("error", "✗");
       statusText = theme.fg("warning", " aborted");
     }
@@ -230,9 +149,6 @@ export class AgentWidget {
     const activity = this.manager.getActivity(a.id);
     if (activity) parts.push(formatTurns(activity.turnCount, activity.maxTurns));
     if (a.toolUses > 0) parts.push(`${a.toolUses} tool use${a.toolUses === 1 ? "" : "s"}`);
-    // From the record, not the activity tracker: that entry is deleted the
-    // moment an agent finishes, and "what did it cost" is a question asked
-    // about finished agents.
     const costText = this.showCost() ? formatCost(getLifetimeCost(a.lifetimeUsage)) : "";
     if (costText) parts.push(costText);
     parts.push(duration);
@@ -241,10 +157,6 @@ export class AgentWidget {
     return `${icon} ${renderAgentName(a.type, theme, { fallbackColor: "dim" })}${modeTag}  ${theme.fg("dim", a.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(" · "))}${statusText}`;
   }
 
-  /**
-   * Render the widget content. Called from the registered widget's render() callback,
-   * reading live state each time instead of capturing it in a closure.
-   */
   private renderWidget(tui: any, theme: Theme): string[] {
     const allAgents = this.widgetAgents();
     const running = this.runningRows(allAgents.filter(a => a.status === "running"));
@@ -257,7 +169,6 @@ export class AgentWidget {
     const hasActive = running.length > 0 || queued.length > 0;
     const hasFinished = finished.length > 0;
 
-    // Nothing to show — return empty (widget will be unregistered by update())
     if (!hasActive && !hasFinished) return [];
 
     const w = tui.terminal.columns;
@@ -265,9 +176,6 @@ export class AgentWidget {
     const headingColor = hasActive ? "accent" : "dim";
     const headingIcon = hasActive ? "●" : "○";
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
-
-    // Build sections separately for overflow-aware assembly.
-    // Each running agent = 2 lines (header + activity), finished = 1 line, queued = 1 line.
 
     const finishedLines: string[] = [];
     for (const a of finished) {
@@ -281,7 +189,6 @@ export class AgentWidget {
       : undefined;
 
     const lines: string[] = [truncate(theme.fg(headingColor, headingIcon) + " " + theme.fg(headingColor, "Agents"))];
-    // Heading takes 1 line.
     const { body, hidden } = layoutWidgetBody({ finished: finishedLines, running: runningLines, queued: queuedLine }, MAX_WIDGET_LINES - 1);
     lines.push(...body);
     if (hidden) {
@@ -295,7 +202,6 @@ export class AgentWidget {
     return lines;
   }
 
-  /** Render one running agent's [header, activity] row pair, untruncated. */
   private runningRowLines(a: AgentRecord, depth: number, theme: Theme, frame: string): [string, string] {
     const indent = "   ".repeat(depth);
     const modeLabel = getPromptModeLabel(a.type);
@@ -304,10 +210,6 @@ export class AgentWidget {
 
     const bg = this.manager.getActivity(a.id);
     const toolUses = bg?.toolUses ?? a.toolUses;
-    // Spend comes from the record, never from the activity tracker: the record
-    // is the one that survives the agent finishing, and the one nested-tools
-    // folds a hidden child's spend into. Reading the tracker while an agent
-    // runs and the record once it stops made the figure jump at completion.
     const tokens = getLifetimeTotal(a.lifetimeUsage);
     const contextPercent = getSessionContextPercent(bg?.session);
     const tokenText = tokens > 0 ? formatSessionTokens(tokens, contextPercent, theme, a.compactionCount) : "";
@@ -315,9 +217,6 @@ export class AgentWidget {
 
     const parts: string[] = [];
     if (this.showModel()) {
-      // Leading, and paired: a thinking level means nothing without the model
-      // it applies to. The tag is taken from buildInvocationTags rather than
-      // rebuilt so the "(asked X)" annotation survives.
       const { modelName, tags } = buildInvocationTags(a.invocation);
       if (modelName) parts.push(modelName);
       const thinkingTag = tags.find(tag => tag.startsWith("thinking: "));
@@ -338,12 +237,10 @@ export class AgentWidget {
     ];
   }
 
-  /** Force an immediate widget update. */
   update() {
     if (!this.uiCtx) return;
     const allAgents = this.widgetAgents();
 
-    // Lightweight existence checks — full categorization happens in renderWidget()
     let runningCount = 0;
     let queuedCount = 0;
     let hasFinished = false;
@@ -354,13 +251,11 @@ export class AgentWidget {
     }
     const hasActive = runningCount > 0 || queuedCount > 0;
 
-    // Nothing to show — clear widget
     if (!hasActive && !hasFinished) {
       this.clearWidget(allAgents);
       return;
     }
 
-    // Status bar — only call setStatus when the text actually changes
     const newStatusText = hasActive ? statusBarText(runningCount, queuedCount) : undefined;
     if (newStatusText !== this.lastStatusText) {
       this.uiCtx.setStatus("subagents", newStatusText);
@@ -371,7 +266,6 @@ export class AgentWidget {
     this.registerWidget(this.uiCtx);
   }
 
-  /** Unregister the widget, clear the status bar and timers, and drop stale finished-agent entries. */
   private clearWidget(allAgents: AgentRecord[]) {
     if (this.uiCtx && this.widgetRegistered) {
       this.uiCtx.setWidget("agents", undefined);
@@ -388,13 +282,8 @@ export class AgentWidget {
     }
   }
 
-  /**
-   * Register the widget callback once; subsequent updates use requestRender()
-   * which re-invokes render() without replacing the component (avoids layout thrashing).
-   */
   private registerWidget(uiCtx: UICtx) {
     if (this.widgetRegistered) {
-      // Widget already registered — just request a re-render of existing components.
       this.tui?.requestRender();
       return;
     }
@@ -403,7 +292,6 @@ export class AgentWidget {
       return {
         render: () => this.renderWidget(tui, theme),
         invalidate: () => {
-          // Theme changed — force re-registration so factory captures fresh theme.
           this.widgetRegistered = false;
           this.tui = undefined;
         },

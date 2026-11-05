@@ -1,5 +1,3 @@
-// ADR 0006: src/ files live in concern directories. This guards the three
-// checks the ADR's done check names that a review cannot see, plus the README map.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

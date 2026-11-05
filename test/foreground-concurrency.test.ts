@@ -1,17 +1,3 @@
-// maxConcurrentForeground (#253) — a second, independent concurrency pool for
-// agents a caller is blocking on inline (`spawnAndWait`).
-//
-// pi dispatches a message's tool calls through `Promise.all`, so N blocking
-// `Agent` calls in one message have always started at once. This pool bounds
-// that. It is OFF by default, and the first test in this file is what keeps it
-// off: it fails the moment the default path grows an await, a counter or a
-// queue entry.
-//
-// The hangs are the dangerous failures here, not the assertion failures: a
-// queued record has no promise to await, and pi has no tool-execution timeout
-// anywhere, so a release() that never fires waits forever. Every test that
-// exercises a path out of the queue therefore asserts the waiter RESOLVES.
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentManager } from "../src/manager/agent-manager.js";
 
@@ -34,11 +20,8 @@ const mockPi = {} as any;
 const mockCtx = { cwd: "/tmp" } as any;
 const mockSession = () => ({ dispose: vi.fn() }) as any;
 
-/** Runs that settle only when their returned resolver is called, keyed by prompt. */
 function controllableRuns() {
   const resolvers = new Map<string, () => void>();
-  // History, not just the implementation: these tests assert on call COUNTS,
-  // and vitest shares the module mock across the file.
   vi.mocked(runAgent).mockClear();
   vi.mocked(runAgent).mockImplementation((_ctx: any, _type: any, prompt: any) =>
     new Promise<any>(resolve => {
@@ -53,7 +36,6 @@ function controllableRuns() {
   return resolvers;
 }
 
-/** Let queued microtasks (gate resolution, settle handlers) run. */
 const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 const fg = (manager: AgentManager, prompt: string, options: any = {}) =>
@@ -69,7 +51,6 @@ const bg = (manager: AgentManager, prompt: string, options: any = {}) =>
     ...options,
   });
 
-/** The record a spawnAndWait created, before it has necessarily started. */
 const recordFor = (manager: AgentManager, prompt: string) =>
   manager.listAgents().find(a => a.description === prompt)!;
 
@@ -85,8 +66,6 @@ describe("maxConcurrentForeground", () => {
     vi.mocked(createWorktree).mockReset();
   });
 
-  // The governing constraint: a user who never sets this must see exactly the
-  // behaviour that shipped before it existed.
   it("is unlimited by default, and the default path stays synchronous", () => {
     controllableRuns();
     manager = new AgentManager();
@@ -97,11 +76,6 @@ describe("maxConcurrentForeground", () => {
     void fg(manager, "b");
     void fg(manager, "c");
 
-    // Synchronously — not after a flush. A gate, a counter check that awaits,
-    // or a queue entry would all defer at least one of these. (The `> 0` guard
-    // inside poolFor is deliberately NOT pinned here: it is a belt-and-braces
-    // optimisation with no observable effect, since an unlimited pool always
-    // reports room anyway.)
     expect(runAgent).toHaveBeenCalledTimes(3);
     for (const p of ["a", "b", "c"]) expect(recordFor(manager, p).status).toBe("running");
   });
@@ -132,9 +106,6 @@ describe("maxConcurrentForeground", () => {
     expect(await third).toMatchObject({ record: { result: "c-result" } });
   });
 
-  // The deadlock guard. A nested child's parent is blocked AWAITING it, so
-  // queueing the child behind its own parent can never make progress. Remove
-  // the parentAgentId clause from occupiesForegroundSlot and this test hangs.
   it("never queues a nested child, however full the pool is", async () => {
     controllableRuns();
     manager = new AgentManager();
@@ -149,32 +120,24 @@ describe("maxConcurrentForeground", () => {
     expect(runAgent).toHaveBeenCalledTimes(2);
   });
 
-  // The requirement from #253: the two pools must not be able to starve each
-  // other. The whole reason foreground was exempt from maxConcurrent is that a
-  // full background pool must never block the main session's blocking work.
   it("is independent of the background pool, in both directions", async () => {
     controllableRuns();
-    manager = new AgentManager(undefined, 1); // maxConcurrent = 1
+    manager = new AgentManager(undefined, 1);
     manager.setMaxConcurrentForeground(1);
 
     bg(manager, "bg1");
     bg(manager, "bg2");
     expect(recordFor(manager, "bg1").status).toBe("running");
-    expect(recordFor(manager, "bg2").status).toBe("queued"); // background pool full
+    expect(recordFor(manager, "bg2").status).toBe("queued");
 
-    // A blocking spawn is not charged to the saturated background pool.
     void fg(manager, "fg1");
     expect(recordFor(manager, "fg1").status).toBe("running");
 
-    // ...and the now-saturated foreground pool does not queue anything else.
     void fg(manager, "fg2");
     expect(recordFor(manager, "fg2").status).toBe("queued");
-    expect(recordFor(manager, "bg2").status).toBe("queued"); // still only bg1's slot
+    expect(recordFor(manager, "bg2").status).toBe("queued");
   });
 
-  // Detached spawns block nobody, so bounding them buys nothing — and would
-  // park a record with no one waiting to release it. README documents RPC
-  // spawns as starting immediately whatever isBackground says.
   it("does not queue a detached spawn, even one flagged isBackground: false", () => {
     controllableRuns();
     manager = new AgentManager();
@@ -198,15 +161,11 @@ describe("maxConcurrentForeground", () => {
     void fg(manager, "scheduled", { bypassQueue: true });
     expect(recordFor(manager, "scheduled").status).toBe("running");
 
-    // Counted, not invisible: the pool is now over its limit, so the next
-    // ordinary blocking spawn queues.
     void fg(manager, "next");
     expect(recordFor(manager, "next").status).toBe("queued");
   });
 
   describe("cancellation", () => {
-    // A rejection here would escape into the caller's tool `execute` and reject
-    // pi's Promise.all for the entire tool batch, killing unrelated tool calls.
     it("resolves — never rejects — when a queued agent is aborted", async () => {
       const resolvers = controllableRuns();
       manager = new AgentManager();
@@ -223,7 +182,6 @@ describe("maxConcurrentForeground", () => {
       expect(record.promise).toBeUndefined();
       expect(record.completedAt).toBeDefined();
 
-      // Freeing the slot must not resurrect it.
       resolvers.get("holder")!();
       await flush();
       expect(runAgent).toHaveBeenCalledTimes(1);
@@ -243,8 +201,6 @@ describe("maxConcurrentForeground", () => {
       expect((await queued).record.status).toBe("stopped");
     });
 
-    // addEventListener never fires on an already-aborted signal, so enqueueing
-    // here would wait forever — pi has no tool-execution timeout to bail out.
     it("never enqueues a spawn whose signal is already aborted", async () => {
       controllableRuns();
       manager = new AgentManager();
@@ -259,11 +215,6 @@ describe("maxConcurrentForeground", () => {
       expect(runAgent).toHaveBeenCalledTimes(1);
     });
 
-    // The one behaviour change that is NOT gated on the setting. Before the
-    // pool, an already-aborted signal was still wired with addEventListener —
-    // which never fires — so the agent ran to completion beyond the reach of
-    // Esc or /agents. A queued spawn made that reachable often enough to fix;
-    // this pins it for the UNQUEUED path too, with the pool off.
     it("stops an immediate spawn whose signal is already aborted, pool off", async () => {
       controllableRuns();
       manager = new AgentManager();
@@ -289,8 +240,6 @@ describe("maxConcurrentForeground", () => {
       expect((await queued).record.status).toBe("stopped");
     });
 
-    // Without this, `afterEach(() => manager.dispose())` turns any failing test
-    // in this file into a hung suite instead of a red one.
     it("releases queued waiters on dispose()", async () => {
       controllableRuns();
       manager = new AgentManager();
@@ -322,9 +271,6 @@ describe("maxConcurrentForeground", () => {
       expect(recordFor(manager, "b").status).toBe("running");
     });
 
-    // Decrementing in abort() as well as in the settle path is a double-free
-    // that permanently lifts the limit. Three at a limit of one catches it: a
-    // double-free would start the third immediately.
     it("frees the slot exactly once when a running agent is aborted", async () => {
       const resolvers = controllableRuns();
       manager = new AgentManager();
@@ -335,7 +281,7 @@ describe("maxConcurrentForeground", () => {
       void fg(manager, "c");
 
       manager.abort(recordFor(manager, "a").id);
-      resolvers.get("a")!(); // the aborted run still settles normally
+      resolvers.get("a")!();
       await first;
 
       expect(recordFor(manager, "b").status).toBe("running");
@@ -343,8 +289,6 @@ describe("maxConcurrentForeground", () => {
     });
   });
 
-  // #179: a strict worktree-isolation failure throws out of spawnAndWait on the
-  // immediate path. Queue pressure must not silently turn that into a result.
   it("rethrows a drain-time startup failure, and keeps draining", async () => {
     const resolvers = controllableRuns();
     manager = new AgentManager();
@@ -362,12 +306,8 @@ describe("maxConcurrentForeground", () => {
 
     await expect(doomed).rejects.toThrow(/worktree/i);
     expect(recordFor(manager, "doomed").status).toBe("error");
-    // The throw above IS the caller's report. Left unconsumed, the record would
-    // also nudge the session — the same failure delivered twice, and only for
-    // spawns unlucky enough to have queued.
     expect(recordFor(manager, "doomed").resultConsumed).toBe(true);
 
-    // The failure freed nothing, but it also blocked nothing.
     expect(recordFor(manager, "after").status).toBe("running");
     resolvers.get("after")!();
     await after;
@@ -383,14 +323,10 @@ describe("maxConcurrentForeground", () => {
     void fg(manager, "c");
     expect(runAgent).toHaveBeenCalledTimes(1);
 
-    manager.setMaxConcurrentForeground(0); // back to unlimited
+    manager.setMaxConcurrentForeground(0);
     expect(runAgent).toHaveBeenCalledTimes(3);
   });
 
-  // The acquire/release pair must agree even though the limit between them is
-  // user-editable at runtime (`/agents → Settings`, and applySettings on load).
-  // Recomputing the pool at settle time made the release disagree with the
-  // acquire in both directions.
   describe("a limit changed mid-run", () => {
     it("releases the slot a cleared limit no longer describes", async () => {
       const resolvers = controllableRuns();
@@ -398,13 +334,11 @@ describe("maxConcurrentForeground", () => {
       manager.setMaxConcurrentForeground(1);
 
       const a = fg(manager, "a");
-      manager.setMaxConcurrentForeground(0); // unlimited, while "a" holds a slot
+      manager.setMaxConcurrentForeground(0);
       resolvers.get("a")!();
       await a;
       await flush();
 
-      // The slot must have come back. If it leaked, nothing can ever free it
-      // again and every later blocking spawn queues forever.
       manager.setMaxConcurrentForeground(1);
       void fg(manager, "b");
       await flush();
@@ -415,13 +349,12 @@ describe("maxConcurrentForeground", () => {
       const resolvers = controllableRuns();
       manager = new AgentManager();
 
-      const a = fg(manager, "a"); // unlimited — takes no slot
+      const a = fg(manager, "a");
       manager.setMaxConcurrentForeground(1);
       resolvers.get("a")!();
       await a;
       await flush();
 
-      // The counter must still be 0, not -1: a -1 silently lifts the limit by one.
       void fg(manager, "b");
       void fg(manager, "c");
       await flush();
@@ -455,11 +388,6 @@ describe("maxConcurrentForeground", () => {
     expect(recordFor(manager, "b").status).toBe("completed");
   });
 
-  // spawnAndWait used to park this callback on the manager and restore it in a
-  // `finally` right after spawn() — which only worked because spawn() reached
-  // startAgent() synchronously. A deferred start would fire it into whatever
-  // hook happened to be installed at drain time, or into none at all, silently
-  // costing the caller its output transcript.
   it("fires each caller's onSpawned hook when its own deferred spawn starts", async () => {
     const resolvers = controllableRuns();
     manager = new AgentManager();
@@ -503,8 +431,6 @@ describe("maxConcurrentForeground", () => {
     expect(onQueued).toHaveBeenNthCalledWith(2, recordFor(manager, "c").id, 1);
   });
 
-  // One queue serves both pools, so a saturated foreground pool sitting at the
-  // head must not stall background agents behind it.
   it("does not let a full foreground queue head-of-line-block the background pool", async () => {
     const resolvers = controllableRuns();
     manager = new AgentManager(undefined, 1);
@@ -518,7 +444,6 @@ describe("maxConcurrentForeground", () => {
     expect(recordFor(manager, "fg-queued").status).toBe("queued");
     expect(recordFor(manager, "bg-queued").status).toBe("queued");
 
-    // Free a BACKGROUND slot while the foreground queue is still stuck.
     resolvers.get("bg-holder")!();
     await flush();
 

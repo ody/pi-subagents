@@ -1,6 +1,3 @@
-// Foreground Agent tool execution: spawn the agent, block until it finishes,
-// and stream its progress to the tool row while it runs.
-
 import type { AgentToolUpdateCallback, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
@@ -29,11 +26,9 @@ export interface ForegroundAgentInput {
   signal: AbortSignal | undefined;
   onUpdate: AgentToolUpdateCallback<any> | undefined;
   call: Extract<AgentCallResolution, { ok: true }>;
-  /** Opens the call's .output transcript on the record, when it is on. */
   attachTranscript: (rec: AgentRecord | undefined, agentId: string) => void;
 }
 
-/** Run one Agent call in the foreground and return its tool result. */
 export async function runForegroundAgent(deps: ForegroundAgentDeps, input: ForegroundAgentInput) {
   const { pi, manager, widget, fleet, settings } = deps;
   const { ctx, params, signal, onUpdate, call, attachTranscript } = input;
@@ -53,23 +48,14 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
   let spinnerFrame = 0;
   const startedAt = Date.now();
   let fgId: string | undefined;
-  // Set only while the spawn is parked on a foreground concurrency slot
-  // (maxConcurrentForeground); undefined the rest of the time, including
-  // always when the limit is unset.
   let queuedAhead: number | undefined;
 
-  // Until `fgId` is known — the spawn may still be queued on a foreground
-  // slot — there is no record to read activity off, so the display falls
-  // back to an empty state carrying the turn ceiling this call asked for.
   const emptyActivity: AgentActivity = {
     activeTools: new Map(), toolUses: 0, turnCount: 1, maxTurns: effectiveMaxTurns, responseText: "",
   };
   const fgActivity = (): AgentActivity => (fgId ? manager.getActivity(fgId) : undefined) ?? emptyActivity;
 
   const streamUpdate = () => {
-    // Spend from the record, everything else from the manager's live
-    // activity. `fgId` is set in onSessionCreated below, which fires before
-    // the first assistant message — so nothing is spent while this reads zero.
     const fgRecord = fgId ? manager.getRecord(fgId) : undefined;
     const fgState = fgActivity();
     const details: AgentDetails = {
@@ -80,11 +66,6 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
       turnCount: fgState.turnCount,
       maxTurns: fgState.maxTurns,
       durationMs: Date.now() - startedAt,
-      // Deliberately still "running" while queued: the renderer routes any
-      // status it doesn't know to raw text (see the catch-all below), which
-      // would drop the spinner and read as hung. Only the activity line
-      // changes — "thinking…" would be a lie for an agent that has not
-      // started and may not for minutes.
       status: "running",
       activity: queuedAhead === undefined
         ? describeActivity(fgState.activeTools, fgState.responseText)
@@ -99,15 +80,9 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
 
   const fgCallbacks = createActivityTracker(streamUpdate);
 
-  // Wire session creation: register in widget + stream to output file.
-  // The output file path is set synchronously after spawn (below),
-  // before onSessionCreated fires — same pattern as background agents.
   const origOnSession = fgCallbacks.onSessionCreated;
   fgCallbacks.onSessionCreated = (session: any) => {
     origOnSession(session);
-    // It really started — stop reporting it as queued, and repaint now
-    // rather than leaving the stale line up for the next spinner tick.
-    // Guarded, so a spawn that never queued emits no extra update.
     if (queuedAhead !== undefined) {
       queuedAhead = undefined;
       streamUpdate();
@@ -121,7 +96,6 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
         break;
       }
     }
-    // Stream conversation to output file (foreground agent logging)
     if (fgId) {
       const rec = manager.getRecord(fgId);
       if (rec?.outputFile) {
@@ -130,7 +104,6 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     }
   };
 
-  // Animate spinner at ~80ms (smooth rotation through 10 braille frames)
   const spinnerInterval = setInterval(() => {
     spinnerFrame++;
     streamUpdate();
@@ -152,22 +125,14 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
       invocation: agentInvocation,
       signal,
       rootSessionId: ctx.sessionManager.getSessionId(),
-      // Deliberately does NOT set fgId: that drives agentActivity, the
-      // widget and the `finally` cleanup below, none of which should see an
-      // agent that has no session and may never get one.
       onQueued: (_id, ahead) => { queuedAhead = ahead; streamUpdate(); },
       ...fgCallbacks,
     }, (fgAgentId) => {
-      // onSpawned: called synchronously after spawn, before onSessionCreated fires.
-      // Set up the output file so streamToOutputFile can pick it up.
       const fgRec = manager.getRecord(fgAgentId);
       attachTranscript(fgRec, fgAgentId);
     });
     record = fgResult.record;
   } finally {
-    // Runs on both paths, so a startup throw — which now propagates, see
-    // the background spawn above (#179) — no longer leaves the spinner
-    // ticking or a finished agent on the widget.
     clearInterval(spinnerInterval);
     if (fgId) {
       widget.markFinished(fgId);
@@ -175,14 +140,11 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     }
   }
 
-  // Get final token count — from the record, like the cost below it, so the
-  // two describe the same work when the agent delegated to nested children.
   const tokenText = formatLifetimeTokens(record);
 
   const details = buildDetails(detailBaseFor(detailBase, record), record, fgActivity(), { tokens: tokenText });
 
   if (record.status === "error") {
-    // Error headline + any partial output the run produced before failing.
     return textResult(`${fallbackNote}Agent failed: ${record.error}${partialOutputSuffix(record)}`, details);
   }
 

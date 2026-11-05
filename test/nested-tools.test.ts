@@ -113,7 +113,7 @@ describe("child-safe nested Agent tools", () => {
         maxSubagentDepth: 2,
         configCwd: cwd,
       }),
-      expect.any(Function), // onSpawned — attaches the child's transcript
+      expect.any(Function),
     );
   });
 
@@ -160,8 +160,6 @@ describe("child-safe nested Agent tools", () => {
   });
 
   it("resolves nested types without touching the process-global registry", async () => {
-    // A worktree-isolated parent hands its own config root down. Resolving from
-    // it must not swap the registry the main session and every other agent read.
     const otherCwd = mkdtempSync(join(tmpdir(), "nested-tools-config-"));
     const otherAgentDir = join(otherCwd, ".pi", "agents");
     mkdirSync(otherAgentDir, { recursive: true });
@@ -176,9 +174,7 @@ describe("child-safe nested Agent tools", () => {
         prompt: "Do work",
       });
 
-      // Resolved from the inherited root...
       expect(result.isError).toBe(false);
-      // ...without leaking it into the shared registry.
       expect(getAvailableTypes()).toEqual(before);
       expect(getAvailableTypes()).not.toContain("branch-only");
     } finally {
@@ -302,8 +298,6 @@ describe("child-safe nested Agent tools", () => {
     expect(result.isError).toBe(false);
     expect(result.content[0].text).toContain("stopped");
     expect(record.status).toBe("stopped");
-    // Set before abort() so the forced settle reports the orchestrating agent
-    // rather than defaulting to "stopped by the user".
     expect(record.stoppedBy).toBe("agent");
     expect(manager.abort).toHaveBeenCalledWith("child-1");
   });
@@ -335,15 +329,11 @@ describe("child-safe nested Agent tools", () => {
     expect(result.isError).toBe(false);
     expect(result.content[0].text).toContain("not running (status: completed)");
     expect(result.content[0].text).toContain("still available");
-    // Stopping a terminal child must not abort it or touch its result.
     expect(record.status).toBe("completed");
     expect(manager.abort).not.toHaveBeenCalled();
   });
 
   it("reports a background child that fails to start as a tool error", async () => {
-    // Under isolation: "worktree" the child is not running when spawn() returns
-    // — the repo copy is awaited. The failure must reach the parent as an error
-    // result, not as "Nested agent started in background".
     vi.mocked(manager.awaitStartup).mockRejectedValueOnce(
       new Error('Cannot run with isolation: "worktree"'),
     );
@@ -407,15 +397,11 @@ describe("child-safe nested Agent tools", () => {
     ]);
 
     expect(settled).toBe("AbortError");
-    // The wait was cancelled but the child was never aborted or consumed.
     expect(record.status).toBe("running");
     settleChild?.();
   });
 
   it("still rejects unknown types when the project configures a fallback", async () => {
-    // The contract nested delegation documents is "rejected rather than falling
-    // back" — a top-level fallback must not hand a nested caller an agent its
-    // allowlist never named.
     setFallbackSubagent("scout");
     try {
       const [agent] = tools(["scout"]);
@@ -462,11 +448,8 @@ describe("child-safe nested Agent tools", () => {
     });
 
     expect(result.isError).toBe(false);
-    // Foreground: the whole output is inline and no id came back, so the note
-    // must not invite a get_subagent_result call the parent cannot make (#174).
     expect(result.content[0].text).toContain("everything the agent produced is above");
     expect(result.content[0].text).not.toContain("output is partial");
-    // The warning leads, so it can't read as part of the child's own answer.
     expect(result.content[0].text.indexOf("half an answer")).toBeGreaterThan(0);
   });
 
@@ -477,7 +460,6 @@ describe("child-safe nested Agent tools", () => {
     const [, getResult] = tools();
     const result = await execute(getResult, { agent_id: "child-1" });
 
-    // Here the parent does hold a valid id, so the background wording applies.
     expect(result.content[0].text).toContain("output may be incomplete");
     expect(result.content[0].text).not.toContain("everything the agent produced is above");
   });
@@ -522,8 +504,6 @@ describe("child-safe nested Agent tools", () => {
   });
 
   it("attributes spend up the whole ancestor chain, not just one level", async () => {
-    // A spawn callback fires only for that child's own turns, so a deeper
-    // descendant would otherwise never reach the one record anyone can see.
     const top = { id: "top", status: "running", lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 } };
     const middle = {
       id: "parent-1", status: "running", parentAgentId: "top",
@@ -557,14 +537,12 @@ describe("child-safe nested Agent tools", () => {
       return { id: "child-1", record };
     });
 
-    // Real path construction (not mocked here), so clean up what it writes.
     const transcriptRoot = join(tmpdir(), `pi-subagents-${process.getuid?.() ?? 0}`, encodeCwd(cwd));
     try {
       const [agent] = tools();
       await execute(agent, { subagent_type: "scout", description: "traced", prompt: "Do work" });
       expect(records.get("child-1").outputFile).toContain(join("root-session", "tasks", "child-1.output"));
 
-      // The child's own frontmatter still wins.
       writeAgent("quiet", "output_transcript: false\n");
       registerAgents(loadCustomAgents(cwd));
       records.delete("child-1");
@@ -576,9 +554,6 @@ describe("child-safe nested Agent tools", () => {
   });
 
   it("forwards the execution context to the manager unmodified", async () => {
-    // Each AgentSession builds its own ExtensionRunner, so the ctx handed to
-    // execute is the CHILD's — capturing one at tool-build time instead would
-    // silently misroute the grandchild's cwd, conversation, and model.
     const [agent] = tools();
     const executionCtx = ctx();
     await agent.execute("call-1", {
@@ -591,12 +566,6 @@ describe("child-safe nested Agent tools", () => {
   });
 });
 
-// setMaxSubagentDepth clamps its input, but test/settings.test.ts only asserts
-// the applier SPY was called — the real Math.max(0, Math.floor(n)) never runs
-// there. A hand-edited subagents.json reaches this unfiltered, and losing the
-// clamp is silent in the worst direction: a negative depth makes the
-// `depth >= maxSubagentDepth` check true everywhere, disabling nested
-// delegation project-wide with no error.
 describe("setMaxSubagentDepth clamping", () => {
   let previous: number;
   beforeEach(() => { previous = getMaxSubagentDepth(); });

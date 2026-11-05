@@ -1,12 +1,3 @@
-/**
- * mention-start-notification.test.ts — does an agent STARTED by a mention
- * report back to the main conversation?
- *
- * The resume path is pinned in agent-mention-wiring.test.ts ("relays the
- * resumed answer through the ordinary completion notification"). The start path
- * — `@handle msg` naming a type with no live instance — has no equivalent, and
- * it is the path every first mention takes.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -82,8 +73,6 @@ describe("an agent started by a mention", () => {
   });
 
   it("relays it when the clone fell back to a direct start (model mode)", async () => {
-    // What the user hits today: the clone reports it could not start the agent,
-    // index.ts starts it directly, and the answer still has to come back.
     const { pi, lifecycle } = boot();
     vi.mocked(runMentionClone).mockResolvedValue({ spawned: false, error: "the conversation clone did not start it" });
     vi.mocked(runAgent).mockResolvedValue({

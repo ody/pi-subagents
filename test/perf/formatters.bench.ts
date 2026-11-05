@@ -1,17 +1,3 @@
-/**
- * formatters.bench.ts — the leaf functions the render paths call per agent, per
- * frame.
- *
- * These are individually tiny, which is the reason to isolate them: when a
- * widget or fleet-list benchmark moves, this file answers "was it the render or
- * something underneath it?" without bisecting. `buildInvocationTags` in
- * particular is called once per running row when `showModel` is on, and
- * `getSessionContextPercent` reaches into the live session on every row
- * regardless.
- *
- * Absolute numbers here are nanoseconds and will look irrelevant next to a
- * frame. They are — until one of them stops being O(1).
- */
 import { bench, describe } from "vitest";
 import {
   buildInvocationTags,
@@ -32,7 +18,6 @@ const INVOCATION = {
   maxTurns: 60,
 } as any;
 
-/** The disclosure shape: both "(asked …)" annotations live, as #257 renders them. */
 const INVOCATION_DISCLOSED = {
   ...INVOCATION,
   requestedModel: "google/gemini-3-pro",
