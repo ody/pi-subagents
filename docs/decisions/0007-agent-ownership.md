@@ -46,6 +46,6 @@ Done check: `npm run check` passes.
 - Filtering a UI surface through `isTopLevelAgent` makes owned agents unreachable by the user.
 - Loosening control scoping to match the UI would let siblings and other extensions steer, stop, or consume agents they do not own.
 - Charging owned children to the concurrency pools reintroduces the parent-awaiting-child deadlock.
-- Accepting this ADR makes it the canonical owner of the RPC-stop rule. Trim the duplicate ownership bullet from ADR 0003 in the same change.
+- This ADR is the canonical owner of the RPC-stop rule. ADR 0003 does not restate it.
 - Revisit if a second owner kind appears, since `isTopLevelAgent` names exactly one ownership field.
 - Revisit if nesting depth or width grows enough that the full tree crowds the widget's line budget.
