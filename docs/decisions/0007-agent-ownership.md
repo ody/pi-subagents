@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Agent ownership scopes control, not visibility
+# 0007. Agent ownership scopes control, not visibility
 
 ## Context
 
