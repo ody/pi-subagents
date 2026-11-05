@@ -196,8 +196,9 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
     name: SUBAGENT_TOOL_NAMES.STOP,
     label: "Stop Agent",
     description:
-      "Stop a running or queued background agent. Fires its abort signal immediately; the tool result carries whatever " +
-      "partial output the agent had streamed so far, and the full result still arrives via the usual completion notification.",
+      "Stop a running or queued background agent. Fires its abort signal immediately; the reply carries whatever " +
+      "partial output the agent had streamed so far. The result arrives through the usual completion notification " +
+      "only if the agent finishes — a stopped agent's notification carries its partial output.",
     promptSnippet: "Stop a running or queued background agent",
     parameters: Type.Object({
       agent_id: Type.String({
@@ -246,7 +247,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         (preview
           ? `Partial output before the stop:\n${preview}`
           : "No partial output — the agent had not produced any assistant text yet.") +
-        `\n\nThe full result will still arrive via the usual completion notification.`,
+        `\n\nThe result arrives through the usual completion notification only if the agent finishes; a stopped agent's notification carries the partial output above.`,
       );
     },
   }));

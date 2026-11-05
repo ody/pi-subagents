@@ -81,6 +81,12 @@ beforeEach(() => {
     awaitStartup: vi.fn(async () => {}),
     getRecord: (id: string) => records.get(id),
     resume: vi.fn(),
+    abort: vi.fn((id: string) => {
+      const record = records.get(id);
+      if (!record || (record.status !== "running" && record.status !== "queued")) return false;
+      record.status = "stopped";
+      return true;
+    }),
   } as any;
 });
 
@@ -284,6 +290,54 @@ describe("child-safe nested Agent tools", () => {
       prompt: "Continue",
     })).isError).toBe(true);
     expect(manager.resume).not.toHaveBeenCalled();
+  });
+
+  it("stops a running owned child and marks who stopped it", async () => {
+    const [, , , stop] = tools();
+    const record: Record<string, unknown> = { id: "child-1", status: "running", parentAgentId: "parent-1" };
+    records.set("child-1", record);
+
+    const result = await execute(stop, { agent_id: "child-1" });
+
+    expect(result.isError).toBe(false);
+    expect(result.content[0].text).toContain("stopped");
+    expect(record.status).toBe("stopped");
+    // Set before abort() so the forced settle reports the orchestrating agent
+    // rather than defaulting to "stopped by the user".
+    expect(record.stoppedBy).toBe("agent");
+    expect(manager.abort).toHaveBeenCalledWith("child-1");
+  });
+
+  it("reports an unknown or unowned stop target as not found and leaves it alone", async () => {
+    const [, , , stop] = tools();
+    const foreign = { id: "foreign", status: "running", parentAgentId: "other" };
+    records.set(foreign.id, foreign);
+
+    const unknown = await execute(stop, { agent_id: "does-not-exist" });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.content[0].text).toContain("not found or not owned");
+
+    const notOwned = await execute(stop, { agent_id: "foreign" });
+    expect(notOwned.isError).toBe(true);
+    expect(notOwned.content[0].text).toContain("not found or not owned");
+
+    expect(foreign.status).toBe("running");
+    expect(manager.abort).not.toHaveBeenCalled();
+  });
+
+  it("reports an already-settled child's terminal status as success, not an error", async () => {
+    const [, , , stop] = tools();
+    const record = { id: "child-1", status: "completed", result: "done", parentAgentId: "parent-1" };
+    records.set(record.id, record);
+
+    const result = await execute(stop, { agent_id: record.id });
+
+    expect(result.isError).toBe(false);
+    expect(result.content[0].text).toContain("not running (status: completed)");
+    expect(result.content[0].text).toContain("still available");
+    // Stopping a terminal child must not abort it or touch its result.
+    expect(record.status).toBe("completed");
+    expect(manager.abort).not.toHaveBeenCalled();
   });
 
   it("reports a background child that fails to start as a tool error", async () => {

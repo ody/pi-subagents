@@ -140,4 +140,45 @@ describe("AgentManager — abort() forced settle", () => {
     const id3 = manager.spawn(mockPi, mockCtx, "Z", "r", { description: "d", isBackground: true });
     expect(manager.getRecord(id3)?.status).toBe("queued");
   });
+
+  it("copies the streamed response text into record.result when no result exists", async () => {
+    // A wedged agent never reaches the real completion handler that writes
+    // `record.result`, so without the copy its notification and
+    // `get_subagent_result` report "No output." for text the model can watch
+    // streaming on screen.
+    vi.mocked(runAgent).mockImplementation(
+      ((_ctx: any, _type: any, _prompt: any, opts: any) => new Promise(() => {
+        opts.onTextDelta?.("partial", "  partial answer  ");
+      })) as any,
+    );
+    manager = new AgentManager();
+
+    const id = manager.spawn(mockPi, mockCtx, "X", "wedged", { description: "d", isBackground: true });
+    await vi.advanceTimersByTimeAsync(0); // let the run reach runAgent
+    manager.abort(id);
+    expect(manager.getRecord(id)?.result).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(GRACE);
+    // Trimmed: surrounding whitespace is an artifact of streaming, not output.
+    expect(manager.getRecord(id)?.result).toBe("partial answer");
+  });
+
+  it("keeps an existing result rather than overwriting it with the streamed text", async () => {
+    vi.mocked(runAgent).mockImplementation(
+      ((_ctx: any, _type: any, _prompt: any, opts: any) => new Promise(() => {
+        opts.onTextDelta?.("partial", "partial answer");
+      })) as any,
+    );
+    manager = new AgentManager();
+
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const record = manager.getRecord(id)!;
+    record.result = "the real result";
+
+    manager.abort(id);
+    await vi.advanceTimersByTimeAsync(GRACE);
+
+    expect(record.result).toBe("the real result");
+  });
 });

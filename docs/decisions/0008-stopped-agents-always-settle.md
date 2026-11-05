@@ -18,7 +18,7 @@ An agent wedged inside a tool call never resolves its `runAgent` promise. `Agent
 The model-facing `stop_subagent` tool in `src/tool/agent-control-tools.ts`, and the nested copy in `src/tool/nested-tools.ts`, follow these rules:
 
 - The top-level `agent_id` accepts an agent id, handle, or alias. The nested tool accepts only the id of a direct child of the caller.
-- It acts only on agents the caller owns, per the ownership ADR. An unknown or unowned agent reports "Agent not found".
+- It acts only on agents the caller owns, per the ownership ADR. An unknown or unowned agent reports not found.
 
 - Stopping an agent that already settled is a success that reports its terminal status, not an error.
 - It never marks the result consumed or cancels the completion notification. The result has not been written yet when the tool returns, so the notification carries it. The top-level tool also returns the partial streamed text, and its reply says the full result arrives only if the agent finishes.
