@@ -248,7 +248,7 @@ export default function (pi: ExtensionAPI) {
             // Same guard as get_subagent_result: a running agent has no result
             // to consume, and its notification is still the caller's only
             // signal that it finished.
-            if (!record || record.parentAgentId) return false;
+            if (!record || !isTopLevelAgent(record)) return false;
             if (record.status === "running" || record.status === "queued") return false;
             record.resultConsumed = true;
             notifier.cancelNudge(record.id);
