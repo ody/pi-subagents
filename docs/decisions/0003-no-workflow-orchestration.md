@@ -21,7 +21,6 @@ pi-subagents provides sub-agents only: the `Agent` tool, `/agents`, scheduling, 
 - Removing workflow code must not change the behavior of any `subagents:rpc:*` channel or lifecycle event for top-level agents. `PROTOCOL_VERSION` stays `2`.
 - `docs/rpc.md` stays as the RPC integration guide, without workflow references.
 - RPC tests (`test/cross-extension-rpc.test.ts`, `test/rpc-*.test.ts`) keep covering every channel without depending on workflow code. A test that only covered workflow ownership is deleted.
-- `subagents:rpc:stop` refuses a nested child with `Agent is owned by another agent`, and `isTopLevelAgent` is `parentAgentId === undefined`.
 
 Removal is complete when both hold:
 

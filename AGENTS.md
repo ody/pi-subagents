@@ -16,6 +16,7 @@ Each entry: the rule an agent must not break, and its ADR.
 - **No workflows.** Never add workflow orchestration to this repo, and never change `subagents:rpc:*` channels or lifecycle events for top-level agents while removing it. [ADR 0003](docs/decisions/0003-no-workflow-orchestration.md)
 - **File structure.** Split source files along cohesion seams, never to hit a number. Over 500 lines needs a `Size:` header reason, and 800 lines or 40 KB is the cap. Never create `utils.ts`, `part2.ts` or one-caller fragments, and never compress code to fit. [ADR 0004](docs/decisions/0004-source-file-structure.md)
 - **Directory structure.** Every `src/` file lives in the concern directory that owns it, never in a layer or `core/`, `utils/`, `helpers/`, `misc/` or `part2/`. A directory holds two or more files, and the `README.md` `src/` map lists every file. [ADR 0006](docs/decisions/0006-source-directory-structure.md)
+- **Ownership.** `isTopLevelAgent` scopes programmatic control only -- model-facing tools, `@handle`, `subagents:rpc:*`, lifecycle events, notifications and the concurrency pools -- never UI visibility, which shows every agent. Nested agents reach only their own children. [ADR 0007](docs/decisions/0007-agent-ownership.md)
 - **Git hooks.** Pre-commit checks live in tracked `.githooks/` and stay fast. Never run the full suite in the hook, skip it with `--no-verify`, or edit git config. [ADR 0005](docs/decisions/0005-git-hooks.md)
 
 ## Commands
