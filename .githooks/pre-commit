@@ -3,8 +3,8 @@
 # Never add the full test suite here; `npm run check` is the full gate.
 set -e
 
-# File-size and complexity ratchets (ADR 0004). Fail the commit on a violation.
-npx vitest run test/file-size.test.ts test/complexity.test.ts
+# Structure ratchets (ADR 0004, ADR 0010). Fail the commit on a violation.
+npx vitest run test/file-size.test.ts test/complexity.test.ts test/no-comments.test.ts
 
 # Cognitive complexity reports for staged files. Informational only.
 npx biome lint --staged --no-errors-on-unmatched \
