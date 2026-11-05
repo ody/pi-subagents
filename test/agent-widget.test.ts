@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderRunningAgentStatus } from "../src/agent-tool-render.js";
+import { renderRunningAgentStatus } from "../src/tool/agent-tool-render.js";
 import type { AgentActivity, WidgetMode } from "../src/types.js";
 import { fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-format.js";
 import { AgentWidget, statusBarText } from "../src/ui/agent-widget.js";

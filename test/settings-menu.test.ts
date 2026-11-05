@@ -1,12 +1,12 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getFallbackSubagent, NO_FALLBACK, setFallbackSubagent } from "../src/agent-types.js";
-import { isScopeModelsEnabled, setScopeModelsEnabled } from "../src/model-scope.js";
-import { getMaxSubagentDepth, setMaxSubagentDepth } from "../src/nested-tools.js";
-import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../src/output-file.js";
-import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../src/runner-defaults.js";
+import { getFallbackSubagent, NO_FALLBACK, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
+import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../src/config/runner-defaults.js";
+import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../src/platform/output-file.js";
+import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
+import { getMaxSubagentDepth, setMaxSubagentDepth } from "../src/tool/nested-tools.js";
 import { applySettingValue, type SettingsMenuDeps, showSettings } from "../src/ui/settings-menu.js";
-import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../src/worktree.js";
 
 const saved = {
   fallback: getFallbackSubagent(),

@@ -9,15 +9,15 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
 });
-vi.mock("../src/mention-clone.js", () => ({ runMentionClone: vi.fn() }));
+vi.mock("../src/triggers/mention-clone.js", () => ({ runMentionClone: vi.fn() }));
 
-import { resumeAgent, runAgent } from "../src/agent-runner.js";
 import subagentsExtension from "../src/index.js";
-import { runMentionClone } from "../src/mention-clone.js";
+import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
+import { runMentionClone } from "../src/triggers/mention-clone.js";
 import { ctx, type Hermetic, hermeticDir, makePi } from "./helpers/boot-extension.js";
 
 let hermetic: Hermetic | undefined;

@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { formatResultStats, formatSteerState, registerAgentControlTools, resultBody } from "../src/agent-control-tools.js";
-import { steerAgent } from "../src/agent-runner.js";
+import { steerAgent } from "../src/session/agent-runner.js";
+import { formatResultStats, formatSteerState, registerAgentControlTools, resultBody } from "../src/tool/agent-control-tools.js";
 import type { AgentRecord } from "../src/types.js";
 
-vi.mock("../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
   return { ...actual, steerAgent: vi.fn() };
 });
 

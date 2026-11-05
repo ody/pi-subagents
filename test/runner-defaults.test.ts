@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/agent-types.js", () => ({
+vi.mock("../src/agents/agent-types.js", () => ({
   getAgentConfig: vi.fn(),
 }));
 
-import { getAgentConfig } from "../src/agent-types.js";
+import { getAgentConfig } from "../src/agents/agent-types.js";
 import {
   getDefaultMaxTurns,
   getGraceTurns,
@@ -13,7 +13,7 @@ import {
   setDefaultMaxTurns,
   setGraceTurns,
   turnLimitAction,
-} from "../src/runner-defaults.js";
+} from "../src/config/runner-defaults.js";
 
 function makeAgentConfig(overrides: Record<string, unknown> = {}) {
   return {

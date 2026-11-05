@@ -1,6 +1,6 @@
 /** usage.ts — Token usage: shapes, accumulator operators, session-stats readers. */
 
-import type { RuntimeSettings } from "./runtime-settings.js";
+import type { RuntimeSettings } from "./config/runtime-settings.js";
 
 /**
  * Lifetime usage components, accumulated via `message_end` events. Survives

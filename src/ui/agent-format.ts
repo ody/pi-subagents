@@ -4,7 +4,7 @@
  * Token, cost, duration and activity formatters, plus the Theme and AgentDetails types.
  */
 
-import { getConfig } from "../agent-types.js";
+import { getConfig } from "../agents/agent-types.js";
 import type { AgentInvocation, SubagentType } from "../types.js";
 
 // ---- Constants ----

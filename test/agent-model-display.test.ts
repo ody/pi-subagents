@@ -12,14 +12,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
 });
 
-import { resumeAgent, runAgent } from "../src/agent-runner.js";
-import { registerAgents } from "../src/agent-types.js";
+import { registerAgents } from "../src/agents/agent-types.js";
 import subagentsExtension from "../src/index.js";
+import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 
 function agentTool() {
   const tools = new Map<string, any>();

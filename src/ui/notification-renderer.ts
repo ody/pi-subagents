@@ -3,7 +3,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import type { RuntimeSettings } from "../runtime-settings.js";
+import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { NotificationDetails } from "../types.js";
 import { formatBatchSummary, formatNotification } from "./notification-block.js";
 

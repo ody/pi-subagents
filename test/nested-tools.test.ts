@@ -2,11 +2,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildAgentRegistry, getAvailableTypes, registerAgents, setFallbackSubagent } from "../src/agent-types.js";
-import { loadCustomAgents } from "../src/custom-agents.js";
-import { setScopeModelsEnabled } from "../src/model-scope.js";
-import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/nested-tools.js";
-import { encodeCwd } from "../src/output-file.js";
+import { buildAgentRegistry, getAvailableTypes, registerAgents, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { loadCustomAgents } from "../src/agents/custom-agents.js";
+import { setScopeModelsEnabled } from "../src/config/model-scope.js";
+import { encodeCwd } from "../src/platform/output-file.js";
+import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/tool/nested-tools.js";
 
 let cwd: string;
 let manager: NestedAgentManager;

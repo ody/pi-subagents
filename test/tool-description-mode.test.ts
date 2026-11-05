@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import subagentsExtension from "../src/index.js";
-import { setWorktreeIsolationEnabled } from "../src/worktree.js";
+import { setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
 
 function makePi() {
   const tools = new Map<string, any>();

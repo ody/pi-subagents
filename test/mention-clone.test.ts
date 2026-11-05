@@ -33,8 +33,8 @@ vi.mock("@earendil-works/pi-coding-agent", async () => {
   };
 });
 
-import { agentMentionReminder } from "../src/mention.js";
-import { runMentionClone } from "../src/mention-clone.js";
+import { agentMentionReminder } from "../src/triggers/mention.js";
+import { runMentionClone } from "../src/triggers/mention-clone.js";
 
 /** One user turn and its reply, as buildSessionContext resolves them. */
 const CONVERSATION = [

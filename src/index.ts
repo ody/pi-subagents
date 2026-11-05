@@ -12,27 +12,28 @@
  */
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { registerAgentControlTools } from "./agent-control-tools.js";
-import { AgentManager } from "./agent-manager.js";
-import { isTopLevelAgent } from "./agent-manager-rules.js";
-import { createAgentTool } from "./agent-tool.js";
-import { getAgentConfig, getAvailableTypes, getConfig, registerAgents, setDefaultsDisabled, setFallbackSubagent } from "./agent-types.js";
-import { createBackgroundResume } from "./background-resume.js";
-import { inChildSessionContext } from "./child-context.js";
-import { CompletionNotifier } from "./completion-notifier.js";
-import { type RpcHandle, registerRpcHandlers } from "./cross-extension-rpc.js";
-import { loadCustomAgents } from "./custom-agents.js";
+import { getAgentConfig, getAvailableTypes, getConfig, registerAgents, setDefaultsDisabled, setFallbackSubagent } from "./agents/agent-types.js";
+import { loadCustomAgents } from "./agents/custom-agents.js";
+import { setScopeModelsEnabled } from "./config/model-scope.js";
+import { setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "./config/runner-defaults.js";
+import { createSettingsPersistence } from "./config/runtime-settings.js";
+import { applyAndEmitLoaded, loadSettings, type SettingsAppliers, type ToolDescriptionMode } from "./config/settings.js";
 import { buildEventData } from "./lifecycle-events.js";
-import { registerMentionInput } from "./mention-input.js";
-import { setScopeModelsEnabled } from "./model-scope.js";
-import { setMaxSubagentDepth } from "./nested-tools.js";
-import { setOutputTranscriptDefault } from "./output-file.js";
-import { setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "./runner-defaults.js";
-import { createSettingsPersistence } from "./runtime-settings.js";
-import { SubagentScheduler } from "./schedule.js";
-import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
-import { applyAndEmitLoaded, loadSettings, type SettingsAppliers, type ToolDescriptionMode } from "./settings.js";
-import { createSpawnFunnel } from "./spawn-funnel.js";
+import { AgentManager } from "./manager/agent-manager.js";
+import { isTopLevelAgent } from "./manager/agent-manager-rules.js";
+import { createBackgroundResume } from "./manager/background-resume.js";
+import { CompletionNotifier } from "./manager/completion-notifier.js";
+import { setOutputTranscriptDefault } from "./platform/output-file.js";
+import { setWorktreeIsolationEnabled } from "./platform/worktree.js";
+import { inChildSessionContext } from "./session/child-context.js";
+import { registerAgentControlTools } from "./tool/agent-control-tools.js";
+import { createAgentTool } from "./tool/agent-tool.js";
+import { setMaxSubagentDepth } from "./tool/nested-tools.js";
+import { type RpcHandle, registerRpcHandlers } from "./triggers/cross-extension-rpc.js";
+import { registerMentionInput } from "./triggers/mention-input.js";
+import { SubagentScheduler } from "./triggers/schedule.js";
+import { resolveStorePath, ScheduleStore } from "./triggers/schedule-store.js";
+import { createSpawnFunnel } from "./triggers/spawn-funnel.js";
 import { type AgentMentionMode, type JoinMode, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
@@ -42,7 +43,6 @@ import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
 import { PendingUsagePool, withUsageReporting } from "./usage.js";
-import { setWorktreeIsolationEnabled } from "./worktree.js";
 
 // ---- Shared helpers ----
 

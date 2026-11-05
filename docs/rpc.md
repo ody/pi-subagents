@@ -8,7 +8,7 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 ## Spawn options
 
-`subagents:rpc:spawn` forwards `options` to `AgentManager.spawn` — but not verbatim. The manager's `spawn` behind the RPC is `spawnTopLevel` (`src/index.ts:698-721`), which deletes internal-only fields first, and then `spawnResolved` (`src/index.ts:666-696`) overwrites the activity-tracker callbacks with its own. The full interface is `SpawnOptions` at `src/agent-manager.ts:169-303`; what a bus caller actually gets is three different things.
+`subagents:rpc:spawn` forwards `options` to `AgentManager.spawn` — but not verbatim. The manager's `spawn` behind the RPC is `spawnTopLevel` (`src/index.ts:698-721`), which deletes internal-only fields first, and then `spawnResolved` (`src/index.ts:666-696`) overwrites the activity-tracker callbacks with its own. The full interface is `SpawnOptions` at `src/manager/agent-spawn.ts:17-127`; what a bus caller actually gets is three different things.
 
 **Honoured** — set these and they take effect:
 
@@ -104,25 +104,25 @@ One of these already shipped as a bug in this project's own README example, so i
 
 ## Errors
 
-Every failure reaches the caller as `{ success: false, error }`, where `error` is `err?.message ?? String(err)` (`src/cross-extension-rpc.ts:87`) — so these strings are what you will actually see.
+Every failure reaches the caller as `{ success: false, error }`, where `error` is `err?.message ?? String(err)` (`src/triggers/cross-extension-rpc.ts:110`) — so these strings are what you will actually see.
 
 | Error | Source |
 | --- | --- |
-| `No active session` | `src/cross-extension-rpc.ts:107` — called before the first bound `session_start`, or in a session that excludes pi-subagents |
-| `Model override "<label>" provided but ctx.modelRegistry is unavailable` | `src/cross-extension-rpc.ts:126` |
-| `Inline agentConfig requires a systemPrompt string` | `src/cross-extension-rpc.ts` — `agentConfig` is not an object, or has no string `systemPrompt` |
-| `Inline agentConfig requires a type to name the run` | `src/cross-extension-rpc.ts` — `agentConfig` set with an empty or non-string `type` |
-| `Model not found: "<input>".` + available models | `src/model-resolver.ts:117` |
-| `Model not in scope: "<input>".` + allowed models | `src/model-scope.ts:62` — only with `scopeModels` on, and checked against the *resolved* model |
-| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agent-types.ts:187` — only under `fallbackSubagent: none` |
-| `No agent type given. Available: <list>.` | `src/agent-types.ts:187-194` — same condition |
-| `<reason> The configured fallbackSubagent "<x>" is itself unknown or disabled. Available: <list>.` | `src/agent-types.ts:205-207` |
-| `SpawnOptions.cwd must be an absolute path: "<value>"` | `src/agent-manager.ts:85` |
-| `SpawnOptions.cwd does not exist: "<cwd>"` | `src/agent-manager.ts:91` |
-| `SpawnOptions.cwd is not a directory: "<cwd>"` | `src/agent-manager.ts:94` |
-| `Cannot run with isolation: "worktree" — not a git repo, no commits yet, or 'git worktree add' failed.` | `src/agent-manager.ts:716-719`, surfaced through `awaitStartup` |
-| git plumbing failures | `src/worktree.ts:76` |
-| `Agent not found` | stop — `src/cross-extension-rpc.ts:170` |
+| `No active session` | `src/triggers/cross-extension-rpc.ts:130` — called before the first bound `session_start`, or in a session that excludes pi-subagents |
+| `Model override "<label>" provided but ctx.modelRegistry is unavailable` | `src/triggers/cross-extension-rpc.ts:149` |
+| `Inline agentConfig requires a systemPrompt string` | `src/triggers/cross-extension-rpc.ts:79` — `agentConfig` is not an object, or has no string `systemPrompt` |
+| `Inline agentConfig requires a type to name the run` | `src/triggers/cross-extension-rpc.ts:76` — `agentConfig` set with an empty or non-string `type` |
+| `Model not found: "<input>".` + available models | `src/config/model-resolver.ts:125` |
+| `Model not in scope: "<input>".` + allowed models | `src/config/model-scope.ts:62` — only with `scopeModels` on, and checked against the *resolved* model |
+| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts:187` — only under `fallbackSubagent: none` |
+| `No agent type given. Available: <list>.` | `src/agents/agent-types.ts:187-194` — same condition |
+| `<reason> The configured fallbackSubagent "<x>" is itself unknown or disabled. Available: <list>.` | `src/agents/agent-types.ts:205-207` |
+| `SpawnOptions.cwd must be an absolute path: "<value>"` | `src/manager/agent-manager-rules.ts:38` |
+| `SpawnOptions.cwd does not exist: "<cwd>"` | `src/manager/agent-manager-rules.ts:44` |
+| `SpawnOptions.cwd is not a directory: "<cwd>"` | `src/manager/agent-manager-rules.ts:47` |
+| `Cannot run with isolation: "worktree" — not a git repo, no commits yet, or 'git worktree add' failed.` | `src/manager/agent-start.ts:178-181`, surfaced through `awaitStartup` |
+| git plumbing failures | `src/platform/worktree.ts:76` |
+| `Agent not found` | stop — `src/triggers/cross-extension-rpc.ts:201` |
 | `Agent is owned by another agent` | stop — `:178` |
 | `Agent is not running` | stop — `:182`. The record exists, so it has already settled |
 | `Agent not found or still running` | consume — `:193` |
@@ -135,13 +135,13 @@ Don't mirror the tool's wording back into the RPC error string, or a caller that
 
 Three things the table cannot show:
 
-- **The failure that is not an error.** With `worktreeIsolation` off project-wide, `isolation: "worktree"` is dropped at `src/agent-manager.ts:712` with no error, no note on the record, and a success envelope on the wire. Your agent runs in the main tree. If you asked for isolation because two agents were going to write the same files, they now collide and nothing told you.
+- **The failure that is not an error.** With `worktreeIsolation` off project-wide, `isolation: "worktree"` is dropped at `src/manager/agent-start.ts:175` with no error, no note on the record, and a success envelope on the wire. Your agent runs in the main tree. If you asked for isolation because two agents were going to write the same files, they now collide and nothing told you.
 - **`data` is omitted** when a handler returns nothing, so a successful stop or consume reply is a bare `{ success: true }` and `reply.data.anything` throws.
 - **`requestId` is not validated.** It is interpolated straight into the reply channel, so a caller that omits it gets its reply on the literal channel `subagents:rpc:spawn:reply:undefined` — where every other caller that omitted it is also listening. Send one, and send a unique one.
 
 ## Ownership
 
-`isTopLevelAgent(record)` is `parentAgentId === undefined` (`src/agent-manager.ts`). `subagents:rpc:stop` enforces it (`src/cross-extension-rpc.ts`): a nested child is owned by something that is *waiting on it*, and aborting it out from under that owner turns another extension's stop into a failed step. It is defence in depth rather than a live hole — no RPC hands out agent ids, so a caller has no ordinary way to name one it does not own.
+`isTopLevelAgent(record)` is `parentAgentId === undefined` (`src/manager/agent-manager-rules.ts:75`). `subagents:rpc:stop` enforces it (`src/triggers/cross-extension-rpc.ts`): a nested child is owned by something that is *waiting on it*, and aborting it out from under that owner turns another extension's stop into a failed step. It is defence in depth rather than a live hole — no RPC hands out agent ids, so a caller has no ordinary way to name one it does not own.
 
 One asymmetry to know about, stated as it is:
 
@@ -169,9 +169,9 @@ When a background agent finishes, pi-subagents sends the user a completion notif
 | After an `await`, within 200 ms | Still suppressed. The nudge is held for `NUDGE_HOLD_MS` (`src/index.ts:451`), `consume` cancels the pending timer (`:819`), and there is a re-check at send time (`:474`) |
 | After 200 ms | Too late. The follow-up has fired with `triggerTurn: true` and cost the parent a turn |
 
-Fire-and-forget is the intended use: the reply carries nothing to act on, and the channel sits outside the `subagents:rpc:ping` version handshake on purpose (`src/cross-extension-rpc.ts:190`), so you can send it unconditionally and an older pi-subagents with no handler simply keeps notifying.
+Fire-and-forget is the intended use: the reply carries nothing to act on, and the channel sits outside the `subagents:rpc:ping` version handshake on purpose (`src/triggers/cross-extension-rpc.ts:220`), so you can send it unconditionally and an older pi-subagents with no handler simply keeps notifying.
 
-Consumption is not terminal. An `@handle` steer un-consumes the record (`src/index.ts:920`) because the agent's reply to that message still needs relaying, and so does a background resume (`src/agent-manager.ts:1135`) because the record is starting a new run.
+Consumption is not terminal. An `@handle` steer un-consumes the record (`src/index.ts:920`) because the agent's reply to that message still needs relaying, and so does a background resume (`src/manager/agent-resume.ts:104`) because the record is starting a new run.
 
 One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("subagents:record", …)` (`src/index.ts:585`), carrying `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
 
@@ -192,7 +192,7 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 ## Protocol versions
 
-`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION }`, currently `2` (`src/cross-extension-rpc.ts:33`). The constant was introduced already equal to `2` in 0.5.0; "v1" is a retroactive name for the pre-envelope contract, where spawn replied with a bare `{ id }` or `{ error }`, stop replied `{ success: boolean }` with no message, and each handler caught its own errors.
+`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION }`, currently `2` (`src/triggers/cross-extension-rpc.ts:33`). The constant was introduced already equal to `2` in 0.5.0; "v1" is a retroactive name for the pre-envelope contract, where spawn replied with a bare `{ id }` or `{ error }`, stop replied `{ success: boolean }` with no message, and each handler caught its own errors.
 
 Everything added since shipped **without a bump**, because all of it is additive: stop's ownership refusal, string-`model` resolution, `scopeModels` enforcement, and the whole `consume` channel.
 

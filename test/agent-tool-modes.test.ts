@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { type AgentToolDeps, createAgentTool } from "../src/agent-tool.js";
+import { type AgentToolDeps, createAgentTool } from "../src/tool/agent-tool.js";
 
 function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: Record<string, any>; scheduler?: any } = {}) {
   const records: Record<string, any> = over.records ?? {};

@@ -6,7 +6,7 @@
  * Coverage sat on either side of this seam and never joined it.
  * test/worktree.test.ts drives real git but calls createWorktree/cleanupWorktree
  * directly, with no agent anywhere. test/agent-manager.test.ts (and -gc, and
- * agent-startup-error) mock ../src/worktree.js entirely and assert only the gate
+ * agent-startup-error) mock ../src/platform/worktree.js entirely and assert only the gate
  * and the fail-loud throw. So the chain the feature actually promises was never
  * pinned end to end: spawn → the child's cwd IS the copy → its edits stay out of
  * the main checkout → cleanup commits them to a branch the result names → the
@@ -23,7 +23,7 @@ import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxToolCall } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { setWorktreeIsolationEnabled } from "../src/worktree.js";
+import { setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
 import { agentCall, type FauxReply, type PrintModeRun, runPrintMode } from "./helpers/print-mode-runner.js";
 
 vi.setConfig({ testTimeout: 30_000 });

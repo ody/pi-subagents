@@ -9,20 +9,20 @@
 // timers are hostile to the promise-settling style of the main suite.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgentManager } from "../src/agent-manager.js";
+import { AgentManager } from "../src/manager/agent-manager.js";
 
-vi.mock("../src/agent-runner.js", () => ({
+vi.mock("../src/session/agent-runner.js", () => ({
   runAgent: vi.fn(),
   resumeAgent: vi.fn(),
 }));
 
-vi.mock("../src/worktree.js", () => ({
+vi.mock("../src/platform/worktree.js", () => ({
   createWorktree: vi.fn(),
   cleanupWorktree: vi.fn(() => ({ hasChanges: false })),
   pruneWorktrees: vi.fn(),
 }));
 
-import { runAgent } from "../src/agent-runner.js";
+import { runAgent } from "../src/session/agent-runner.js";
 
 const mockPi = {} as any;
 const mockCtx = { cwd: "/tmp" } as any;

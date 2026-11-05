@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildNotificationDetails, formatTaskNotification, getStatusLabel } from "../src/notification-format.js";
+import { buildNotificationDetails, formatTaskNotification, getStatusLabel } from "../src/manager/notification-format.js";
 import type { AgentActivity, AgentRecord } from "../src/types.js";
 
 function rec(over: Partial<AgentRecord> = {}): AgentRecord {

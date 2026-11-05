@@ -12,7 +12,7 @@
  */
 import { CombinedAutocompleteProvider } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentManager } from "../src/agent-manager.js";
+import type { AgentManager } from "../src/manager/agent-manager.js";
 import type { AgentRecord, AgentTombstone } from "../src/types.js";
 import { createMentionProvider, mentionRoster } from "../src/ui/agent-mention.js";
 

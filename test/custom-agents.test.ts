@@ -2,9 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { serializeAgentFile } from "../src/agent-file-toggle.js";
-import { BUILTIN_TOOL_NAMES, buildAgentRegistry } from "../src/agent-types.js";
-import { loadCustomAgents } from "../src/custom-agents.js";
+import { serializeAgentFile } from "../src/agents/agent-file-toggle.js";
+import { BUILTIN_TOOL_NAMES, buildAgentRegistry } from "../src/agents/agent-types.js";
+import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import type { AgentConfig } from "../src/types.js";
 
 describe("loadCustomAgents", () => {

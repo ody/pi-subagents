@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDetails, formatLifetimeTokens } from "../src/tool-result.js";
+import { buildDetails, formatLifetimeTokens } from "../src/tool/tool-result.js";
 import type { AgentActivity } from "../src/types.js";
 
 const base = {
