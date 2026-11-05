@@ -24,7 +24,17 @@ Never add a new exempt form. A comment to explain surprising code means the code
 
 `test/no-comments.test.ts` enforces this. It parses every `.ts` file under `src/` and `test/` with the TypeScript scanner, so `//` inside a string or template literal is not a comment, and it fails on any comment outside the exempt forms.
 
-Done check: `npx vitest run test/no-comments.test.ts` passes.
+Agents learn the rule from `AGENTS.md`, not from this ADR. Acceptance adds both of these:
+
+- A `Code style` bullet: no comments in `src/` or `test/`, except `Size:` headers, `biome-ignore` reasons and a shebang.
+- A rules-index entry linking this ADR.
+
+Biome has no rule that flags arbitrary comments, so the test is the lint gate. `npm run check` runs it, and `.githooks/pre-commit` runs it beside the size and complexity tests, as [ADR 0005](../0005-git-hooks.md) allows for fast structure checks.
+
+Done check:
+
+- `npx vitest run test/no-comments.test.ts` passes.
+- `.githooks/pre-commit` names `test/no-comments.test.ts`.
 
 Rejected: keeping "why" comments only, because "why" versus "what" is a judgment no test can enforce and the "why" drifts too. Rejected: keeping JSDoc on exported symbols, because `README.md` and `docs/rpc.md` own the public surface.
 
@@ -34,4 +44,6 @@ Rationale that lives only in a comment today is lost unless its owner moves it t
 
 Revisit if a recurring class of surprising code cannot be made clear by naming or tests, or if a tool starts to read another comment form.
 
-The same change must edit [ADR 0004](../0004-source-file-structure.md), which lists "deleting comments" among ways to shorten code, and add the rule to the `AGENTS.md` rules index.
+The acceptance change must also edit [ADR 0004](../0004-source-file-structure.md), which lists "deleting comments" among ways to shorten code, and the hook list in [ADR 0005](../0005-git-hooks.md).
+
+The test cannot land before the strip. Land them in one change, or start the test with a ratchet allowlist like `test/file-size.test.ts` that pins each file's comment count and may only shrink.
