@@ -1,18 +1,3 @@
-/**
- * agent-file-bom.test.ts — agent files that begin with a UTF-8 BOM.
- *
- * Editors across the Windows/CJK world write UTF-8 with a BOM by default, so a
- * BOM-prefixed agent file is ordinary input rather than a curiosity. pi's parser
- * did not look past one before 0.84.3: the fence never matched, so frontmatter
- * came back empty and the whole file — YAML included — became the body. An agent
- * authored that way lost every field, and `tools: none` going missing meant it
- * registered with the DEFAULT toolset (bash, edit, write) instead of none — a
- * wider grant than its author wrote.
- *
- * These drive the real loader over a real file, which is what the string-level
- * tests in custom-agents/agent-file-toggle cannot reach.
- */
-
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,7 +35,6 @@ describe("BOM-prefixed agent files", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  /** Write an agent file and return its path. */
   function writeAgent(name: string, content: string): string {
     const dir = join(tmpDir, ".agents", "agents");
     mkdirSync(dir, { recursive: true });
@@ -67,7 +51,6 @@ describe("BOM-prefixed agent files", () => {
     expect(agent?.description).toBe("代码审查员");
     expect(agent?.model).toBe("anthropic/claude-haiku-4-5");
     expect(agent?.systemPrompt).toBe("你是一位资深的代码审查员。请仔细检查代码。");
-    // The YAML must not survive into the prompt — the symptom of the fence miss.
     expect(agent?.systemPrompt).not.toContain("---");
   });
 
@@ -76,15 +59,10 @@ describe("BOM-prefixed agent files", () => {
 
     const agent = loadCustomAgents(tmpDir).get("审查员");
 
-    // The sharp edge: dropped frontmatter used to leave this agent holding
-    // bash, edit and write — the opposite of what the file asked for.
     expect(agent?.builtinToolNames).toEqual([]);
   });
 
   it("handles BOM + CRLF together, which is what a Windows editor writes", () => {
-    // The combination, not either alone: the same editors that add a BOM also
-    // write CRLF, so this is the likeliest shape of a real file — and the eol
-    // detection reads lines[0], which is the line the BOM sits on.
     const crlf = `${BOM}---\r\ndescription: 代码审查员\r\ntools: none\r\n---\r\n\r\n你是审查员。\r\n`;
     const path = writeAgent("审查员", crlf);
 
@@ -93,13 +71,11 @@ describe("BOM-prefixed agent files", () => {
     const { content, outcome } = disableInContent(readFileSync(path, "utf-8"));
     expect(outcome).toBe("disabled");
     expect(content.startsWith(BOM)).toBe(true);
-    // No lone LF crept in — the file's line endings survive the edit.
     expect(/[^\r]\n/.test(content)).toBe(false);
     expect(enableInContent(content).content).toBe(crlf);
   });
 
   it("still refuses a BOM-prefixed file that has no frontmatter at all", () => {
-    // The BOM must not be treated as licence to invent a block that isn't there.
     const { content, outcome } = disableInContent(`${BOM}没有前置数据。\n`);
 
     expect(outcome).toBe("no-frontmatter");

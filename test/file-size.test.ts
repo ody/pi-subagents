@@ -1,13 +1,3 @@
-// Enforces ADR 0004 (docs/decisions/0004-source-file-structure.md).
-//
-// - A src/ file over SIZE_HEADER_LINES lines needs a `Size: <reason>` header
-//   comment line near the top, or a split.
-// - A src/ file must stay under MAX_LINES lines and MAX_BYTES bytes.
-//
-// Files that broke these rules when the ADR was accepted sit in ALLOWLIST,
-// pinned at their line count and byte size. They may shrink, never grow.
-// When one shrinks, lower its pin; when it complies, delete its entry.
-
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";

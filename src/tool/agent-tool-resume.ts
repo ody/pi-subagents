@@ -1,5 +1,3 @@
-// Resume an existing agent from the Agent tool, detached or blocking.
-
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
@@ -21,7 +19,6 @@ export interface ResumeAgentInput {
   call: Extract<AgentCallResolution, { ok: true }>;
 }
 
-/** Resume the agent named by `params.resume` and return the tool result. */
 export async function resumeAgentCall(deps: ResumeAgentDeps, input: ResumeAgentInput) {
   const { manager, startBackgroundResume } = deps;
   const { ctx, toolCallId, params, signal, call } = input;
@@ -35,17 +32,8 @@ export async function resumeAgentCall(deps: ResumeAgentDeps, input: ResumeAgentI
     return textResult(`Agent "${params.resume}" has no active session to resume.`);
   }
 
-  // Background resume: detached run that notifies on completion, mirroring
-  // a background spawn. Previously run_in_background was silently ignored
-  // on resume (this branch returned before the background branch below),
-  // so a resumed agent always blocked the main loop until it finished.
   if (runInBackground) {
     const id = existing.id;
-    // A detached resume hands control back while the record stays
-    // "running", so nothing stops the model from resuming the same agent
-    // again mid-run. manager.resume() refuses that (it would orphan the
-    // live run's abort controller); say why here, where the model can act
-    // on it, instead of letting it read as a generic failure.
     if (existing.status === "running" || existing.status === "queued") {
       return textResult(
         `Agent "${params.resume}" is still ${existing.status} — it can only be resumed once its current run finishes.\n` +
@@ -79,8 +67,6 @@ export async function resumeAgentCall(deps: ResumeAgentDeps, input: ResumeAgentI
   if (!record) {
     return textResult(`Failed to resume agent "${params.resume}".`);
   }
-  // A failed resume surfaces the error, plus any partial output THIS
-  // resume produced (never the previous turn's answer, #144).
   if (record.status === "error") {
     return textResult(`Agent failed: ${record.error}${partialOutputSuffix(record)}`, buildDetails(detailBaseFor(detailBase, record), record));
   }

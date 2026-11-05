@@ -1,16 +1,3 @@
-/**
- * #242 — `runAgent` calls `session.bindExtensions()` so `session_start` fires and
- * extensions can set up per-session state, but nothing ever closed that lifecycle:
- * both eviction (`removeRecord`) and quit (`dispose`) called `session.dispose()`,
- * which in pi only calls `ExtensionRunner.invalidate()` — it does NOT emit
- * `session_shutdown`. So anything an extension armed in `session_start` (timers, fs
- * watchers, sockets) leaked once per spawn, and its next tick threw `assertActive()`
- * from a bare `Timeout._onTimeout` — an uncaughtException that killed interactive pi.
- *
- * pi emits the event itself in `AgentSessionRuntime.dispose()` before disposing; these
- * tests pin that we do the same, that quit actually waits for the handlers, and that a
- * hung handler can't strand the user at a dead terminal.
- */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AgentManager } from "../src/manager/agent-manager.js";
 
@@ -32,7 +19,6 @@ import { runAgent } from "../src/session/agent-runner.js";
 const mockPi = {} as any;
 const mockCtx = { cwd: "/tmp" } as any;
 
-/** A child session as `runAgent` leaves it: extensions bound, so a runner with handlers. */
 function boundSession(emit: (...args: any[]) => any = vi.fn(async () => {})) {
   return {
     dispose: vi.fn(),
@@ -43,7 +29,6 @@ function boundSession(emit: (...args: any[]) => any = vi.fn(async () => {})) {
   } as any;
 }
 
-/** Spawn one background agent that resolves with `session`, and wait for it to complete. */
 async function spawnCompleted(manager: AgentManager, session: any) {
   vi.mocked(runAgent).mockResolvedValue({
     responseText: "done",
@@ -80,8 +65,6 @@ describe("child session shutdown (#242)", () => {
       type: "session_shutdown",
       reason: "quit",
     });
-    // Order is the whole point: after `dispose()` the runner is invalidated and
-    // every `ctx` getter throws, so a handler emitted afterwards is useless.
     expect(session.extensionRunner.emit.mock.invocationCallOrder[0])
       .toBeLessThan(session.dispose.mock.invocationCallOrder[0]);
   });
@@ -95,8 +78,6 @@ describe("child session shutdown (#242)", () => {
     const disposed = manager.dispose();
     let settled = false;
     void disposed.then(() => { settled = true; });
-    // Several microtask turns: enough for a fire-and-forget implementation to have
-    // resolved, not enough for a correctly awaited one.
     for (let i = 0; i < 5; i++) await Promise.resolve();
 
     expect(settled).toBe(false);
@@ -114,16 +95,11 @@ describe("child session shutdown (#242)", () => {
     await spawnCompleted(manager, session);
 
     vi.useFakeTimers();
-    // `pi` is what reaches `pruneWorktrees` now that it shells out through
-    // `pi.exec`; without it dispose skips the prune and proves nothing here.
     const disposed = manager.dispose(mockPi);
-    // Past the internal ceiling. Without it the TUI is already torn down and the
-    // user is left at a dead terminal with only Ctrl-C.
     await vi.advanceTimersByTimeAsync(5_000);
     await disposed;
 
     expect(session.dispose).toHaveBeenCalledOnce();
-    // Teardown continues past the timeout rather than unwinding.
     expect(pruneWorktrees).toHaveBeenCalled();
   });
 
@@ -145,13 +121,11 @@ describe("child session shutdown (#242)", () => {
     process.on("unhandledRejection", onRejection);
     try {
       manager = new AgentManager();
-      // No extensionRunner at all — an older pi, or a partial `onSessionCreated` stub.
       const noRunner = { dispose: vi.fn() } as any;
       await spawnCompleted(manager, noRunner);
       manager.clearCompleted();
       await vi.waitFor(() => expect(noRunner.dispose).toHaveBeenCalled());
 
-      // Nothing at all — not even dispose.
       const empty = {} as any;
       await spawnCompleted(manager, empty);
       manager.clearCompleted();

@@ -6,7 +6,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { detectEnv } from "../src/platform/env.js";
 
-/** Minimal mock of pi.exec() that shells out via child_process. */
 function mockPi(): ExtensionAPI {
   return {
     exec: async (command: string, args: string[], options?: { cwd?: string; timeout?: number }) => {
@@ -33,7 +32,6 @@ describe("detectEnv", () => {
   });
 
   it("returns branch name when on a branch", async () => {
-    // Create a temp repo on a known branch to test branch detection
     const tmpDir = mkdtempSync(join(tmpdir(), "pi-env-branch-"));
     try {
       execSync("git init && git config user.email test@test.com && git config user.name Test && git config commit.gpgsign false && git checkout -b test-branch && git commit --allow-empty -m init", {

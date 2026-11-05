@@ -1,15 +1,3 @@
-/**
- * wait-queued.test.ts — get_subagent_result(wait: true) lifecycle behavior.
- *
- * Queued records have no promise yet (it's created when the queue starts
- * them), so the old `status === "running" && record.promise` condition
- * skipped the wait entirely and returned "still running" — forcing the
- * caller into a poll loop against the concurrency queue.
- *
- * Wiring test through the REAL extension: spawn background agents until one
- * queues, call the real tool with wait:true, drain the queue, and assert the
- * call returns the final result.
- */
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -59,7 +47,6 @@ const flush = async () => {
   await new Promise((r) => setImmediate(r));
 };
 
-/** runAgent mock where each call blocks until we resolve it manually. */
 function deferredRuns() {
   const resolvers: Array<(v: any) => void> = [];
   vi.mocked(runAgent).mockImplementation(
@@ -97,7 +84,6 @@ describe("get_subagent_result wait:true on a queued agent", () => {
 
     const resolvers = deferredRuns();
 
-    // Spawn until one lands in the queue (concurrency limit is config-dependent).
     let queuedId: string | undefined;
     for (let i = 0; i < 20 && !queuedId; i++) {
       const { id, queued } = await spawnBackground(tools);
@@ -105,18 +91,16 @@ describe("get_subagent_result wait:true on a queued agent", () => {
     }
     expect(queuedId, "expected to hit the concurrency limit within 20 spawns").toBeDefined();
 
-    // wait:true on the QUEUED agent — must not return "still running".
     const waitPromise = tools
       .get("get_subagent_result")
       .execute("tc-wait", { agent_id: queuedId, wait: true }, undefined, undefined, ctx());
 
-    // Drain: resolve running agents until the queued one starts and finishes.
     let settled = false;
     void waitPromise.then(() => { settled = true; });
     for (let i = 0; i < 40 && !settled; i++) {
       while (resolvers.length > 0) resolvers.shift()!();
       await flush();
-      await new Promise((r) => setTimeout(r, 100)); // outlive one 250ms poll tick
+      await new Promise((r) => setTimeout(r, 100));
     }
 
     const result = await waitPromise;

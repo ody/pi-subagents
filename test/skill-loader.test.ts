@@ -100,26 +100,22 @@ describe("preloadSkills", () => {
   });
 
   it("prefers shallower match (lex tie-break)", () => {
-    // Different depths — shallower wins.
     writeSkillDir(join(projectRoot(), "z-deep", "nested"), "collide", "deep");
     writeSkillDir(join(projectRoot(), "a-shallow"), "collide", "shallow");
     expect(preloadSkills(["collide"], tmpDir)[0].content).toBe("shallow");
 
-    // Same depth — alphabetical wins.
     writeSkillDir(join(projectRoot(), "b-sibling"), "tie", "b");
     writeSkillDir(join(projectRoot(), "a-sibling"), "tie", "a");
     expect(preloadSkills(["tie"], tmpDir)[0].content).toBe("a");
   });
 
   it("descends past a same-named dir that lacks SKILL.md to find a deeper match", () => {
-    // .pi/skills/foo exists empty; .pi/skills/foo/inner/foo/SKILL.md is the real skill.
     mkdirSync(join(projectRoot(), "foo"), { recursive: true });
     writeSkillDir(join(projectRoot(), "foo", "inner"), "foo", "deeper");
     expect(preloadSkills(["foo"], tmpDir)[0].content).toBe("deeper");
   });
 
   it("does not descend into a sibling skill directory (skills don't nest)", () => {
-    // .pi/skills/outer is itself a skill; .pi/skills/outer/target/SKILL.md must NOT be found.
     writeSkillDir(projectRoot(), "outer", "outer-skill");
     writeSkillDir(join(projectRoot(), "outer"), "target", "hidden");
     expect(preloadSkills(["target"], tmpDir)[0].content).toContain("not found");
@@ -206,7 +202,6 @@ describe("preloadSkills", () => {
   });
 
   it("rejects symlinked skill root", () => {
-    // <cwd>/.pi/skills → symlink to a directory that holds real-looking skills.
     const realRoot = join(tmpDir, "elsewhere");
     mkdirSync(realRoot, { recursive: true });
     writeFileSync(join(realRoot, "leaked-flat.md"), "TOP SECRET FLAT");

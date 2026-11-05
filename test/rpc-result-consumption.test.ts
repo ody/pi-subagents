@@ -1,19 +1,3 @@
-/**
- * rpc-result-consumption.test.ts — pi-tasks#62.
- *
- * An RPC-spawned background agent (pi-tasks' `TaskExecute`) is not part of any
- * join group, so it nudges the parent individually when it finishes. The caller
- * joins it on the `subagents:completed` event instead — and used to have no way
- * to say the result had been read, because `get_subagent_result`, the only
- * consuming path, is a tool the *parent model* calls, not something reachable
- * over the bus. The held notification therefore landed on top of an answer the
- * parent had already given, costing a turn to dismiss.
- *
- * `subagents:rpc:consume` closes that: it is the bus-side half of what
- * `get_subagent_result` does when it hands a result back. These tests drive the
- * real extension, so what they pin is the actual delivery path — the notification
- * fires for an unjoined agent, and does not for a consumed one.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,13 +11,8 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
 
-/** pi-subagents holds a completion notification for NUDGE_HOLD_MS (200ms). */
 const PAST_THE_HOLD_MS = 400;
 
-/**
- * Like `boot-extension.ts`'s `makePi`, but with a bus that actually dispatches:
- * these tests are about what a second extension sees and sends on it.
- */
 function makePi() {
   const lifecycle = new Map<string, any>();
   const handlers = new Map<string, ((data: unknown) => void)[]>();
@@ -116,7 +95,6 @@ describe("subagents:rpc:consume", () => {
     vi.restoreAllMocks();
   });
 
-  /** Boot the real extension with its RPC handlers bound, as session_start does. */
   async function boot() {
     const booted = makePi();
     subagentsExtension(booted.pi);
@@ -125,7 +103,6 @@ describe("subagents:rpc:consume", () => {
     return booted;
   }
 
-  /** Spawn a background agent over the bus, the way pi-tasks' TaskExecute does. */
   async function spawnOverRpc(bus: ReturnType<typeof makePi>["bus"], requestId: string): Promise<string> {
     let id = "";
     bus.on(`subagents:rpc:spawn:reply:${requestId}`, (reply: any) => { id = reply.data.id; });
@@ -140,8 +117,6 @@ describe("subagents:rpc:consume", () => {
   }
 
   it("notifies for an RPC-spawned agent nobody consumed", async () => {
-    // The behaviour that makes the notification worth keeping: an unread result
-    // is the caller's only signal that the agent finished.
     vi.mocked(runAgent).mockResolvedValue({ responseText: "TASK_EXECUTE_AGENT_OK" } as any);
     const { pi, bus } = await boot();
 
@@ -155,7 +130,6 @@ describe("subagents:rpc:consume", () => {
     vi.mocked(runAgent).mockResolvedValue({ responseText: "TASK_EXECUTE_AGENT_OK" } as any);
     const { pi, bus } = await boot();
 
-    // Join the agent the way pi-tasks does — off the lifecycle event, not the tool.
     bus.on("subagents:completed", (data: unknown) => {
       bus.emit("subagents:rpc:consume", { requestId: "req-consume", agentId: (data as { id: string }).id });
     });

@@ -31,7 +31,6 @@ describe("layoutWidgetBody", () => {
       { finished: ["├─ f1", "├─ f2"], running: [run(1), run(2)], queued: "├─ q" },
       6,
     );
-    // budget = 6 - 1 (footer) - 1 (queued) = 4: two running pairs fill it
     expect(body).toEqual(["├─ run1", "│    ⎿ act1", "├─ run2", "│    ⎿ act2", "├─ q"]);
     expect(hidden).toEqual({ running: 0, finished: 2 });
   });
@@ -41,7 +40,6 @@ describe("layoutWidgetBody", () => {
       { finished: ["├─ f"], running: [run(1), run(2), run(3)], queued: "├─ q" },
       6,
     );
-    // budget = 6 - 1 - 1 = 4: two pairs; third hidden
     expect(body).toEqual(["├─ run1", "│    ⎿ act1", "├─ run2", "│    ⎿ act2", "├─ q"]);
     expect(hidden).toEqual({ running: 1, finished: 1 });
   });

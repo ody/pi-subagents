@@ -1,16 +1,3 @@
-/**
- * schedule-e2e.test.ts — End-to-end integration test for the scheduler.
- *
- * Unlike `schedule.test.ts` (which uses vi.useFakeTimers), this exercises
- * the full real-timer firing path: real `setTimeout` triggers `executeJob`,
- * a faithful `AgentManager` mock (promise resolves with the right semantics)
- * runs through to `finalize`, and the on-disk `ScheduleStore` reflects the
- * outcome. Catches integration bugs that fake-timer microtask scheduling
- * can hide.
- *
- * Uses very short timings (100–300ms) so the test stays fast.
- */
-
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,11 +7,6 @@ import { ScheduleStore } from "../src/triggers/schedule-store.js";
 
 type FakeRecord = { status: string; promise: Promise<string>; resolve: () => void };
 
-/**
- * Faithful AgentManager mock: spawn returns an id, getRecord returns a
- * record whose promise can be resolved at test time, status is mutable so
- * the test can assert success vs error inference.
- */
 function makeFaithfulManager(initialStatus = "completed") {
   const records = new Map<string, FakeRecord>();
   return {
@@ -35,7 +17,6 @@ function makeFaithfulManager(initialStatus = "completed") {
       let resolve!: () => void;
       const promise = new Promise<string>(r => { resolve = () => r(""); });
       records.set(id, { status: initialStatus, promise, resolve });
-      // Auto-resolve on next tick — mimics a fast-finishing real agent.
       queueMicrotask(() => records.get(id)?.resolve());
       return id;
     }),
@@ -58,7 +39,6 @@ function makeCtx() {
   } as any;
 }
 
-/** Wait for a predicate, polling at 5ms intervals, with a deadline. */
 async function waitFor(predicate: () => boolean, timeoutMs = 1500): Promise<void> {
   const start = Date.now();
   while (!predicate()) {
@@ -90,8 +70,6 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
-    // Fire ~100ms in the future. detectSchedule normalizes "+100ms" — but our
-    // parser only accepts s/m/h/d, so use a near-future ISO timestamp instead.
     const future = new Date(Date.now() + 100).toISOString();
     const job = scheduler.addJob({
       name: "e2e-once",
@@ -102,20 +80,18 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     });
     expect(job.scheduleType).toBe("once");
 
-    // Wait for the spawn to occur (real timer fires) and the finalize promise
-    // chain to settle. Polling, no fake timers.
     await waitFor(() => manager.spawn.mock.calls.length === 1);
     await waitFor(() => scheduler.list().find(j => j.id === job.id)?.lastStatus === "success");
 
     const final = scheduler.list().find(j => j.id === job.id)!;
     expect(final.lastStatus).toBe("success");
     expect(final.runCount).toBe(1);
-    expect(final.enabled).toBe(false);  // one-shot auto-disabled
+    expect(final.enabled).toBe(false);
     expect(final.lastRun).toBeDefined();
   });
 
   it("one-shot job that errors: store records lastStatus error (regression — bug #1)", async () => {
-    const manager = makeFaithfulManager("error");  // Agent terminates with error status
+    const manager = makeFaithfulManager("error");
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
@@ -140,16 +116,13 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
-    // 100ms interval — wait for ~3 fires
     const job = scheduler.addJob({
       name: "e2e-interval",
       description: "test",
-      schedule: "100s",  // Will be too long; override below.
+      schedule: "100s",
       subagent_type: "general-purpose",
       prompt: "tick",
     });
-    // Replace with a literal 100ms interval — easier than crafting a parseable shorthand for ms.
-    // (parseInterval doesn't accept "ms"; we patch the persisted job and re-arm.)
     scheduler.updateJob(job.id, { intervalMs: 100, schedule: "100ms" });
 
     await waitFor(() => manager.spawn.mock.calls.length >= 3, 2000);
@@ -157,7 +130,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     const final = scheduler.list().find(j => j.id === job.id)!;
     expect(final.runCount).toBeGreaterThanOrEqual(3);
     expect(final.lastStatus).toBe("success");
-    expect(final.enabled).toBe(true);  // intervals don't auto-disable
+    expect(final.enabled).toBe(true);
 
     scheduler.removeJob(job.id);
   });
@@ -167,7 +140,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
 
-    const future = new Date(Date.now() + 60_000).toISOString();  // far enough not to fire
+    const future = new Date(Date.now() + 60_000).toISOString();
     const job = scheduler.addJob({
       name: "persistent",
       description: "x",
@@ -176,7 +149,6 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
       prompt: "x",
     });
 
-    // Tear down the live scheduler; re-load from disk
     scheduler.stop();
     const reloadedStore = new ScheduleStore(join(tmp, "schedules.json"));
     expect(reloadedStore.list()).toHaveLength(1);

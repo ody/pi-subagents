@@ -1,5 +1,3 @@
-// The `/agents` command: the top menu, the agent and agent-type lists, the
-// agent detail screen, and the view / eject / disable / enable actions.
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -30,50 +28,32 @@ export interface AgentsCommandDeps {
   showSettings: (ctx: ExtensionCommandContext) => Promise<void>;
 }
 
-/** The detail-screen menu for an agent, given whether a user .md file backs it. */
 export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] {
   const isDefault = cfg.isDefault === true;
   const disabled = cfg.enabled === false;
   if (cfg.source === "skill") {
-    // The file belongs to the skill (often a read-only store path), so it is
-    // never edited in place: overriding it means writing a user file.
     return disabled ? ["Eject (export as .md)", "Back"] : ["Eject (export as .md)", "Disable", "Back"];
   }
   if (disabled && hasFile) {
-    // Disabled agent with a file — offer Enable
     return isDefault
       ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
       : ["Enable", "Edit", "Delete", "Back"];
   }
-  // Default agent with no .md override
   if (isDefault && !hasFile) return ["Eject (export as .md)", "Disable", "Back"];
-  // Default agent with .md override (ejected)
   if (isDefault && hasFile) return ["Edit", "Disable", "Reset to default", "Delete", "Back"];
-  // User-defined agent
   return ["Edit", "Disable", "Delete", "Back"];
 }
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
   const { manager, scheduler, reloadCustomAgents, settings, chooseViewerMarkdown, showCreateWizard, showSettings } = deps;
 
-  // ---- /agents interactive menu ----
-
-  // Directory resolution and the frontmatter edits live in agent-file-toggle.ts
-  // so they are reachable from tests — this command handler is only registered
-  // through `registerCommand`, which every test mocks.
-
   function getModelLabel(type: string, registry?: ModelRegistry): string {
     const cfg = getAgentConfig(type);
-    if (!cfg?.model) return "inherit"; // no model configured → really inherits parent
+    if (!cfg?.model) return "inherit";
     const label = getModelLabelFromConfig(cfg.model);
     if (!registry) return label;
     const resolved = resolveModel(cfg.model, registry);
-    // Configured but unresolvable: the runtime silently falls back to the parent
-    // model, so flag it (and the fallback) rather than hiding the config.
     if (typeof resolved === "string") return `${label} (unavailable, fallback: inherit)`;
-    // Surface what it actually resolved to when that differs from the config —
-    // e.g. a provider fallback or a looser version pin. Cosmetic separator/date
-    // differences are normalized away so an effectively-identical match stays quiet.
     const resolvedFull = `${resolved.provider}/${resolved.id}`;
     const norm = (s: string) => s.toLowerCase().replace(/\./g, "-").replace(/-\d{8}$/, "");
     if (norm(cfg.model) === norm(resolvedFull)) return label;
@@ -84,12 +64,8 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     reloadCustomAgents();
     const allNames = getAllTypes();
 
-    // Build select options
     const options: string[] = [];
 
-    // Agents entry (only if there are any). Counts the whole hierarchy, nested
-    // children included, because that is what the list it opens now shows —
-    // and "running" would misname a settled nested child.
     const agents = manager.listAgents();
     if (agents.length > 0) {
       const running = agents.filter(a => a.status === "running" || a.status === "queued").length;
@@ -97,18 +73,15 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       options.push(`Agents (${agents.length}) — ${running} running, ${done} done`);
     }
 
-    // Agent types list
     if (allNames.length > 0) {
       options.push(`Agent types (${allNames.length})`);
     }
 
-    // Scheduled jobs entry (always present when scheduler is active)
     if (scheduler.isActive()) {
       const jobCount = scheduler.list().length;
       options.push(`Scheduled jobs (${jobCount})`);
     }
 
-    // Actions
     options.push("Create new agent");
     options.push("Settings");
 
@@ -149,8 +122,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return;
     }
 
-    // Source indicators: defaults unmarked, custom agents get • (project), ◦ (global), or ▹ (skill)
-    // Disabled agents get ✕ prefix
     const sourceIndicator = (cfg: AgentConfig | undefined) => {
       const disabled = cfg?.enabled === false;
       if (cfg?.source === "project") return disabled ? "✕• " : "•  ";
@@ -160,9 +131,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return "   ";
     };
 
-    // One row per agent (name in the left column, model on the right); the
-    // full description renders below the highlighted row via SettingsList,
-    // exactly like the Settings menu — so long descriptions never wrap the list.
     const items: SettingItem[] = allNames.map(name => {
       const cfg = getAgentConfig(name);
       const disabled = cfg?.enabled === false;
@@ -172,8 +140,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
         label: `${sourceIndicator(cfg)}${name}`,
         currentValue: model,
         description: disabled ? "(disabled)" : (cfg?.description ?? name),
-        // Single-value list so Enter "activates" the row (fires onChange with the
-        // agent's id) without offering anything to actually cycle.
         values: [model],
       };
     });
@@ -190,8 +156,8 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
         items,
         Math.min(items.length, 12),
         slTheme,
-        id => done(id), // Enter/Space on a row → return that agent's name
-        () => done(undefined), // Esc → cancel
+        id => done(id),
+        () => done(undefined),
       );
       const container = new Container();
       container.addChild(new Text("Agent types", 0, 0));
@@ -212,8 +178,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
   }
 
   async function showRunningAgents(ctx: ExtensionCommandContext) {
-    // The whole hierarchy, not just the top level: nested children get rows
-    // too, indented by depth, so one can be watched, steered or stopped.
     const nodes = buildAgentTree({
       records: manager.listAgents(),
       includeMain: false,
@@ -223,9 +187,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return;
     }
 
-    // Numbered + item-paired. Two same-type agents spawned together with the
-    // same description render identically here, and resolving the choice by
-    // string match would open whichever came first.
     const node = await selectItem(ctx.ui, "Agents", nodes, n => {
       const indent = "  ".repeat(n.depth);
       if (n.kind === "main") return `${indent}main`;
@@ -238,7 +199,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     if (!node) return;
 
     if (node.kind === "agent") await viewAgentConversation(ctx, node.record);
-    // Back-navigation: re-show the list
     await showRunningAgents(ctx);
   }
 
@@ -293,16 +253,10 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     }
   }
 
-  /**
-   * The user-owned .md behind an agent, if any. A skill-embedded agent's file
-   * belongs to the skill, so it reports none — Disable then writes a user
-   * stub that overrides it, the same as for a built-in default.
-   */
   function locateUserAgentFile(name: string, cfg: AgentConfig | undefined) {
     return cfg?.source === "skill" ? undefined : locateAgentFile(name, cfg?.sourcePath);
   }
 
-  /** Open the agent's .md file in the editor and save changes. */
   async function editAgentFile(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
     const content = readFileSync(file.path, "utf-8");
     const edited = await ctx.ui.editor(`Edit ${name}`, content);
@@ -313,7 +267,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     }
   }
 
-  /** Delete the agent's .md file after confirmation. */
   async function deleteAgentFile(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
     const confirmed = await ctx.ui.confirm("Delete agent", `Delete ${name} from ${file.location} (${file.path})?`);
     if (confirmed) {
@@ -323,7 +276,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     }
   }
 
-  /** Delete a default agent's override file to restore the embedded default. */
   async function resetAgentToDefault(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
     const confirmed = await ctx.ui.confirm("Reset to default", `Delete override ${file.path} and restore embedded default?`);
     if (confirmed) {
@@ -333,7 +285,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     }
   }
 
-  /** Eject a default or skill-embedded agent: write its config as a user .md file. */
   async function ejectAgent(ctx: ExtensionCommandContext, name: string, cfg: AgentConfig) {
     const location = await ctx.ui.select("Choose location", [
       "Project (.pi/agents/)",
@@ -350,8 +301,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       if (!overwrite) return;
     }
 
-    // A skill agent has a real file, copied verbatim so no field the
-    // serializer does not cover is lost.
     const content = cfg.source === "skill" && cfg.sourcePath ? readFileSync(cfg.sourcePath, "utf-8") : serializeAgentFile(cfg);
 
     writeFileSync(targetPath, content, "utf-8");
@@ -359,11 +308,9 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     ctx.ui.notify(`Ejected ${name} to ${targetPath}`, "info");
   }
 
-  /** Disable an agent: set enabled: false in its .md file, or create a stub for built-in defaults. */
   async function disableAgent(ctx: ExtensionCommandContext, name: string) {
     const file = locateUserAgentFile(name, getAgentConfig(name));
     if (file) {
-      // Existing file — set enabled: false in frontmatter (idempotent)
       const content = readFileSync(file.path, "utf-8");
       const { content: updated, outcome } = disableInContent(content);
       if (outcome === "already-disabled") {
@@ -371,8 +318,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
         return;
       }
       if (outcome === "no-frontmatter") {
-        // Nothing to edit — say so rather than rewriting the file unchanged and
-        // reporting success for a change that never happened.
         ctx.ui.notify(`Cannot disable ${name}: ${file.path} has no frontmatter block.`, "error");
         return;
       }
@@ -382,7 +327,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return;
     }
 
-    // No user file (built-in default or skill agent) — create a stub
     const location = await ctx.ui.select("Choose location", [
       "Project (.pi/agents/)",
       `Personal (${personalAgentsDir()})`,
@@ -398,7 +342,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     ctx.ui.notify(`Disabled ${name} (${targetPath})`, "info");
   }
 
-  /** Enable a disabled agent by removing enabled: false from its frontmatter. */
   async function enableAgent(ctx: ExtensionCommandContext, name: string) {
     const file = locateUserAgentFile(name, getAgentConfig(name));
     if (!file) return;
@@ -406,13 +349,10 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     const content = readFileSync(file.path, "utf-8");
     const { content: updated, changed } = enableInContent(content);
     if (!changed && !isEmptyStub(updated)) {
-      // The file carries no `enabled: false` to remove, so it was never disabled
-      // by us — reporting success here would hide a no-op.
       ctx.ui.notify(`${name} is not disabled in ${file.path}.`, "info");
       return;
     }
 
-    // If the file was just a stub ("---\n---\n"), delete it to restore the built-in default
     if (isEmptyStub(updated)) {
       unlinkSync(file.path);
       reloadCustomAgents();

@@ -1,35 +1,6 @@
-// src/tool/abortable.ts was the only module in the repo that no test imported. It is
-// reached indirectly through the get_subagent_result wait paths, but its two
-// real invariants were never asserted:
-//
-//   1. Aborting cancels the CALLER'S WAIT, not the work (#159). The background
-//      child keeps running and its result stays unconsumed — so the wrapped
-//      promise settles later, after `abortable` already rejected. What makes
-//      that safe is that `abortable` subscribes to the child with BOTH handlers
-//      (`promise.then(onFulfilled, onRejected)`): the child's eventual rejection
-//      is therefore already handled and goes nowhere. Drop the rejection handler
-//      and a child that fails after the user pressed Esc raises an unhandled
-//      rejection at the process level, long after the abort, with nothing
-//      pointing back here.
-//
-//      (The `settled` latch is defensive, not load-bearing: settling an already
-//      settled promise a second time is a no-op per spec, so removing the latch
-//      changes nothing observable. No test here claims to protect it.)
-//   2. The abort listener is removed on every settle path. The parent's signal
-//      outlives many waits, so a leak here accumulates handlers across a fleet.
-//
-// Both failures are invisible to a test that only checks the happy path, which
-// is why they are asserted directly rather than through a consumer.
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { abortable } from "../src/tool/abortable.js";
 
-/**
- * Collect unhandled rejections for the duration of a block.
- *
- * Vitest installs its own handler, so `process.on` alone would not observe them —
- * `removeAllListeners` is used and the originals restored afterwards.
- */
 async function withUnhandledRejectionSpy(fn: () => Promise<void>): Promise<unknown[]> {
   const seen: unknown[] = [];
   const prior = process.listeners("unhandledRejection");
@@ -38,7 +9,6 @@ async function withUnhandledRejectionSpy(fn: () => Promise<void>): Promise<unkno
   process.on("unhandledRejection", capture);
   try {
     await fn();
-    // Unhandled rejections are reported on a later macrotask, not a microtask.
     await new Promise((r) => setTimeout(r, 20));
   } finally {
     process.off("unhandledRejection", capture);
@@ -52,8 +22,6 @@ describe("abortable", () => {
 
   it("returns the original promise untouched when there is no signal", async () => {
     const promise = Promise.resolve("value");
-    // Identity, not just equality: with no signal there is nothing to race, so
-    // wrapping would add a needless tick and a needless rejection surface.
     expect(abortable(promise)).toBe(promise);
     await expect(promise).resolves.toBe("value");
   });
@@ -84,10 +52,6 @@ describe("abortable", () => {
   });
 
   it("absorbs a late REJECTION of the wrapped promise after an abort", async () => {
-    // The #159 guarantee: the child was not cancelled, so it can still fail
-    // after we stopped waiting. That failure must go nowhere, not to the
-    // process's unhandled-rejection handler. Verified to fail if `abortable`
-    // stops attaching a rejection handler to the wrapped promise.
     const unhandled = await withUnhandledRejectionSpy(async () => {
       const controller = new AbortController();
       let failChild: ((e: unknown) => void) | undefined;
@@ -114,8 +78,6 @@ describe("abortable", () => {
     await expect(pending).rejects.toThrow("stopped waiting");
 
     finishChild!("child finished anyway");
-    // The child's own result is still available to whoever holds it — abortable
-    // cancelled the wait, not the work.
     await expect(childWork).resolves.toBe("child finished anyway");
   });
 
@@ -138,8 +100,6 @@ describe("abortable", () => {
   });
 
   it("a late abort after normal settlement is inert", async () => {
-    // A long-lived parent signal is aborted for unrelated reasons after this
-    // wait already finished; nothing should be re-rejected or throw.
     const unhandled = await withUnhandledRejectionSpy(async () => {
       const controller = new AbortController();
       await expect(abortable(Promise.resolve("done"), controller.signal)).resolves.toBe("done");
@@ -151,7 +111,6 @@ describe("abortable", () => {
   });
 
   it("does not leak a listener per wait on a shared parent signal", async () => {
-    // Many children wait on one parent signal over a session's lifetime.
     const controller = new AbortController();
     const remove = vi.spyOn(controller.signal, "removeEventListener");
 

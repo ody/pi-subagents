@@ -1,26 +1,3 @@
-/**
- * foreground-result-retrieval.test.ts — issue #174, via the REAL Agent tool +
- * the REAL get_subagent_result tool.
- *
- * Report: a FOREGROUND agent that wraps up at max_turns returns its partial
- * result inline, but a get_subagent_result for "that agent ID" immediately
- * afterwards answers `Agent not found ... It may have been cleaned up.` — with
- * no /new, /resume or session switch in between.
- *
- * Tracing says the premise can't hold, and these tests pin both halves of why:
- *
- *   1. The record is NOT cleaned up. Foreground completion mutates the record
- *      in place (agent-manager.ts startAgent's .then) — nothing deletes it. So
- *      a lookup with the REAL id succeeds.
- *   2. The model never HAD the real id. Foreground returns the result text
- *      only; the id travels in `details`, which is renderer metadata and never
- *      reaches the API (only `content` is serialized). The background path is
- *      the one that puts `Agent ID: ...` in the text.
- *
- * Together: whatever id the reporter's model passed, it wasn't one we issued,
- * and "not found" was the correct answer. Test 3 pins the eviction rule that
- * DOES apply, so the two are not confused again.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -69,15 +46,6 @@ function ctx() {
 
 const textOf = (r: any): string => r.content[0].text;
 
-/**
- * Run a FOREGROUND agent that wraps up at the turn limit — the exact #174
- * shape. `steered: true` is what agent-manager turns into status "steered",
- * which is what produces the reporter's "(wrapped up at the turn limit —
- * output may be partial)" note.
- *
- * Returns the tool result plus the id read out of `details` — the only place
- * a foreground id exists, which is the point of test 2.
- */
 async function runForegroundSteeredAgent(tools: Map<string, any>) {
   vi.mocked(runAgent).mockResolvedValue({
     responseText: "THE-RESULT-PAYLOAD",
@@ -111,9 +79,6 @@ describe("issue #174: foreground agent that hits max_turns", () => {
   let prevHome: string | undefined;
 
   beforeEach(() => {
-    // Hermetic cwd + global dir, scheduling off — same isolation as
-    // clear-completed-wiring.test.ts, so session_start doesn't spin a
-    // scheduler or touch the dev's filesystem.
     tmpDir = mkdtempSync(join(tmpdir(), "pi-174-"));
     agentDir = mkdtempSync(join(tmpdir(), "pi-174-agentdir-"));
     prevAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -142,10 +107,8 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     subagentsExtension(pi);
     const { res, id } = await runForegroundSteeredAgent(tools);
 
-    // The inline result is the turn-limit wrap-up the reporter described.
     expect(textOf(res)).toContain("wrapped up at the turn limit");
 
-    // No /new, no /resume, no session switch — exactly the reporter's sequence.
     const read = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     const out = textOf(read);
     expect(out).not.toContain("Agent not found");
@@ -159,13 +122,9 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     subagentsExtension(pi);
     const { res, id } = await runForegroundSteeredAgent(tools);
 
-    // `content` is the only thing serialized to the API. If the id isn't here,
-    // the model cannot have obtained it — any id it passes is invented.
     expect(textOf(res)).not.toContain(id);
     expect(textOf(res)).not.toMatch(/Agent ID:/);
 
-    // An invented id is correctly rejected — this is the reporter's error,
-    // reproduced WITHOUT any record having been cleaned up.
     const bogus = await tools.get("get_subagent_result").execute(
       "tc-bogus",
       { agent_id: "3f1320a7-74ec-422" },
@@ -179,24 +138,16 @@ describe("issue #174: foreground agent that hits max_turns", () => {
   });
 
   it("survives a subagent session's OWN activation lifecycle (adversarial: cross-activation eviction)", async () => {
-    // The one mechanism that could produce the reported symptom with no
-    // user-visible session change: a second activation of this extension in the
-    // same process. Child sessions no longer reach it — activation returns early
-    // under `inChildSessionContext()` — but any other in-process activation still
-    // can, and if its session_start / session_shutdown reached the PARENT's
-    // manager, that activation ending would wipe the parent's records.
     const parent = makePi();
     subagentsExtension(parent.pi);
     await parent.lifecycle.get("session_start")?.({}, ctx());
     const { id } = await runForegroundSteeredAgent(parent.tools);
 
-    // A child activation runs its full lifecycle, as a subagent session does.
     const child = makePi();
     subagentsExtension(child.pi);
     await child.lifecycle.get("session_start")?.({}, ctx());
     await child.lifecycle.get("session_shutdown")?.({}, ctx());
 
-    // The parent's record must be untouched — separate manager per activation.
     const read = await parent.tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     const out = textOf(read);
     expect(out).not.toContain("Agent not found");
@@ -210,9 +161,6 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     subagentsExtension(pi);
     const { id } = await runForegroundSteeredAgent(tools);
 
-    // Foreground results count as consumed the moment they're returned inline,
-    // so clearCompleted(true)'s #108 preservation deliberately does not cover
-    // them. This is the ONLY path that makes a foreground id stop resolving.
     await lifecycle.get("session_before_switch")?.();
 
     const read = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());

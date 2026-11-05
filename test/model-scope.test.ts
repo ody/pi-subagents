@@ -1,14 +1,3 @@
-// src/config/model-scope.ts had no test file. Its `error` verdict was reachable only
-// indirectly, through one nested-tools case; the `warn` verdict — the whole
-// reason the policy is a three-way split rather than a boolean — was never
-// exercised at all.
-//
-// The split is the point: a model the ORCHESTRATOR picked at runtime is refused,
-// because it can pick again; a model the USER pinned in frontmatter (or that was
-// inherited from the parent) only warns, because refusing it would break every
-// pinned agent the moment someone enables the setting. Collapsing the two in
-// either direction is a one-line edit with no test in the way.
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,9 +25,6 @@ describe("checkModelScope", () => {
   let prevEnabled: boolean;
 
   beforeEach(() => {
-    // resolveEnabledModels memoizes on (patterns, mtime+size of both settings
-    // files). A fresh project dir per test keeps one case's allowlist from
-    // being served to the next.
     projectDir = mkdtempSync(join(tmpdir(), "pi-scope-project-"));
     agentDir = mkdtempSync(join(tmpdir(), "pi-scope-global-"));
     prevAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -47,7 +33,7 @@ describe("checkModelScope", () => {
   });
 
   afterEach(() => {
-    setScopeModelsEnabled(prevEnabled); // module-global — restore for other suites
+    setScopeModelsEnabled(prevEnabled);
     if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
     rmSync(projectDir, { recursive: true, force: true });
@@ -88,8 +74,6 @@ describe("checkModelScope", () => {
   });
 
   it("is a no-op when enabledModels resolves to nothing usable", () => {
-    // Globs and bare ids are deliberately unsupported; an unresolvable list
-    // must disable the check rather than lock the user out of every model.
     setScopeModelsEnabled(true);
     setEnabledModels(["anthropic/*", "haiku"]);
     expect(check().kind).toBe("ok");
@@ -124,8 +108,6 @@ describe("checkModelScope", () => {
     });
 
     it("names the resolved model in the warning when there was no raw input", () => {
-      // Parent-inherited: nothing was typed, so the label falls back to the
-      // resolved provider/id rather than rendering "undefined".
       const verdict = check({ callerSupplied: false, modelInput: undefined });
       expect(verdict.kind).toBe("warn");
       expect((verdict as { message: string }).message).toContain("anthropic/claude-opus-4-6");

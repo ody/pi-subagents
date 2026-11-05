@@ -1,6 +1,3 @@
-// The `/agents -> Create new agent` wizard: pick a location, then either have
-// a general-purpose agent write the file or collect each field by hand.
-
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
@@ -78,10 +75,6 @@ inherit_context: <true to fork parent conversation into agent so it sees chat hi
 run_in_background: <pin this agent to background (true) or foreground (false). Omit to follow the backgroundByDefault setting, which is background>
 output_transcript: <false to write no transcript file or path for this agent. Independent of persist_session. Default: true>
 isolated: <true for no extension/MCP tools, only built-in tools. Default: false>${
-    // Offering the field on a project that turned worktrees off would bake a
-    // request that is refused at spawn time into a file that outlives the
-    // session — the #231 pathology (models fill the fields they are shown)
-    // one layer up. Built per invocation, so this read is live.
     isWorktreeIsolationEnabled()
       ? `\nisolation: <"worktree" to run in isolated git worktree; "off" to refuse one even when the caller asks. Omit for normal>`
       : ""
@@ -106,11 +99,6 @@ Write the file using the write tool. Only write the file, nothing else.`;
   const { record } = await manager.spawnAndWait(pi, ctx, "general-purpose", generatePrompt, {
     description: `Generate ${name} agent`,
     maxTurns: 5,
-    // Exempt from maxConcurrentForeground. This runs from a modal wizard, not
-    // a tool call: it passes no signal, and Esc in `ctx.ui` never reaches the
-    // manager — so a user waiting behind a full pool would have no way to
-    // cancel at all. It is also one human action that cannot fan out, which
-    // is what the limit exists to bound. It still counts once started.
     bypassQueue: true,
   });
 
@@ -130,15 +118,12 @@ Write the file using the write tool. Only write the file, nothing else.`;
 
 async function showManualWizard(ctx: ExtensionCommandContext, targetDir: string, deps: CreateWizardDeps) {
   const { reloadCustomAgents } = deps;
-  // 1. Name
   const name = await ctx.ui.input("Agent name (filename, no spaces)");
   if (!name) return;
 
-  // 2. Description
   const description = await ctx.ui.input("Description (one line)");
   if (!description) return;
 
-  // 3. Tools
   const toolChoice = await ctx.ui.select("Tools", ["all", "none", "read-only (read, bash, grep, find, ls)", "custom..."]);
   if (!toolChoice) return;
 
@@ -155,7 +140,6 @@ async function showManualWizard(ctx: ExtensionCommandContext, targetDir: string,
     tools = customTools;
   }
 
-  // 4. Model
   const modelChoice = await ctx.ui.select("Model", [
     "inherit (parent model)",
     "haiku",
@@ -173,12 +157,9 @@ async function showManualWizard(ctx: ExtensionCommandContext, targetDir: string,
     model = (await ctx.ui.input("Model (provider/modelId)")) || undefined;
   }
 
-  // 5. Thinking
-  // "inherit" is a UI-only pseudo-choice (omit the field); the rest mirror pi.
   const thinkingChoice = await ctx.ui.select("Thinking level", ["inherit", ...THINKING_LEVELS]);
   if (!thinkingChoice) return;
 
-  // 6. System prompt
   const systemPrompt = await ctx.ui.editor("System prompt", "");
   if (systemPrompt === undefined) return;
 

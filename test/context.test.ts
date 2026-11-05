@@ -1,12 +1,3 @@
-/**
- * context.test.ts — Parent conversation context extraction for inherit_context spawns.
- *
- * buildParentContext shapes what a subagent sees from its parent; silent bugs
- * here would feed wrong context into spawns. Tests use realistic SessionEntry
- * shapes and a minimal ExtensionContext stub — no mocking beyond the one
- * getBranch() call the function actually reads.
- */
-
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it } from "vitest";
 import { buildParentContext, extractText } from "../src/session/context.js";
@@ -53,7 +44,6 @@ describe("buildParentContext", () => {
   });
 
   it("returns empty string when no entries produce extractable content", () => {
-    // toolResult is skipped, empty-summary compaction is skipped
     const out = buildParentContext(
       makeCtx([
         { type: "message", message: { role: "tool_result", content: "..." } },
@@ -71,7 +61,6 @@ describe("buildParentContext", () => {
     expect(out).toContain("[User]: hello");
     expect(out).toContain("[Assistant]: hi back");
     expect(out).toMatch(/# Your Task \(below\)\n$/);
-    // Entries are joined with a blank line, preserving conversation order
     expect(out).toContain("[User]: hello\n\n[Assistant]: hi back");
   });
 
@@ -116,7 +105,6 @@ describe("buildParentContext", () => {
   });
 
   it("ignores assistant messages whose only content is non-text blocks", () => {
-    // Assistant emitted only a tool_use — nothing extractable, so it shouldn't appear
     const out = buildParentContext(
       makeCtx([
         userMsg("question"),

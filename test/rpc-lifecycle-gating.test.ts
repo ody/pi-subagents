@@ -1,20 +1,3 @@
-/**
- * rpc-lifecycle-gating.test.ts — issue #142.
- *
- * pi runs every extension factory BEFORE applying an agent's `extensions:`
- * filter, and only delivers lifecycle events (session_start, …) to the
- * survivors — but the `pi.events` bus is shared with the filtered-out
- * activations. The old code registered the RPC handlers and emitted
- * `subagents:ready` at factory time, so a child session that excluded
- * pi-subagents still saw `subagents:ready` + a working `subagents:rpc:ping`,
- * yet every spawn failed with "No active session" (its session_start never
- * fired, so currentCtx stayed undefined).
- *
- * The fix defers BOTH the RPC registration and the readiness broadcast to the
- * first bound session_start. These tests drive the real extension factory with
- * a mock ExtensionAPI and assert the timing: nothing is wired at factory time;
- * everything is wired (once) on session_start.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,8 +15,8 @@ const RPC_CHANNELS = ["subagents:rpc:ping", "subagents:rpc:spawn", "subagents:rp
 
 function makePi() {
   const tools = new Map<string, any>();
-  const lifecycle = new Map<string, any>(); // pi.on(...) — session_start, session_shutdown, …
-  const busHandlers = new Map<string, (raw: any) => unknown>(); // pi.events.on(...) — rpc channels
+  const lifecycle = new Map<string, any>();
+  const busHandlers = new Map<string, (raw: any) => unknown>();
   const pi = {
     registerMessageRenderer: vi.fn(),
     registerTool: vi.fn((t: any) => tools.set(t.name, t)),
@@ -87,8 +70,6 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
   let prevHome: string | undefined;
 
   beforeEach(() => {
-    // Hermetic cwd + global dir with scheduling off, so session_start doesn't
-    // spin a scheduler or touch the dev's filesystem — isolates the RPC wiring.
     tmpDir = mkdtempSync(join(tmpdir(), "pi-142-"));
     agentDir = mkdtempSync(join(tmpdir(), "pi-142-agentdir-"));
     prevAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -115,9 +96,6 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
   it("does NOT advertise or register RPC at factory time (the filtered-out case)", () => {
     const { pi, busHandlers } = makePi();
 
-    // A filtered-out activation only ever gets the factory run — its
-    // session_start never fires. So after the factory alone, nothing should
-    // be on the shared bus.
     subagentsExtension(pi);
 
     expect(readyEmits(pi), "no subagents:ready before session_start").toHaveLength(0);
@@ -132,14 +110,12 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
 
     await lifecycle.get("session_start")({}, ctx());
 
-    // Readiness broadcast once, all three channels now live.
     expect(readyEmits(pi), "subagents:ready fires once bound").toHaveLength(1);
     for (const channel of RPC_CHANNELS) {
       expect(busHandlers.has(channel), `${channel} registered on session_start`).toBe(true);
     }
 
-    // spawn no longer hits the "No active session" trap — currentCtx is set.
-    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any); // never resolves
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
     const requestId = "req-142";
     await busHandlers.get("subagents:rpc:spawn")!({
       requestId,
@@ -163,7 +139,7 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
 
     await lifecycle.get("session_start")({}, activeCtx);
 
-    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any); // keep agent running
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
     try {
       await busHandlers.get("subagents:rpc:spawn")!({
         requestId: "req-widget",
@@ -201,8 +177,6 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
     subagentsExtension(pi);
 
     await lifecycle.get("session_start")({}, extensionCtx);
-    // TaskExecute runs inside a root tool call, so the extension already has
-    // the UI context before pi-tasks sends its cross-extension spawn request.
     await lifecycle.get("tool_execution_start")({}, extensionCtx);
     await busHandlers.get("subagents:rpc:spawn")!({
       requestId: "req-activity",

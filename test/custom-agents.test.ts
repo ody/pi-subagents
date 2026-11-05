@@ -153,10 +153,10 @@ Just a prompt.`);
     expect(agent.name).toBe("minimal");
     expect(agent.displayName).toBeUndefined();
     expect(agent.color).toBeUndefined();
-    expect(agent.description).toBe("minimal"); // defaults to filename
-    expect(agent.builtinToolNames).toEqual(BUILTIN_TOOL_NAMES); // all tools
-    expect(agent.extensions).toBe(true); // inherit all
-    expect(agent.skills).toBe(true); // inherit all
+    expect(agent.description).toBe("minimal");
+    expect(agent.builtinToolNames).toEqual(BUILTIN_TOOL_NAMES);
+    expect(agent.extensions).toBe(true);
+    expect(agent.skills).toBe(true);
     expect(agent.model).toBeUndefined();
     expect(agent.thinking).toBeUndefined();
     expect(agent.maxTurns).toBeUndefined();
@@ -327,7 +327,6 @@ tools: read, my_custom_tool, grep
 Custom tools.`);
 
     const result = loadCustomAgents(tmpDir);
-    // Unknown tool names are passed through — filtering happens at tool creation time
     expect(result.get("custom-tools")!.builtinToolNames).toEqual(["read", "my_custom_tool", "grep"]);
   });
 
@@ -368,8 +367,6 @@ Wildcard plus ext.`);
   });
 
   it("tools: 'all' is a case-insensitive alias for '*' (closes #75)", () => {
-    // `tools: all` previously parsed "all" as a single tool name → allowlist
-    // containing the non-existent tool "all" → silent zero-tool agent.
     for (const [name, value] of [["all-lower", "all"], ["all-upper", "ALL"], ["all-mixed", "All"]]) {
       writeAgent(name, `---\ntools: ${value}\n---\n\nAlias.`);
       const agent = loadCustomAgents(tmpDir).get(name)!;
@@ -410,7 +407,6 @@ thinking: turbo
 Any thinking.`);
 
     const result = loadCustomAgents(tmpDir);
-    // Pi validates at session creation — we just pass through
     expect(result.get("anythink")!.thinking).toBe("turbo");
   });
 
@@ -585,8 +581,6 @@ enabled: false
   });
 
   it("takes the agent type from frontmatter name, not the filename", () => {
-    // Claude Code's rule: "the filename doesn't have to match". The same file
-    // dropped into either tool must dispatch under the same type.
     writeAgent("blubb", `---
 name: code-review
 description: Reviews code
@@ -600,8 +594,6 @@ Agent prompt.`);
   });
 
   it("records the file it was read from, not the one its type would name", () => {
-    // `/agents` edits `sourcePath`: probing for `<type>.md` finds nothing here,
-    // and its no-file branch writes a stub that loses to this file on load.
     writeAgent("blubb", `---
 name: code-review
 description: Reviews code
@@ -614,8 +606,6 @@ Agent prompt.`);
   });
 
   it("falls back to the filename for an empty or blank declared name", () => {
-    // A quoted empty `name:` would otherwise register the agent under the empty
-    // type — unspawnable, and it takes the filename-derived one down with it.
     writeAgent("myagent", "---\nname: \"\"\ndescription: My Agent\n---\n\nPrompt.");
     writeAgent("other", "---\nname: \"   \"\ndescription: Other\n---\n\nPrompt.");
 
@@ -632,8 +622,6 @@ Agent prompt.`);
   });
 
   it("falls back to the filename when no name is declared", () => {
-    // Claude Code requires `name`; most existing files here predate it and
-    // must keep loading under the identity they already dispatch by.
     writeAgent("myagent", `---
 description: My Agent
 ---
@@ -658,8 +646,6 @@ Agent prompt.`);
   });
 
   it("leaves displayName unset so the badge falls back to the type", () => {
-    // A Claude Code file has no display_name; `getConfig` resolves the label
-    // to the type, so it still badges as "code-reviewer" as it did before.
     writeAgent("whatever", `---
 name: code-reviewer
 description: Reviews code
@@ -675,8 +661,6 @@ Agent prompt.`);
   });
 
   it("accepts a name Claude Code accepts, however unlike a type it looks", () => {
-    // Its docs describe names as "lowercase letters and hyphens", but the only
-    // load failure they state is the colon — so this must still load.
     writeAgent("reviewer", `---
 name: Code Reviewer
 description: Reviews code
@@ -688,9 +672,6 @@ Agent prompt.`);
   });
 
   it("refuses a name containing the plugin-scope separator", () => {
-    // Claude Code doesn't load these. Skipping beats loading it under the
-    // filename, which would dispatch an agent whose declared identity nothing
-    // honoured.
     writeAgent("scoped", `---
 name: my-plugin:reviewer
 description: Reviews code
@@ -704,10 +685,6 @@ Agent prompt.`);
   });
 
   it("does not claim the rejected file was overriding its filename's agent", () => {
-    // It would have registered under its *declared* name, which a colon keeps
-    // out of the registry entirely — so it shadowed nothing. Reporting a
-    // substitution of the same-named file from another directory describes a
-    // swap that never happened, and points at an agent that is unchanged.
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       writeWorkspaceAgent("scoped", "---\ndescription: An unrelated agent\n---\n\nBody.");
@@ -725,8 +702,6 @@ Agent prompt.`);
   });
 
   it("lets a later file win a declared-name clash, as a filename clash always did", () => {
-    // Filenames were unique per directory by construction; declared names are
-    // not, so two files in one directory can now claim the same type.
     writeAgent("a-first", `---
 name: shared
 description: first
@@ -803,9 +778,6 @@ Bad isolation.`);
     expect(result.get("bad-isolation")!.isolation).toBeUndefined();
   });
 
-  // `isolation: off` is a veto, not a synonym for omitting the field: agent
-  // config outranks tool-call params, so it turns a caller's "worktree" back
-  // off. That is why it must survive parsing as "off" rather than undefined.
   it("parses isolation: off", () => {
     writeAgent("no-wt", `---
 description: Never worktree
@@ -818,9 +790,6 @@ No worktree.`);
     expect(result.get("no-wt")!.isolation).toBe("off");
   });
 
-  // pi's frontmatter parser is not YAML 1.1, so bare `off`/`no` stay strings
-  // and only `false` becomes a boolean — accept the spellings an author is
-  // likely to reach for rather than silently dropping them.
   it.each([
     ["false", "isolation: false"],
     ["none", "isolation: none"],
@@ -836,10 +805,7 @@ Off.`);
     expect(result.get(`off-${name}`)!.isolation).toBe("off");
   });
 
-  // A YAML error in one file used to escape loadFromDir and abort the whole
-  // extension load — pi exited 1 before the TUI. Regression for #212.
   it("skips a file with malformed frontmatter and still loads the others", () => {
-    // Unquoted `description` containing ": " — the shape Claude Code tolerates.
     writeAgent("broken", `---
 name: broken
 description: Use this: that
@@ -873,9 +839,6 @@ Good body.`);
     }
   });
 
-  // Skipping an override is not the same as skipping an agent: the name still
-  // resolves, to a different prompt, model and tool policy. Nothing downstream
-  // can flag that, because the Agent call succeeds.
   it("warns when a skipped file was overriding an agent that stays resolvable", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -892,8 +855,6 @@ Good body.`);
     }
   });
 
-  // A disabled agent does not dispatch (resolveEnabledTypeIn), so claiming the
-  // name "still resolves" to it would send the user chasing the wrong file.
   it("does not claim a fallback when the shadowed definition is disabled", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -925,7 +886,6 @@ Good body.`);
     }
   });
 
-  // strictAgentFiles: opt in to failing closed rather than running a substitute.
   it("throws naming the file when strict, and skips it when not", () => {
     writeAgent("broken", "---\nname: broken\ndescription: Use this: that\n---\n\nBroken.");
     writeAgent("healthy", "---\ndescription: Fine\n---\n\nFine.");
@@ -944,12 +904,9 @@ Good body.`);
     }
   });
 
-  // The rule is "warn when it breaks, stay quiet while it stays broken".
-  // Suppressing an unchanged problem must not suppress it forever.
   it("warns when a file breaks, not while it stays broken", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      // Two loads while broken: the second must be suppressed as unchanged.
       writeAgent("flip", "---\nname: flip\ndescription: Use this: that\n---\n\nBroken.");
       loadCustomAgents(tmpDir);
       loadCustomAgents(tmpDir);
@@ -958,7 +915,6 @@ Good body.`);
       writeAgent("flip", "---\ndescription: Fixed\n---\n\nFixed.");
       expect(loadCustomAgents(tmpDir).get("flip")?.description).toBe("Fixed");
 
-      // Same breakage again — a new problem, not the one already reported.
       writeAgent("flip", "---\nname: flip\ndescription: Use this: that\n---\n\nBroken.");
       loadCustomAgents(tmpDir);
 
@@ -968,7 +924,6 @@ Good body.`);
     }
   });
 
-  // Agents reload on every Agent call, so repeating would scribble a live TUI.
   it("warns once per message, not on every reload", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
@@ -998,7 +953,6 @@ Good body.`);
 
       const result = loadCustomAgents(tmpDir);
 
-      // Agent is found at $PI_CODING_AGENT_DIR/agents, not at $HOME/.pi/agent/agents
       expect(result.has("via-env")).toBe(true);
       expect(result.get("via-env")!.description).toBe("Discovered via env var");
     } finally {
@@ -1008,10 +962,6 @@ Good body.`);
     }
   });
 
-  // `/agents → Eject` writes an AgentConfig back out as frontmatter. That writer
-  // and this loader are the two halves of one format, but nothing pinned them
-  // together — so a field can serialize to something the loader reads back
-  // differently, and the agent silently changes shape on eject.
   describe("eject round-trip", () => {
     function roundTrip(cfg: Partial<AgentConfig>) {
       const full: AgentConfig = {
@@ -1036,8 +986,6 @@ Good body.`);
     });
 
     it("preserves an empty tool list instead of widening it to every built-in", () => {
-      // `tools: none` parses to [] on load, so ejecting an agent with zero
-      // built-ins must not write `tools: all` — that hands it the whole toolbox.
       expect(roundTrip({ builtinToolNames: [] }).builtinToolNames).toEqual([]);
     });
 
@@ -1070,25 +1018,15 @@ Good body.`);
       expect(loaded.isolation).toBe("worktree");
     });
 
-    // The writer used to emit `run_in_background` only when truthy, so an
-    // explicit `false` was dropped. Harmless while foreground was the default
-    // and omission meant the same thing — but with `backgroundByDefault` on,
-    // dropping it flips the ejected agent to background.
     it("preserves an explicit run_in_background: false instead of dropping it", () => {
       expect(roundTrip({ runInBackground: false }).runInBackground).toBe(false);
     });
 
     it("leaves run_in_background unset when the config doesn't pin it", () => {
-      // Absent must stay absent — writing a value would freeze the agent
-      // against the setting rather than letting it follow the default.
       expect(roundTrip({}).runInBackground).toBeUndefined();
     });
 
     it("preserves the extension and skill list fields", () => {
-      // These serialize as bare CSV and are re-parsed by parseExtensionsSpec /
-      // the skills field. A generate/parse mismatch here is silent: the ejected
-      // agent loads fine but with a different extension or skill scope than the
-      // one that was ejected.
       const loaded = roundTrip({
         extensions: ["mcp", "pi-notify"],
         skills: ["planning", "review"],
@@ -1112,7 +1050,6 @@ Good body.`);
     });
 
     it("preserves a description containing a colon", () => {
-      // Serialized via JSON.stringify precisely so YAML doesn't split on the colon.
       expect(roundTrip({ description: "Scout: find things" }).description).toBe("Scout: find things");
     });
   });
@@ -1144,7 +1081,6 @@ describe("loadCustomAgents — skill-embedded agents", () => {
 
   const agentMd = (description: string) => `---\ndescription: ${description}\n---\n\n${description} prompt.`;
 
-  /** Create a skill at `rel` under the skills root, shipping the given agents. */
   function writeSkill(rel: string, agents: Record<string, string>) {
     const dir = join(skillsDir, rel);
     mkdirSync(join(dir, "agents"), { recursive: true });
@@ -1219,10 +1155,6 @@ describe("loadCustomAgents — skill-embedded agents", () => {
 
   it("resolves a clash between a shallow and a deep skill breadth-first", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Chosen so the two traversals disagree. Root entries sorted are [alpha,
-    // zulu]: breadth-first visits the root-level skill `zulu` BEFORE descending
-    // into `alpha`, so the deeper skill `alpha/inner` loads last and wins. A
-    // depth-first walk finishes `alpha/inner` first and would keep `zulu`'s copy.
     writeSkill("zulu", { shared: agentMd("From zulu") });
     writeSkill("alpha/inner", { shared: agentMd("From alpha/inner") });
 
@@ -1238,8 +1170,6 @@ describe("loadCustomAgents — skill-embedded agents", () => {
 
     loadCustomAgents(tmpDir);
 
-    // A packaging accident is only fixable if the warning says which two files
-    // to reconcile — dropping either path leaves the user with one half.
     const warning = warn.mock.calls
       .map(call => String(call[0]))
       .find(message => message.includes('Agent "shared" is shipped by two skills'));

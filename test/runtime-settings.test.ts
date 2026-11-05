@@ -1,6 +1,3 @@
-// runtime-settings.ts: the settings snapshot and the two settings-write paths.
-// saveAndEmitChanged is mocked so no test writes a real subagents.json.
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { saveAndEmitChanged } = vi.hoisted(() => ({ saveAndEmitChanged: vi.fn() }));

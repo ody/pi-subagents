@@ -19,7 +19,6 @@ function rec(over: Partial<AgentRecord> = {}): AgentRecord {
 
 describe("buildEventData", () => {
   it("omits tokens when nothing was produced", () => {
-    // cacheRead-only spend: money moved, but the display total is zero.
     const data = buildEventData(rec({ lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cacheRead: 50, cost: 0.01 } }));
     expect(data.tokens).toBeUndefined();
     expect(data.usage?.totalTokens).toBe(50);
@@ -37,9 +36,7 @@ describe("buildEventData", () => {
       result: "done",
       lifetimeUsage: { input: 100, output: 50, cacheWrite: 10, cacheRead: 20, cost: 0.25 },
     }));
-    // tokens is the display view: excludes cacheRead.
     expect(data.tokens).toEqual({ input: 100, output: 50, total: 160 });
-    // usage is a pi Usage: includes cacheRead and the whole spend.
     expect(data.usage).toMatchObject({
       input: 100,
       output: 50,

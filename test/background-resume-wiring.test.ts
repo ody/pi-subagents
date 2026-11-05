@@ -1,10 +1,3 @@
-/**
- * Agent tool wiring for `resume` + `run_in_background` (#214).
- *
- * The manager-level mechanics live in agent-manager.test.ts; what this file
- * pins down is what the TOOL hands the manager, which is where a detached
- * resume can quietly diverge from a detached spawn.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -64,14 +57,12 @@ function makeCtx(cwd: string) {
   } as any;
 }
 
-/** Flatten a tool result's content blocks to plain text. */
 function resultText(result: any): string {
   const content = result?.content;
   if (Array.isArray(content)) return content.map((c: any) => c?.text ?? "").join("\n");
   return String(content ?? result?.text ?? JSON.stringify(result));
 }
 
-/** Pull the agent id out of a background spawn/resume tool result. */
 function agentIdOf(result: any): string {
   const id = /Agent ID: (\S+)/.exec(resultText(result))?.[1];
   if (!id) throw new Error(`no agent id in result: ${JSON.stringify(result)}`);
@@ -84,7 +75,6 @@ describe("Agent tool — background resume wiring", () => {
   let previousCwd: string;
   let previousAgentDir: string | undefined;
   let previousHome: string | undefined;
-  /** The session the spawned agent ends up holding — prior turns already in it. */
   let session: any;
 
   beforeEach(() => {
@@ -129,7 +119,6 @@ describe("Agent tool — background resume wiring", () => {
     vi.clearAllMocks();
   });
 
-  /** Spawn a background agent and let it settle, so it holds a resumable session. */
   async function spawnSettled(tools: Map<string, any>, ctx: any, type = "general-purpose") {
     const res = await tools.get("Agent").execute(
       "spawn-call",
@@ -143,11 +132,6 @@ describe("Agent tool — background resume wiring", () => {
     return id;
   }
 
-  // A background spawn deliberately omits the tool-call signal — that signal
-  // aborts when the parent turn is interrupted (user Esc), which must not reach
-  // an agent the caller has already detached from. A detached resume that
-  // forwarded it would die on Esc while background spawns from the same turn
-  // kept running.
   it("does not tie the detached run to the tool-call signal", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -172,7 +156,6 @@ describe("Agent tool — background resume wiring", () => {
     expect(runSignal).toBeDefined();
     expect(runSignal!.aborted).toBe(false);
 
-    // The parent turn is interrupted. The detached run must survive it.
     toolAbort.abort();
     await new Promise((r) => setTimeout(r, 0));
     expect(runSignal!.aborted).toBe(false);
@@ -180,8 +163,6 @@ describe("Agent tool — background resume wiring", () => {
     await lifecycle.get("session_shutdown")?.({}, ctx);
   });
 
-  // The transcript path is deterministic per agent+session, so the resume lands
-  // on the file the previous run wrote. writeInitialEntry truncates it.
   it("appends to the agent's existing transcript instead of truncating it", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -199,21 +180,15 @@ describe("Agent tool — background resume wiring", () => {
       ctx,
     );
 
-    // Never truncate; ensure the file exists without disturbing its contents.
     expect(writeInitialEntry).not.toHaveBeenCalled();
     expect(ensureOutputFile).toHaveBeenCalled();
 
-    // Streaming is anchored past the turns the session already carries, so the
-    // prior conversation is not re-emitted behind the resumed run.
     expect(streamToOutputFile).toHaveBeenCalledTimes(1);
     expect(vi.mocked(streamToOutputFile).mock.calls[0][4]).toBe(3);
 
     await lifecycle.get("session_shutdown")?.({}, ctx);
   });
 
-  // Resume ignores subagent_type — the record keeps the type it was spawned
-  // with — so a "created" event carrying the caller's type would re-register the
-  // agent under the wrong one in cross-extension mirrors keyed by id.
   it("reports the record's own type, not the caller's ignored subagent_type", async () => {
     writeFileSync(join(agentDir, "agents", "explorer.md"), `---\ndescription: Explorer agent\n---\n\nExplore.`);
     const { pi, tools, lifecycle, emitted } = makePi();
@@ -239,10 +214,6 @@ describe("Agent tool — background resume wiring", () => {
     await lifecycle.get("session_shutdown")?.({}, ctx);
   });
 
-  // Detaching hands control back while the record is still running, so nothing
-  // stops the model from resuming the same agent again. The second resume must
-  // be refused with a message it can act on — not started, and not reported as
-  // a generic failure.
   it("refuses a second background resume while the first run is in flight", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -264,8 +235,6 @@ describe("Agent tool — background resume wiring", () => {
     await lifecycle.get("session_shutdown")?.({}, ctx);
   });
 
-  // Resume follows the same default as a fresh spawn — background — so
-  // foreground is now the explicit case rather than the implicit one.
   it("still resumes in the foreground when run_in_background is false", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -281,7 +250,6 @@ describe("Agent tool — background resume wiring", () => {
       ctx,
     );
 
-    // Foreground resume returns the answer inline — no background handoff text.
     expect(resultText(res)).toContain("inline answer");
     expect(resultText(res)).not.toContain("You will be notified");
 

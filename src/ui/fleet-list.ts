@@ -1,16 +1,3 @@
-/**
- * fleet-list.ts — Claude Code-style "FleetView" list rendered below the editor.
- *
- * Shows `main` + each running/queued subagent as a navigable list. Pressing ↓ (or
- * ←) at an empty prompt activates the list; ↑/↓ move the selection (filled ● marker),
- * Enter opens the selected agent's live conversation overlay, Esc returns to the prompt.
- * A viewer stays open when its agent finishes; finished agents linger briefly in the list.
- *
- * Mechanics (see plan): the list is a `belowEditor` widget (render-only), and ALL key
- * handling goes through `onTerminalInput` — which fires before the focused editor and
- * can `consume` keys — gated on `getEditorText() === ""` so normal typing is untouched.
- */
-
 import { Editor, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentRecord, ViewerMarkdownMode } from "../types.js";
@@ -20,16 +7,11 @@ import { formatCost, type Theme } from "./agent-format.js";
 import { type AgentTreeNode, agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey } from "./agent-tree.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
 
-/** Widget key for the below-editor fleet list. */
 const FLEET_KEY = "fleet";
-/** Max agent rows shown at once; extras collapse into a "↓ N more" indicator. */
 const MAX_AGENT_ROWS = 5;
-/** Re-render cadence so elapsed/token stats tick while agents run. */
 const TICK_MS = 200;
-/** How long a finished agent lingers in the list before it drops out. */
 const FINISHED_LINGER_MS = 4000;
 
-/** Minimal UI surface the FleetView needs from `ctx.ui` (structural subset). */
 export type FleetUICtx = {
   setWidget(
     key: string,
@@ -47,12 +29,10 @@ export type FleetUICtx = {
 
 type FleetNode = AgentTreeNode;
 
-/** `11s` — integer seconds, no decimal/suffix (matches Claude Code, unlike formatMs). */
 export function formatFleetElapsed(ms: number): string {
   return `${Math.max(0, Math.round(ms / 1000))}s`;
 }
 
-/** `↓ 13.1k tokens` — down-arrow prefix, compact magnitude, plural "tokens". */
 export function formatFleetTokens(count: number): string {
   let compact: string;
   if (count >= 1_000_000) compact = `${(count / 1_000_000).toFixed(1)}M`;
@@ -61,11 +41,6 @@ export function formatFleetTokens(count: number): string {
   return `↓ ${compact} tokens`;
 }
 
-/**
- * Place `right` flush to `width`, truncating `left` first so the stats survive.
- * The final clamp guarantees the line never exceeds `width` (which would wrap and
- * desync pi's line-diff → flicker) even on a terminal too narrow for the stats.
- */
 function rightAlign(left: string, right: string, width: number): string {
   const rightW = visibleWidth(right);
   const maxLeft = Math.max(0, width - rightW - 1);
@@ -82,45 +57,19 @@ export class FleetList {
   private timer: ReturnType<typeof setInterval> | undefined;
 
   private enabled = true;
-  /** Whether arrow keys currently navigate the list (vs. flow to the editor). */
   private active = false;
-  /**
-   * The selected row's stable tree key, not its index. An index shifts the
-   * moment a nested child starts or a sibling settles, which moved the cursor
-   * out from under the user; a key survives every roster change.
-   */
   private selectedKey: string = MAIN_KEY;
-  /** Node keys whose children are hidden. View state — never on the record. */
   private collapsedKeys = new Set<string>();
-  /** Whether the current rows warrant the expand/collapse glyph column. */
   private showGlyphs = false;
-  /** Set while a conversation overlay is open; calling it closes the overlay. */
   private viewerClose: (() => void) | undefined;
   private viewingAgentId: string | undefined;
 
   constructor(
     private manager: AgentManager,
-    /**
-     * Read live at render time. Whether each row shows an estimated cost after
-     * its token count. Defaults to off — the extension supplies the user's
-     * `showCost` setting.
-     */
     private showCost: () => boolean = () => false,
-    /**
-     * The user's `viewerMarkdown` setting, for a conversation overlay opened
-     * from here. Read live rather than captured, because the viewer's `m` key
-     * changes it while the overlay is up. Omitted → the viewer's own default.
-     */
     private viewerMarkdown?: () => ViewerMarkdownMode,
-    /**
-     * Persist a mode chosen with `m` in that overlay, so the key means the same
-     * thing here as it does from `/agents` — one setting, not one per entry
-     * point. Omitted → `m` still cycles, viewer-locally.
-     */
     private onViewerMarkdown?: (mode: ViewerMarkdownMode) => void,
   ) {}
-
-  // ---- Lifecycle ----
 
   setEnabled(enabled: boolean): void {
     if (enabled === this.enabled) return;
@@ -129,7 +78,6 @@ export class FleetList {
     this.update();
   }
 
-  /** Capture the UI context and (re)register the global input handler. */
   setUICtx(ui: FleetUICtx): void {
     if (ui === this.ui) return;
     this.inputUnsub?.();
@@ -139,15 +87,10 @@ export class FleetList {
     this.inputUnsub = ui.onTerminalInput(data => this.handleKey(data));
   }
 
-  /** Ensure the re-render timer is running (called when an agent spawns). */
   ensureTimer(): void {
     if (!this.timer) this.timer = setInterval(() => this.update(), TICK_MS);
   }
 
-  /**
-   * Called when an agent finishes. The viewer (if open on it) stays open so the
-   * final output remains readable, and the row lingers in the list — just refresh.
-   */
   onAgentFinished(_id: string): void {
     this.update();
   }
@@ -162,17 +105,11 @@ export class FleetList {
     this.widgetRegistered = false;
     this.tui = undefined;
     this.active = false;
-    // Null last so a `viewerClose()` microtask above can't re-register the widget.
     this.ui = undefined;
   }
 
-  /** Re-register/refresh the below-editor widget; clears it when nothing remains. */
   update(): void {
     if (!this.ui) return;
-    // A run with no agents of its own left in the list is still worth a row —
-    // it is the thing the user opens to see what its children did. Read off the
-    // roster for the same reason activation does: two counts of "is there
-    // anything here" drifted apart once before.
     const hasRows = this.enabled && this.nodes().length > 1;
 
     if (!hasRows) {
@@ -188,7 +125,7 @@ export class FleetList {
     }
 
     this.reconcileSelection();
-    this.ensureTimer(); // keep stats ticking whenever the list is shown (e.g. after a re-enable)
+    this.ensureTimer();
 
     if (!this.widgetRegistered) {
       this.ui.setWidget(FLEET_KEY, (tui, theme) => {
@@ -204,18 +141,6 @@ export class FleetList {
     }
   }
 
-  // ---- Roster ----
-
-  /**
-   * Which records earn a row of their own: running/queued, the one being viewed,
-   * or one that finished within the linger window. A record with no session yet
-   * is hidden until it starts, so Enter never dead-ends.
-   *
-   * Nesting is NOT filtered here any more. Nested children used to be dropped
-   * by `isTopLevelAgent`, which made them unreachable — no way to watch, steer
-   * or stop one. `buildAgentTree` places them under their
-   * owner instead, and pulls in any ancestor this test rejects.
-   */
   private isEligible(record: AgentRecord, now: number): boolean {
     if (!record.session) return false;
     return record.status === "running" || record.status === "queued"
@@ -223,7 +148,6 @@ export class FleetList {
       || (record.completedAt != null && now - record.completedAt < FINISHED_LINGER_MS);
   }
 
-  /** The visible rows: `main`, then the top-level agents with their nested children indented beneath. */
   private nodes(): FleetNode[] {
     const now = Date.now();
     return buildAgentTree({
@@ -233,7 +157,6 @@ export class FleetList {
     });
   }
 
-  /** Re-resolve the selected key against the current rows (see `resolveSelectedKey`). */
   private reconcileSelection(): void {
     const nodes = this.nodes();
     this.selectedKey = resolveSelectedKey(nodes, this.selectedKey, ancestorKeys(nodes, this.selectedKey)) ?? MAIN_KEY;
@@ -243,23 +166,10 @@ export class FleetList {
     return nodes.find(n => n.key === this.selectedKey);
   }
 
-  // ---- Key handling ----
-
-  /** Returns `{consume:true}` to swallow a key, or undefined to let it through. */
   handleKey(data: string): { consume?: boolean; data?: string } | undefined {
     if (!this.enabled || !this.ui) return undefined;
-    // Input listeners receive BOTH key-press and key-release (the kitty protocol
-    // emits both, and matchesKey matches either) — act on press only, or every
-    // tap would move/fire twice. Repeats still pass through for held-key nav.
     if (isKeyRelease(data)) return undefined;
-    // While an overlay is open, let it own all input. Checked before the focus
-    // test below, which would otherwise read the dialog holding the keyboard as
-    // "the user left the list" and reset the selection out from under it.
     if (this.viewerClose) return undefined;
-    // Input listeners fire BEFORE the focused component, and dialogs
-    // (ctx.ui.select/confirm/input, pi's own menus) swap the prompt editor out
-    // while getEditorText() still reads the detached — empty — editor. So when
-    // anything but the editor owns the keyboard, stay out of its keys (#123).
     if (!this.editorHasFocus()) {
       if (this.active) this.deactivate();
       return undefined;
@@ -267,7 +177,6 @@ export class FleetList {
 
     if (!this.active) return this.tryActivate(data) ? { consume: true } : undefined;
 
-    // Active — arrows navigate the tree, Enter opens, Esc / Up-past-top exits.
     if (matchesKey(data, "down")) this.moveSelection(true);
     else if (matchesKey(data, "up")) this.moveSelection(false);
     else if (matchesKey(data, "right")) this.expandSelected();
@@ -275,14 +184,12 @@ export class FleetList {
     else if (matchesKey(data, "escape")) this.deactivate();
     else if (matchesKey(data, Key.enter)) this.openSelected();
     else {
-      // Any other key cancels navigation and flows to the editor.
       this.deactivate();
       return undefined;
     }
     return { consume: true };
   }
 
-  /** Activate: ↓ or ← at an empty prompt moves focus into the list. True when the key was consumed. */
   private tryActivate(data: string): boolean {
     const isActivator = matchesKey(data, "down") || matchesKey(data, "left");
     if (!isActivator || this.nodes().length <= 1 || this.ui?.getEditorText() !== "") return false;
@@ -292,7 +199,6 @@ export class FleetList {
     return true;
   }
 
-  /** Move one row; ↑ at or above the first row deactivates instead (no `update()`). */
   private moveSelection(down: boolean): void {
     const nodes = this.nodes();
     const index = nodes.findIndex(n => n.key === this.selectedKey);
@@ -313,7 +219,6 @@ export class FleetList {
     }
   }
 
-  /** Collapse an expanded parent, otherwise move to the parent row. */
   private collapseOrAscend(): void {
     const node = this.selectedNode(this.nodes());
     if (node?.hasChildren && !node.collapsed) this.collapsedKeys.add(node.key);
@@ -321,14 +226,6 @@ export class FleetList {
     this.update();
   }
 
-  /**
-   * True when pi's prompt editor owns the keyboard. pi's editor is an `Editor`
-   * subclass (CustomEditor) while every dialog/selector is not, and the loader
-   * aliases pi-tui to pi's own copy, so `instanceof` is a reliable identity
-   * check. `focusedComponent` is TUI-private (no public accessor), hence the
-   * best-effort peek: unknowable focus (no tui seen yet, nothing focused)
-   * counts as the editor so activation keeps working.
-   */
   private editorHasFocus(): boolean {
     const focused = (this.tui as { focusedComponent?: unknown } | undefined)?.focusedComponent;
     return focused == null || focused instanceof Editor;
@@ -343,7 +240,6 @@ export class FleetList {
   private openSelected(): void {
     const entry = this.selectedNode(this.nodes());
     if (!entry || entry.kind === "main") {
-      // `main` = return to the prompt; the native transcript is already shown.
       this.deactivate();
       return;
     }
@@ -384,18 +280,12 @@ export class FleetList {
     ).then(() => this.clearViewer(), () => this.clearViewer());
   }
 
-  /** Reset overlay state and return to the list (on close, auto-close, or error). */
   private clearViewer(): void {
-    // Keep the cursor on the agent we were viewing. Selection is keyed, so this
-    // survives the list reordering (an earlier agent finished) while the overlay
-    // was open; if that row is gone, reconcileSelection() settles it.
     if (this.viewingAgentId !== undefined) this.selectedKey = agentKey(this.viewingAgentId);
     this.viewerClose = undefined;
     this.viewingAgentId = undefined;
     this.update();
   }
-
-  // ---- Rendering ----
 
   private renderBar(width: number, theme: Theme): string[] {
     const nodes = this.nodes();
@@ -405,9 +295,6 @@ export class FleetList {
 
     const selected = this.selectedKey;
     const canCollapse = rows.some(row => row.hasChildren);
-    // Reserve the glyph column only once the list actually has a hierarchy, so a
-    // flat roster renders exactly as wide as it did before and loses no room
-    // for the description on a narrow terminal.
     this.showGlyphs = canCollapse || rows.some(row => row.kind === "agent" && row.orphan);
     const hint = this.active
       ? canCollapse ? "↑↓ select · ←→ collapse · enter view · esc back" : "↑↓ select · enter view · esc back"
@@ -417,7 +304,6 @@ export class FleetList {
     lines.push("");
     if (main) lines.push(truncateToWidth(`${this.gutter(main, selected, theme)}main`, width));
 
-    // Window the rows so the selected one stays visible.
     const visible = Math.min(MAX_AGENT_ROWS, rows.length);
     const selRow = Math.max(0, rows.findIndex(row => row.key === selected));
     const start = selRow < visible ? 0 : selRow - visible + 1;
@@ -437,12 +323,6 @@ export class FleetList {
     return lines;
   }
 
-  /**
-   * The `  ▾● ` column, indented by depth. The glyph column is always present,
-   * even for a leaf, so a row does not shift sideways when a child appears
-   * under it. An orphan — a record whose owner is gone — gets `↯` there, since
-   * its indentation can no longer say where it came from.
-   */
   private gutter(node: FleetNode, selected: string, theme: Theme): string {
     const glyph =
       node.kind === "agent" && node.orphan ? "↯"
@@ -457,10 +337,6 @@ export class FleetList {
   }
 
   private renderAgentRow(node: FleetNode & { kind: "agent" }, selectedKey: string, width: number, theme: Theme): string {
-    // The selected row renders in the theme's primary text color so it reads as
-    // one selection (#230). A configured badge survives — Claude Code's FleetView
-    // keeps the agent color on the selected row too and only bolds it — which also
-    // keeps the row's width fixed as the selection moves.
     const record = node.record;
     const selected = node.key === selectedKey;
     const name = renderAgentName(record.type, theme, selected
@@ -468,11 +344,8 @@ export class FleetList {
       : { fallbackColor: "muted" });
     const description = selected ? theme.fg("text", record.description) : record.description;
     const left = `${this.gutter(node, selectedKey, theme)}${name}  ${description}`;
-    // The record, not the activity tracker — see the note in AgentWidget's
-    // running line: only the record carries a nested child's spend, and only it
-    // outlives the agent.
     const tokens = getLifetimeTotal(record.lifetimeUsage);
-    const elapsedMs = (record.completedAt ?? Date.now()) - record.startedAt; // freezes once finished
+    const elapsedMs = (record.completedAt ?? Date.now()) - record.startedAt;
     const cost = this.showCost() ? formatCost(getLifetimeCost(record.lifetimeUsage)) : "";
     const stats = `${formatFleetElapsed(elapsedMs)} · ${formatFleetTokens(tokens)}${cost ? ` · ${cost}` : ""}`;
     const right = selected ? theme.fg("text", stats) : theme.fg("dim", stats);

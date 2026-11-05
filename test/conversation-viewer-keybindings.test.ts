@@ -47,7 +47,7 @@ function createViewer(keybindings?: ViewerKeybindings) {
     bold: (text: string) => text,
   } as any;
   const viewer = new ConversationViewer(tui, session, record, undefined, theme, vi.fn(), undefined, keybindings);
-  viewer.render(80); // sets lastInnerW and scrolls to bottom (autoScroll)
+  viewer.render(80);
   return viewer;
 }
 

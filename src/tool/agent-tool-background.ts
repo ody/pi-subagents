@@ -1,6 +1,3 @@
-// Background Agent spawn: start a detached agent, join it to a notification
-// batch, and hand its ID back immediately.
-
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
@@ -28,11 +25,9 @@ export interface BackgroundAgentInput {
   toolCallId: string;
   params: { prompt: string; description: string; name?: string };
   call: Extract<AgentCallResolution, { ok: true }>;
-  /** Opens the call's .output transcript on the record, when it is on. */
   attachTranscript: (rec: AgentRecord | undefined, agentId: string) => void;
 }
 
-/** Spawn one Agent call detached and return its tool result. Spawn errors throw. */
 export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: BackgroundAgentInput) {
   const { pi, manager, widget, fleet, notifier, settings } = deps;
   const { ctx, toolCallId, params, call, attachTranscript } = input;
@@ -52,9 +47,6 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   const bgCallbacks = createActivityTracker();
 
-  // Wrap onSessionCreated to wire output file streaming.
-  // The callback lazily reads record.outputFile (set right after spawn)
-  // rather than closing over a value that doesn't exist yet.
   let id: string;
   const origBgOnSession = bgCallbacks.onSessionCreated;
   bgCallbacks.onSessionCreated = (session: any) => {
@@ -65,9 +57,6 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     }
   };
 
-  // A throw here means the agent never started. Let it out: pi marks a
-  // tool call failed only when execute throws, and a returned message
-  // reads to the model as a subagent that ran and reported this (#179).
   id = manager.spawn(pi, ctx, subagentType, params.prompt, {
     description: params.description,
     name: params.name,
@@ -83,8 +72,6 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     ...bgCallbacks,
   });
 
-  // Set output file + join mode synchronously after spawn, before the
-  // event loop yields — onSessionCreated is async so this is safe.
   const joinMode = resolveJoinMode(settings.defaultJoinMode, true);
   const record = manager.getRecord(id);
   if (record && joinMode) {
@@ -93,16 +80,10 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     attachTranscript(record, id);
   }
 
-  // With isolation: "worktree" the agent isn't running yet — the repo
-  // copy is an awaited git call. Wait for it here, after the synchronous
-  // wiring above, so a strict-isolation failure still fails THIS tool
-  // call instead of being reported as a subagent that ran (#179).
   await manager.awaitStartup(id);
 
   if (joinMode == null || joinMode === "async") {
-    // Foreground/no join mode or explicit async — not part of any batch
   } else {
-    // smart or group — add to current batch
     notifier.addToBatch(id, joinMode);
   }
 
@@ -111,7 +92,6 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
   fleet.ensureTimer();
   fleet.update();
 
-  // Emit created event
   pi.events.emit("subagents:created", {
     id,
     type: subagentType,

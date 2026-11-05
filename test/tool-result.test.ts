@@ -47,9 +47,7 @@ describe("buildDetails", () => {
       modelName: "haiku 4.5",
       tags: ["thinking: high"],
       toolUses: 3,
-      // Preformatted display string: input + output + cacheWrite = 1500.
       tokens: "1.5k token",
-      // Raw number, so each renderer can punctuate the cost its own way.
       cost: 0.0123,
       durationMs: 3_000,
       status: "completed",

@@ -18,7 +18,6 @@ function rec(id: string, over: Partial<AgentRecord> = {}): AgentRecord {
   } as AgentRecord;
 }
 
-/** `key@depth` per row — the shape assertions below all read off this. */
 function shape(nodes: readonly { key: string; depth: number }[]): string[] {
   return nodes.map(n => `${n.key}@${n.depth}`);
 }

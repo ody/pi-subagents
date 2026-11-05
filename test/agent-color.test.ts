@@ -33,8 +33,6 @@ describe("renderAgentNameLabel", () => {
     expect(badge).toContain(" Code Reviewer ");
     expect(visibleWidth(badge)).toBe("Code Reviewer".length + 2);
 
-    // Badge text follows the background's luminance: #827DBD is light enough for black,
-    // #1E3A8A is not. Both sit either side of the 0.179 WCAG threshold.
     expect(badge).toContain("\u001b[38;2;0;0;0m");
     expect(renderAgentNameLabel("Tester", "navy", theme)).toContain("\u001b[38;2;255;255;255m");
   });

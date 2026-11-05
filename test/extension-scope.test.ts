@@ -20,13 +20,6 @@ describe("EXCLUDED_TOOL_NAMES", () => {
   });
 });
 
-// ─── extensions: string[] as a loader-level extension filter ────────────
-// An array entry is a bare name (filters default-discovered extensions),
-// a path (loads that extension fresh), or "*" (keep all defaults).
-// Filtering happens at the loader via additionalExtensionPaths +
-// extensionsOverride — excluded extensions never bind handlers or register
-// tools.
-
 describe("extensionCanonicalName", () => {
   it("strips .ts/.js from a single-file extension basename", () => {
     expect(extensionCanonicalName("/x/foo.ts")).toBe("foo");
@@ -60,7 +53,6 @@ describe("extensionCanonicalNames (#143 — package short name alias)", () => {
   });
 
   it("aliases a package-declared index.ts entry to the unscoped, lowercased package name", () => {
-    // Without this, `pi.extensions: ["./src/index.ts"]` only ever matches as "src".
     const dir = pkgDir("@ody/Pi-Subagents", ["./src/index.ts"]);
     expect(extensionCanonicalNames(join(dir, "src", "index.ts"))).toEqual(["src", "pi-subagents"]);
   });
@@ -73,9 +65,6 @@ describe("extensionCanonicalNames (#143 — package short name alias)", () => {
   });
 
   it("adds no alias when the nearest manifest does not declare this entry", () => {
-    // The package.json is a real pi package but lists a *different* entry — so a
-    // co-located file (e.g. our own test fixtures under this repo) is not falsely
-    // stamped with the package name.
     const dir = pkgDir("@scope/other-ext", ["./src/other.ts"]);
     expect(extensionCanonicalNames(join(dir, "src", "index.ts"))).toEqual(["src"]);
   });
@@ -86,8 +75,6 @@ describe("extensionCanonicalNames (#143 — package short name alias)", () => {
   });
 
   it("does not climb past a node_modules boundary into a consumer's manifest", () => {
-    // A consumer that *declares* a dependency's entry must not lend its name to
-    // that dependency: the walk stops at node_modules before reading it.
     const root = mkdtempSync(join(tmpdir(), "subagents-consumer-"));
     tmpDirs.push(root);
     writeFileSync(
@@ -97,7 +84,6 @@ describe("extensionCanonicalNames (#143 — package short name alias)", () => {
     const inner = join(root, "node_modules", "inner-ext");
     mkdirSync(inner, { recursive: true });
     writeFileSync(join(inner, "index.ts"), "export default () => {};");
-    // Only the path-derived name — never "consumer".
     expect(extensionCanonicalNames(join(inner, "index.ts"))).toEqual(["inner-ext"]);
   });
 });
@@ -147,7 +133,6 @@ describe("parseExtensionsSpec", () => {
   });
 });
 
-// ─── ext: tool selectors in `tools:` (opt-in flip) ──────────────────────
 describe("parseExtSelectors", () => {
   it("bare ext:foo → name only, no narrowing", () => {
     const { extNames, narrowing } = parseExtSelectors(["ext:foo"]);
@@ -179,9 +164,6 @@ describe("parseExtSelectors", () => {
     expect(narrowing.size).toBe(0);
   });
   it("lowercases the extension name but preserves tool-name case", () => {
-    // The extension half matches the loader's canonical name (also lowercased);
-    // the tool half is matched against pi-mono's registered identifiers, which
-    // are case-sensitive.
     const { extNames, narrowing } = parseExtSelectors(["ext:Mcp/SomeTool", "ext:FOO"]);
     expect(extNames).toEqual(new Set(["mcp", "foo"]));
     expect(narrowing.get("mcp")).toEqual(new Set(["SomeTool"]));

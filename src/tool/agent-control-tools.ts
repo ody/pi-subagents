@@ -1,6 +1,3 @@
-// The tools that act on an agent already started: `get_subagent_result`,
-// `steer_subagent` and `stop_subagent`.
-
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
@@ -25,13 +22,6 @@ export interface AgentControlToolsDeps {
   usageReporting: UsageReportingDeps;
 }
 
-/**
- * Wait for a running or queued agent to settle. Cancellation stops only this
- * tool call; the background agent keeps running and remains unconsumed so its
- * completion notification can still be delivered.
- * Queued agents have no promise yet (it's created when the queue starts
- * them), so poll until they leave the queue, then await like a running one.
- */
 async function waitForAgentSettled(record: AgentRecord, signal: AbortSignal | undefined): Promise<void> {
   while (record.status === "queued") {
     await abortable(
@@ -42,7 +32,6 @@ async function waitForAgentSettled(record: AgentRecord, signal: AbortSignal | un
   if (record.promise) await abortable(record.promise, signal);
 }
 
-/** The ` | `-joined stats line of a `get_subagent_result` reply. */
 export function formatResultStats(record: AgentRecord, showCost: boolean): string {
   const tokens = formatLifetimeTokens(record);
   const contextPercent = getSessionContextPercent(record.session);
@@ -58,14 +47,12 @@ export function formatResultStats(record: AgentRecord, showCost: boolean): strin
   return statsParts.join(" | ");
 }
 
-/** The body of a `get_subagent_result` reply, by agent status. */
 export function resultBody(record: AgentRecord): string {
   if (record.status === "running") return "Agent is still running. Use wait: true or check back later.";
   if (record.status === "error") return `Error: ${record.error}${partialOutputSuffix(record)}`;
   return record.result?.trim() || "No output.";
 }
 
-/** The ` · `-joined "Current state" of a `steer_subagent` reply. */
 export function formatSteerState(record: AgentRecord, showCost: boolean): string {
   const tokens = formatLifetimeTokens(record);
   const contextPercent = getSessionContextPercent(record.session);
@@ -87,8 +74,6 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
   function registerToolReportingUsage(tool: any): void {
     pi.registerTool(withUsageReporting(tool, usageReporting));
   }
-
-  // ---- get_subagent_result tool ----
 
   registerToolReportingUsage(defineTool({
     name: SUBAGENT_TOOL_NAMES.GET_RESULT,
@@ -126,13 +111,11 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         `Type: ${getDisplayName(record.type)} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${formatResultStats(record, settings.showCost)}\n` +
         `Description: ${record.description}\n\n${resultBody(record)}`;
 
-      // Mark result as consumed — suppresses the completion notification
       if (record.status !== "running" && record.status !== "queued") {
         record.resultConsumed = true;
         notifier.cancelNudge(record.id);
       }
 
-      // Verbose: include full conversation
       if (params.verbose && record.session) {
         const conversation = getAgentConversation(record.session);
         if (conversation) {
@@ -143,8 +126,6 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       return textResult(output);
     },
   }));
-
-  // ---- steer_subagent tool ----
 
   registerToolReportingUsage(defineTool({
     name: SUBAGENT_TOOL_NAMES.STEER,
@@ -170,7 +151,6 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         return textResult(`Agent "${params.agent_id}" is not running (status: ${record.status}). Cannot steer a non-running agent.`);
       }
       if (!record.session) {
-        // Session not ready yet — queue the steer for delivery once initialized
         if (!record.pendingSteers) record.pendingSteers = [];
         record.pendingSteers.push(params.message);
         pi.events.emit("subagents:steered", { id: record.id, message: params.message });
@@ -189,8 +169,6 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       }
     },
   }));
-
-  // ---- stop_subagent tool ----
 
   registerToolReportingUsage(defineTool({
     name: SUBAGENT_TOOL_NAMES.STOP,
@@ -212,8 +190,6 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       }
 
       if (record.status !== "running" && record.status !== "queued") {
-        // Already terminal: the model's intent — that agent is not running —
-        // is already satisfied. Success, not an error; the result is still there.
         return textResult(
           `Agent ${record.id} is not running (status: ${record.status}${getStatusNote(record.status, record.stoppedBy)}). ` +
           `Its result is still available — use get_subagent_result.`,
@@ -222,9 +198,6 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
 
       const wasRunning = record.status === "running";
       const displayName = getDisplayName(record.type);
-      // Before abort(): the forced-settle path (agent-manager.ts) reads this
-      // off the record when it fires the completion notification, which for a
-      // wedged agent may be the first time anything reads it.
       record.stoppedBy = "agent";
       manager.abort(record.id);
 
@@ -232,16 +205,9 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         return textResult(`Agent ${record.id} (${displayName}) stopped before it started running. No output was produced.`);
       }
 
-      // The only partial output available synchronously — record.result isn't
-      // written until the settle path runs, which for a wedged agent this tool
-      // exists to interrupt hasn't happened yet.
       const partial = manager.getActivity(record.id)?.responseText?.trim();
       const preview = partial ? (partial.length > 500 ? `${partial.slice(0, 500)}…` : partial) : undefined;
 
-      // Deliberately does NOT set resultConsumed or cancel the pending nudge:
-      // record.result doesn't exist yet, so suppressing the notification here
-      // would silently lose the full output for a model that doesn't think to
-      // fetch it with get_subagent_result.
       return textResult(
         `Agent ${record.id} (${displayName}) stopped. Previous status: running.\n\n` +
         (preview

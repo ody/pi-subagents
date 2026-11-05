@@ -1,6 +1,3 @@
-// The `Agent` tool definition: parameter schema, rendering hooks, and the
-// execute dispatch over schedule, resume, background and foreground spawns.
-
 import { defineTool, type ExtensionAPI, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getAvailableTypes } from "../agents/agent-types.js";
@@ -43,19 +40,9 @@ export interface AgentToolDeps {
   >>;
 }
 
-/**
- * Define the Agent tool. Returns the bare tool; the caller wraps it for usage
- * reporting and registers it. The description mode and the scheduling switch
- * are read once, here, so call this after persisted settings are applied.
- */
 export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
   const { manager, scheduler, widget, fleet, notifier, startBackgroundResume, reloadCustomAgents, settings } = deps;
 
-  // Schedule param + its guideline are gated on `schedulingEnabled` (read once
-  // at registration; flipping the setting later requires next pi session for
-  // the schema to update). Defining the shape once and spreading it via Partial
-  // preserves Type.Object's inference when present and produces a
-  // `schedule`-free schema when absent — zero LLM-context cost in disabled mode.
   const scheduleParamShape = {
     schedule: Type.Optional(
       Type.String({
@@ -75,9 +62,6 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
     worktreeEnabled: isWorktreeIsolationEnabled(),
   });
 
-  // Held rather than registered inline: the mention clone reuses this exact
-  // definition, so the agent it starts is an ordinary top-level spawn instead
-  // of a second implementation that has to be kept in step with this one.
   const agentTool = defineTool({
     name: SUBAGENT_TOOL_NAMES.AGENT,
     label: "Agent",
@@ -146,21 +130,14 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       ...scheduleParam,
     }),
 
-    // ---- Custom rendering: Claude Code style ----
-
     renderCall: renderAgentCall,
 
-    // Read at render time so toggling the cost setting applies to existing rows.
     renderResult: (result, options, theme, renderContext) =>
       renderAgentResult(result, options, theme, renderContext, settings.showCost),
 
-    // ---- Execute ----
-
     execute: async (toolCallId, params, signal, onUpdate, ctx) => {
-      // Ensure we have UI context for widget rendering
       widget.setUICtx(ctx.ui as UICtx);
 
-      // Reload custom agents so new project/global .md files are picked up without restart
       reloadCustomAgents();
 
       const call = resolveAgentCall(params, ctx, {
@@ -170,10 +147,6 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       if (!call.ok) return textResult(call.message);
       const { runInBackground, outputTranscript } = call;
 
-      // `attachTranscript` is the SOLE gate for the .output transcript (whether
-      // it is on comes from resolveAgentCall) — every
-      // downstream consumer keys off record.outputFile being set, so no spawn
-      // path can re-enable the transcript by accident.
       const attachTranscript = (rec: AgentRecord | undefined, agentId: string): void => {
         if (!rec || !outputTranscript) return;
         rec.outputFile = createOutputFilePath(ctx.cwd, agentId, ctx.sessionManager.getSessionId());
@@ -196,7 +169,6 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
         );
       }
 
-      // Foreground (synchronous) execution — stream progress via onUpdate
       return runForegroundAgent(
         { pi, manager, widget, fleet, settings },
         { ctx, params, signal, onUpdate, call, attachTranscript },

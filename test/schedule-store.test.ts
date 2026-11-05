@@ -1,10 +1,3 @@
-/**
- * schedule-store.test.ts — Persistence + concurrency for ScheduleStore.
- *
- * Mirrors the patterns from pi-chonky-tasks's task-store testing: round-trip
- * load/save, parse-error self-heal, stale-lock recovery.
- */
-
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -52,7 +45,6 @@ describe("ScheduleStore", () => {
     store.add(job);
     expect(store.list()).toEqual([job]);
 
-    // New instance on same file — verifies persistence
     const fresh = new ScheduleStore(join(tmp, "s.json"));
     expect(fresh.list()).toEqual([job]);
   });
@@ -90,7 +82,7 @@ describe("ScheduleStore", () => {
     const job = makeJob({ name: "alpha" });
     store.add(job);
     expect(store.hasName("alpha")).toBe(true);
-    expect(store.hasName("alpha", job.id)).toBe(false);  // excluded — own record
+    expect(store.hasName("alpha", job.id)).toBe(false);
     expect(store.hasName("beta")).toBe(false);
   });
 
@@ -108,7 +100,6 @@ describe("ScheduleStore", () => {
     const store = new ScheduleStore(file);
     expect(store.list()).toEqual([]);
 
-    // Next mutation overwrites the broken file with healthy JSON
     store.add(makeJob({ id: "fresh" }));
     const data = JSON.parse(readFileSync(file, "utf-8"));
     expect(data.version).toBe(1);
@@ -119,12 +110,9 @@ describe("ScheduleStore", () => {
   it("recovers from a stale lock left by a dead process", () => {
     const file = join(tmp, "s.json");
     const lockFile = file + ".lock";
-    // Simulate a stale lock file containing a non-existent PID.
-    // PID 999_999_999 is virtually never a live process — kill -0 returns ESRCH.
     writeFileSync(lockFile, "999999999");
 
     const store = new ScheduleStore(file);
-    // The mutation will detect the stale lock, unlink it, and proceed.
     expect(() => store.add(makeJob())).not.toThrow();
     expect(store.list()).toHaveLength(1);
     expect(existsSync(lockFile)).toBe(false);
@@ -135,7 +123,7 @@ describe("ScheduleStore", () => {
     const a = makeJob({ id: "a" });
     const b = makeJob({ id: "b" });
     store.add(a);
-    store.add(b);  // would hang if the lock from the first add wasn't released
+    store.add(b);
     expect(store.list().map(j => j.id).sort()).toEqual(["a", "b"]);
   });
 
@@ -143,12 +131,10 @@ describe("ScheduleStore", () => {
     const dir = join(tmp, ".pi", "subagent-schedules");
     const file = join(dir, "sess.json");
 
-    // Constructing + read-only use must not touch the filesystem.
     const store = new ScheduleStore(file);
     expect(store.list()).toEqual([]);
     expect(existsSync(dir)).toBe(false);
 
-    // First mutation lazily creates the directory.
     store.add(makeJob());
     expect(existsSync(dir)).toBe(true);
     expect(existsSync(file)).toBe(true);
@@ -169,7 +155,7 @@ describe("ScheduleStore", () => {
     const store = new ScheduleStore(file);
     const job = makeJob();
     store.add(job);
-    store.deleteFileIfEmpty();  // not empty — should be a no-op
+    store.deleteFileIfEmpty();
     expect(existsSync(file)).toBe(true);
 
     store.remove(job.id);

@@ -1,9 +1,3 @@
-// Enforces the complexity ceiling in ADR 0004 (docs/decisions/0004-source-file-structure.md).
-//
-// Biome reports every function over 15 at `info` severity. A function scoring
-// over MAX_SCORE fails here. Refactor it, or record a function judged
-// acceptable with a `biome-ignore` comment and a reason.
-
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -39,7 +33,6 @@ const { offenders, reported } = readReport();
 
 describe(`cognitive complexity ceiling of ${MAX_SCORE} (ADR 0004)`, () => {
   it("parses the Biome report", () => {
-    // Functions between 16 and 30 are reported at info severity, so an empty report means a parse failure.
     expect(reported).toBeGreaterThan(0);
   });
 

@@ -55,11 +55,9 @@ describe("AgentManager — Bug 1 race condition (resultConsumed vs onComplete)",
     });
     const record = manager.getRecord(id)!;
 
-    // Simulate the buggy get_subagent_result: await THEN mark consumed
     await record.promise;
-    record.resultConsumed = true; // too late — onComplete already fired
+    record.resultConsumed = true;
 
-    // onComplete saw resultConsumed as falsy (undefined) — would queue a notification (the bug)
     expect(seenConsumed).toBeFalsy();
   });
 
@@ -76,7 +74,6 @@ describe("AgentManager — Bug 1 race condition (resultConsumed vs onComplete)",
     });
     const record = manager.getRecord(id)!;
 
-    // The fix: pre-mark BEFORE awaiting
     record.resultConsumed = true;
     await record.promise;
 
@@ -113,7 +110,6 @@ describe("AgentManager — Bug 1 race condition (resultConsumed vs onComplete)",
 
     expect(completedRecord).toBeDefined();
     expect(completedRecord!.status).toBe("completed");
-    // resultConsumed is set by spawnAndWait so onComplete skips notifications
     expect(completedRecord!.resultConsumed).toBe(true);
     expect(record).toBe(completedRecord);
   });
@@ -124,19 +120,12 @@ describe("AgentManager — spawnAndWait onSpawned + foreground output file wirin
   afterEach(() => manager?.dispose());
 
   it("fields set on the record in onSpawned are visible when onSessionCreated fires", async () => {
-    // The load-bearing ordering guarantee: onSpawned fires synchronously inside
-    // spawn(), before runAgent's async onSessionCreated fires. index.ts relies on
-    // this to set record.outputFile so streamToOutputFile can pick it up.
     manager = new AgentManager();
     let capturedId: string | undefined;
     let outputFileSeenAtSessionCreated: string | undefined;
 
     vi.mocked(runAgent).mockImplementation(async (_ctx, _type, _prompt, opts: any) => {
       const session = mockSession();
-      // Yield one microtask to mirror real behavior: in production, onSessionCreated
-      // fires async (after network/session setup). onSpawned fires synchronously
-      // inside spawn() before runAgent's promise even starts. This await lets the
-      // remainder of startAgent (record.promise = …, onSpawned?.()) finish first.
       await Promise.resolve();
       opts.onSessionCreated?.(session);
       outputFileSeenAtSessionCreated = capturedId
@@ -200,8 +189,6 @@ describe("AgentManager — spawnAndWait onSpawned + foreground output file wirin
   });
 
   it("onComplete fires on the error path with resultConsumed=true", async () => {
-    // The .then path is covered by the lifecycle-symmetry test above; this guards
-    // the .catch path which lacks try/catch around onComplete (a known asymmetry).
     let completedRecord: AgentRecord | undefined;
     manager = new AgentManager((r) => { completedRecord = r; });
     vi.mocked(runAgent).mockRejectedValue(new Error("agent failed"));
@@ -257,9 +244,6 @@ describe("AgentManager — nested runtime propagation", () => {
   });
 
   it("tells the runner which spawns are nested, so only top-level ones persist", async () => {
-    // `rememberAgents` exists so `@handle` can reopen a conversation. A nested
-    // child never gets a handle, so persisting it writes a session file nothing
-    // can ever reach — the runner needs the fact to decline.
     resolvedRun();
     manager = new AgentManager();
     const child = manager.spawn(mockPi, mockCtx, "scout", "child", {
@@ -294,8 +278,6 @@ describe("AgentManager — nested runtime propagation", () => {
   });
 
   it("starts a nested background child even when the concurrency pool is full", async () => {
-    // A parent holding the only slot and waiting on its own child would
-    // otherwise deadlock: the child can never be drained from the queue.
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
     manager = new AgentManager(undefined, 1);
 
@@ -309,7 +291,6 @@ describe("AgentManager — nested runtime propagation", () => {
       depth: 2,
       parentAgentId: parentId,
     });
-    // A second top-level background agent still queues — the pool is untouched.
     const siblingId = manager.spawn(mockPi, mockCtx, "general-purpose", "sibling", {
       description: "sibling",
       isBackground: true,
@@ -321,7 +302,6 @@ describe("AgentManager — nested runtime propagation", () => {
 
   it("aborts owned children when the parent settles", async () => {
     let finishParent: ((value: any) => void) | undefined;
-    // Children settle on abort, as a real run does when its signal fires.
     const abortable = (_ctx: any, _type: any, _prompt: any, opts: any) =>
       new Promise<any>(resolve => {
         opts.signal?.addEventListener("abort", () =>
@@ -354,14 +334,11 @@ describe("AgentManager — nested runtime propagation", () => {
     await manager.getRecord(parentId)!.promise;
 
     expect(manager.getRecord(runningChild)?.status).toBe("stopped");
-    // The child's own settle path stops the generation below it.
     await manager.getRecord(runningChild)!.promise;
     expect(manager.getRecord(grandchild)?.status).toBe("stopped");
   });
 
   it("aborts children spawned during a resumed turn", async () => {
-    // The spawn settle path already ran, so only resume() can stop what the
-    // resumed turn launched — otherwise the child runs on, invisible.
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "done",
       session: mockSession(),
@@ -454,19 +431,16 @@ describe("AgentManager — Bug 3 clearCompleted", () => {
   });
 
   it("clearCompleted does not remove running or queued agents", async () => {
-    // Use maxConcurrent=0 to keep agents queued, then spawn one running via foreground
     manager = new AgentManager(undefined, 1);
 
-    // Mock runAgent to never resolve (keeps agent "running")
     vi.mocked(runAgent).mockImplementation(
-      () => new Promise(() => {}), // hangs forever
+      () => new Promise(() => {}),
     );
 
     const id1 = manager.spawn(mockPi, mockCtx, "general-purpose", "test1", {
       description: "running agent",
       isBackground: true,
     });
-    // Second agent should be queued (limit=1)
     const id2 = manager.spawn(mockPi, mockCtx, "general-purpose", "test2", {
       description: "queued agent",
       isBackground: true,
@@ -477,11 +451,9 @@ describe("AgentManager — Bug 3 clearCompleted", () => {
 
     manager.clearCompleted();
 
-    // Both should still be present
     expect(manager.getRecord(id1)).toBeDefined();
     expect(manager.getRecord(id2)).toBeDefined();
 
-    // Abort to allow cleanup
     manager.abort(id1);
     manager.abort(id2);
   });
@@ -567,18 +539,11 @@ describe("AgentManager — Bug 3 clearCompleted", () => {
     expect(manager.getRecord(id)!.status).toBe("error");
     expect(manager.getRecord(id)!.resultConsumed).toBeFalsy();
 
-    // Error records with unread results are also preserved — the LLM should
-    // be able to read the error message via get_subagent_result before the
-    // record is evicted.
     manager.clearCompleted(true);
     expect(manager.getRecord(id)).toBeDefined();
   });
 });
 
-// The manager-level usage hook is the ONE place every assistant message is seen
-// exactly once, which is what parent-session accounting (#193) is built on.
-// `record.lifetimeUsage` cannot serve: nested spend is deliberately double-booked
-// into every ancestor so a hidden child shows up on a record a human can see.
 describe("AgentManager — the usage hook fires once per assistant message", () => {
   let manager: AgentManager;
 
@@ -609,9 +574,6 @@ describe("AgentManager — the usage hook fires once per assistant message", () 
   });
 
   it("fires once for a nested child, even though its spend is booked to ancestors too", async () => {
-    // Mimics `nested-tools.ts`: the caller's own onAssistantUsage walks the
-    // ancestor chain. If the hook sat below that walk — or if accounting read
-    // the records it writes — one child message would be billed twice.
     const seen: any[] = [];
     manager = new AgentManager(undefined, undefined, undefined, undefined, (_r, u) => seen.push(u));
     vi.mocked(runAgent).mockImplementation(async (_ctx, _type, _prompt, opts: any) => {
@@ -635,16 +597,10 @@ describe("AgentManager — the usage hook fires once per assistant message", () 
     await manager.getRecord(childId)!.promise;
 
     expect(seen).toEqual([{ input: 10, output: 5, cacheWrite: 0, cost: 0.001 }]);
-    // And here is why the hook has to exist: the parent's record now carries the
-    // child's message on top of its own identical one, so anything that summed
-    // records would bill this session for two messages when one was sent. The
-    // double-booking stays — it is what makes a hidden child visible.
     expect(manager.getRecord(parentId)!.lifetimeUsage).toEqual({ input: 20, output: 10, cacheWrite: 0, cost: 0.002 });
   });
 });
 
-// Eager init removes the optional/required asymmetry that previously required
-// `??=` defaults at the callback sites and `?? 0` / `?? 1` at the read sites.
 describe("AgentManager — lifetime usage + compaction count are eagerly initialized", () => {
   let manager: AgentManager;
 
@@ -654,7 +610,6 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
 
   it("spawn initializes lifetimeUsage to zeros and compactionCount to 0", () => {
     manager = new AgentManager();
-    // Don't resolve the run — we just want to inspect the record at spawn time.
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
 
     const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
@@ -672,11 +627,9 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
   it("onAssistantUsage from runAgent accumulates into record.lifetimeUsage", async () => {
     manager = new AgentManager();
 
-    // Capture the options passed to runAgent so we can drive callbacks
     let captured: any;
     vi.mocked(runAgent).mockImplementation(async (_ctx, _type, _prompt, opts: any) => {
       captured = opts;
-      // Two assistant messages with usage
       opts.onAssistantUsage?.({ input: 100, output: 50, cacheWrite: 10, cost: 0.01 });
       opts.onAssistantUsage?.({ input: 200, output: 80, cacheWrite: 20, cost: 0.02 });
       return { responseText: "done", session: mockSession(), aborted: false, steered: false };
@@ -699,8 +652,6 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     const compactSeen: any[] = [];
 
     vi.mocked(runAgent).mockImplementation(async (_ctx, _type, _prompt, opts: any) => {
-      // Compaction fires while the agent is still running — the record passed to
-      // onCompact should reflect the just-incremented count.
       opts.onCompaction?.({ reason: "threshold", tokensBefore: 12345 });
       opts.onCompaction?.({ reason: "manual", tokensBefore: 22222 });
       return { responseText: "done", session: mockSession(), aborted: false, steered: false };
@@ -726,7 +677,6 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
   it("resume() also accumulates usage and increments compactions on the same record", async () => {
     manager = new AgentManager();
 
-    // First, spawn with a session that resume can latch onto
     const session = { ...mockSession() };
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "first",
@@ -741,11 +691,9 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     });
     await manager.getRecord(id)!.promise;
 
-    // Pre-resume: lifetimeUsage from spawn was zero (mock didn't call onAssistantUsage)
     expect(manager.getRecord(id)!.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0, cost: 0 });
     expect(manager.getRecord(id)!.compactionCount).toBe(0);
 
-    // Now resume — drive callbacks via the mocked resumeAgent
     const { resumeAgent: resumeMock } = await import("../src/session/agent-runner.js");
     vi.mocked(resumeMock).mockImplementation(async (_session, _prompt, opts: any) => {
       opts.onAssistantUsage?.({ input: 70, output: 30, cacheWrite: 5, cost: 0.007 });
@@ -760,9 +708,6 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
   });
 });
 
-// Regression: `isolation: "worktree"` MUST fail loud when the cwd can't host
-// a worktree. The previous behavior silently fell back to the main tree and
-// injected a warning into the LLM's prompt — invisible to the caller.
 describe("AgentManager — isolation: worktree fails loud, no silent fallback", () => {
   let manager: AgentManager;
 
@@ -771,9 +716,6 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
   });
 
   it("awaitStartup rejects when createWorktree returns undefined; no orphan record left behind", async () => {
-    // The failure is async now — the repo copy is an awaited git call — so it
-    // arrives through awaitStartup instead of a throw out of spawn(). Everything
-    // observable about it is unchanged: same message, nothing runs, no record.
     const { createWorktree } = await import("../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce(undefined);
     vi.mocked(runAgent).mockClear();
@@ -785,15 +727,11 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
     });
     await expect(manager.awaitStartup(id)).rejects.toThrow(/isolation: "worktree"/);
 
-    // Cleaned up — no orphan in listAgents()
     expect(manager.listAgents()).toEqual([]);
-    // runAgent never invoked — strict, no silent fallback
     expect(runAgent).not.toHaveBeenCalled();
   });
 
   it("a foreground spawn surfaces the same failure by rejecting spawnAndWait", async () => {
-    // The other half of the strict contract: the top-level Agent tool awaits
-    // this call, and pi only marks a tool result failed when execute throws.
     const { createWorktree } = await import("../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce(undefined);
     vi.mocked(runAgent).mockClear();
@@ -809,9 +747,6 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
   });
 
   it("keeps the concurrency slot accounting straight while the worktree is being created", async () => {
-    // The slot is claimed before the awaited copy, so drainQueue can't read a
-    // stale runningBackground and start every queued agent at once — and it is
-    // given back if the copy fails, or the queue would be stuck forever.
     const { createWorktree } = await import("../src/platform/worktree.js");
     let releaseCopy!: () => void;
     vi.mocked(createWorktree).mockImplementationOnce(
@@ -828,7 +763,6 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
       description: "queued", isBackground: true,
     });
 
-    // The slot is taken while the copy is still in flight.
     expect(manager.getRecord(queuedId)!.status).toBe("queued");
     expect(runAgent).not.toHaveBeenCalled();
 
@@ -836,14 +770,11 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
     await expect(manager.awaitStartup(slowId)).rejects.toThrow(/isolation: "worktree"/);
     await manager.getRecord(queuedId)!.promise;
 
-    // Slot released on failure — the queued agent got to run.
     expect(runAgent).toHaveBeenCalledTimes(1);
     expect(manager.getRecord(queuedId)!.status).toBe("completed");
   });
 
   it("a stop that lands during the copy discards the worktree instead of running", async () => {
-    // Window that did not exist when creation was synchronous: abort() can mark
-    // the record stopped while the repo is still being copied.
     const { createWorktree, cleanupWorktree } = await import("../src/platform/worktree.js");
     let releaseCopy!: () => void;
     const wt = { path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy" };
@@ -869,9 +800,6 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
   });
 });
 
-// The project switch has to bite below the tool boundary: cross-extension RPC
-// forwards its options straight to spawn(), so a schema that omits the
-// isolation parameter can't stop a caller that never saw the schema (#184).
 describe("AgentManager — worktreeIsolation: false refuses worktrees", () => {
   let manager: AgentManager;
 
@@ -891,7 +819,6 @@ describe("AgentManager — worktreeIsolation: false refuses worktrees", () => {
       isolation: "worktree",
     });
 
-    // Downgraded, not rejected — the user opted out, so the call still runs.
     expect(createWorktree).not.toHaveBeenCalled();
     expect(manager.getRecord(id)!.worktree).toBeUndefined();
   });
@@ -902,9 +829,6 @@ describe("AgentManager — worktreeIsolation: false refuses worktrees", () => {
     vi.mocked(isWorktreeIsolationEnabled).mockReturnValue(true);
 
     manager = new AgentManager();
-    // The refusal above is silent, but a real failure still surfaces — through
-    // awaitStartup rather than a throw out of spawn(), since the repo copy is
-    // an awaited git call.
     const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
       description: "test",
       isolation: "worktree",
@@ -922,7 +846,7 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
     manager = new AgentManager();
     const id = manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
       description: "test",
-      cwd: "/", // absolute and always exists
+      cwd: "/",
     });
     await manager.getRecord(id)!.promise;
 
@@ -933,8 +857,6 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
   });
 
   it("without cwd, configCwd stays unset — existing behavior untouched", async () => {
-    // mockClear + lastCall: toHaveBeenCalledWith would scan the file's whole
-    // accumulated call history, where earlier no-cwd spawns already match.
     vi.mocked(runAgent).mockClear();
     resolvedRun();
     manager = new AgentManager();
@@ -976,14 +898,10 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
       cwd: "/",
       isolation: "worktree",
     });
-    // The run only exists once the copy does — the agent is not running when
-    // spawn() returns under worktree isolation.
     await manager.awaitStartup(id);
     await manager.getRecord(id)!.promise;
 
     expect(createWorktree).toHaveBeenCalledWith(mockPi, "/", id);
-    // Worktree wins for the working dir — at workPath, so subdirectory scoping
-    // survives isolation. Config still anchored to the parent.
     expect(runAgent).toHaveBeenCalledWith(
       mockCtx, "general-purpose", "test",
       expect.objectContaining({ cwd: "/wt/copy/packages/api", configCwd: "/tmp", worktreeBase: "/" }),
@@ -992,9 +910,6 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
   });
 
   it("plain worktree (no cwd) keeps the historical root working dir even when workPath differs", async () => {
-    // Parent session sitting in a repo subdirectory: workPath would point at
-    // the copied subdir. Without SpawnOptions.cwd the agent must stay at the
-    // copy's root — moving it would also move .pi config discovery.
     const { createWorktree } = await import("../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce({
       path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy/sub/dir",
@@ -1013,8 +928,6 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
     const opts = vi.mocked(runAgent).mock.lastCall![3];
     expect(opts.cwd).toBe("/wt/copy");
     expect(opts.configCwd).toBeUndefined();
-    // The copy came from the parent session's cwd — that is what the prompt
-    // must name as off-limits (#187).
     expect(opts.worktreeBase).toBe("/tmp");
   });
 
@@ -1056,7 +969,7 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
     manager = new AgentManager();
     expect(() => manager.spawn(mockPi, mockCtx, "general-purpose", "test", {
       description: "test",
-      cwd: fileURLToPath(import.meta.url), // this test file: absolute, exists, not a directory
+      cwd: fileURLToPath(import.meta.url),
     })).toThrow(/not a directory/);
     expect(manager.listAgents()).toEqual([]);
     expect(runAgent).not.toHaveBeenCalled();
@@ -1083,7 +996,6 @@ describe("AgentManager — abort() state machine", () => {
   });
 
   it("removes a queued agent from the queue and marks it stopped", () => {
-    // Concurrency=1: the second background spawn queues behind the first
     manager = new AgentManager(undefined, 1);
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
 
@@ -1098,7 +1010,6 @@ describe("AgentManager — abort() state machine", () => {
     expect(manager.abort(queuedId)).toBe(true);
     expect(queuedRecord.status).toBe("stopped");
     expect(queuedRecord.completedAt).toBeGreaterThan(0);
-    // Aborting again is a no-op — status is no longer "queued" or "running"
     expect(manager.abort(queuedId)).toBe(false);
   });
 
@@ -1139,11 +1050,6 @@ describe("AgentManager — abort() state machine", () => {
   });
 
   it("a user abort survives the agent settling — stays 'stopped', never 'completed'", async () => {
-    // Guards the `if (record.status !== "stopped")` check in the completion
-    // handler: after a user abort, runAgent's promise still settles (here with
-    // aborted:false, as a non-cooperative mock would), and must NOT flip the
-    // user-stopped status back to "completed" — otherwise the parent agent
-    // would read the partial output as a finished result.
     manager = new AgentManager();
     let resolveRun!: (v: unknown) => void;
     vi.mocked(runAgent).mockImplementation(() => new Promise((res) => { resolveRun = res as (v: unknown) => void; }));
@@ -1155,12 +1061,11 @@ describe("AgentManager — abort() state machine", () => {
     expect(manager.abort(id)).toBe(true);
     expect(record.status).toBe("stopped");
 
-    // The agent loop ends and the promise settles "normally".
     resolveRun({ responseText: "partial output", session: mockSession(), aborted: false, steered: false });
     await record.promise;
 
-    expect(record.status).toBe("stopped");        // not overwritten to "completed"
-    expect(record.result).toBe("partial output"); // partial result still captured
+    expect(record.status).toBe("stopped");
+    expect(record.result).toBe("partial output");
   });
 });
 

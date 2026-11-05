@@ -1,12 +1,8 @@
-// Completion notification payload: the task-notification XML and the details
-// block the custom message renderer draws.
-
 import { getStatusNote } from "../tool/status-note.js";
 import type { AgentActivity, AgentRecord, NotificationDetails } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
 import { escapeXml } from "./xml.js";
 
-/** Human-readable status label for agent completion. */
 export function getStatusLabel(status: string, error?: string): string {
   switch (status) {
     case "error": return `Error: ${error ?? "unknown"}`;
@@ -17,7 +13,6 @@ export function getStatusLabel(status: string, error?: string): string {
   }
 }
 
-/** Format a structured task notification matching Claude Code's <task-notification> XML. */
 export function formatTaskNotification(record: AgentRecord, resultMaxLen: number, showCost = false): string {
   const status = getStatusLabel(record.status, record.error);
   const durationMs = record.completedAt ? record.completedAt - record.startedAt : 0;
@@ -25,8 +20,6 @@ export function formatTaskNotification(record: AgentRecord, resultMaxLen: number
   const contextPercent = getSessionContextPercent(record.session);
   const ctxXml = contextPercent !== null ? `<context_percent>${Math.round(contextPercent)}</context_percent>` : "";
   const compactXml = record.compactionCount ? `<compactions>${record.compactionCount}</compactions>` : "";
-  // Only under `showCost`: this is LLM context, and a figure the orchestrator
-  // did not ask for is a figure it may start reporting unprompted.
   const cost = showCost ? getLifetimeCost(record.lifetimeUsage) : 0;
   const costXml = cost > 0 ? `<estimated_cost_usd>${cost.toFixed(4)}</estimated_cost_usd>` : "";
 
@@ -49,7 +42,6 @@ export function formatTaskNotification(record: AgentRecord, resultMaxLen: number
   ].filter(Boolean).join('\n');
 }
 
-/** Build notification details for the custom message renderer. */
 export function buildNotificationDetails(record: AgentRecord, resultMaxLen: number, activity?: AgentActivity): NotificationDetails {
   const totalTokens = getLifetimeTotal(record.lifetimeUsage);
 
@@ -61,9 +53,6 @@ export function buildNotificationDetails(record: AgentRecord, resultMaxLen: numb
     turnCount: activity?.turnCount ?? 0,
     maxTurns: activity?.maxTurns,
     totalTokens,
-    // Carried unconditionally; the renderer gates on the setting. Details are
-    // data, and a notification rendered before a mid-session toggle should not
-    // be stuck with the old answer.
     totalCost: getLifetimeCost(record.lifetimeUsage),
     durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
     outputFile: record.outputFile,

@@ -1,17 +1,3 @@
-/**
- * clear-completed-wiring.test.ts — reproduces issue #108 end-to-end through the
- * REAL session lifecycle handlers + the REAL get_subagent_result tool.
- *
- * Bug: a background agent that has COMPLETED but whose result the LLM hasn't read
- * yet (resultConsumed=false) was wiped by clearCompleted() on session_start /
- * session_before_switch, so the next get_subagent_result returned "Agent not
- * found". The fix makes both handlers call clearCompleted(true), preserving
- * unread records (the 10-minute timer evicts them later).
- *
- * These tests exercise the wiring, not the manager method in isolation: spawn a
- * real background agent, let it complete, fire the real session event, then read
- * it back through the real tool — the exact path the reporter hit.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,8 +13,8 @@ import { runAgent } from "../src/session/agent-runner.js";
 
 function makePi() {
   const tools = new Map<string, any>();
-  const lifecycle = new Map<string, any>(); // pi.on(...) — session_start, session_before_switch, session_shutdown
-  const events = new Map<string, any>(); // pi.events.on(...) — subagents:rpc:*, etc.
+  const lifecycle = new Map<string, any>();
+  const events = new Map<string, any>();
   const pi = {
     registerMessageRenderer: vi.fn(),
     registerTool: vi.fn((t: any) => tools.set(t.name, t)),
@@ -63,14 +49,11 @@ function ctx() {
 }
 
 const textOf = (r: any): string => r.content[0].text;
-// Let runAgent's resolved .then() chain settle so the record reaches "completed".
 const flush = async () => {
   await new Promise((r) => setImmediate(r));
   await new Promise((r) => setImmediate(r));
 };
 
-// Spawn a real background agent and drive it to status "completed" with
-// resultConsumed=false (only get_subagent_result sets that flag for background).
 async function spawnCompletedBackgroundAgent(tools: Map<string, any>): Promise<string> {
   vi.mocked(runAgent).mockResolvedValue({
     responseText: "THE-RESULT-PAYLOAD",
@@ -99,8 +82,6 @@ describe("issue #108: unread completed background agents survive session events"
   let prevHome: string | undefined;
 
   beforeEach(() => {
-    // Hermetic cwd + global dir, scheduling off, so session_start doesn't spin a
-    // scheduler or touch the dev's filesystem — isolates the clearCompleted path.
     tmpDir = mkdtempSync(join(tmpdir(), "pi-108-"));
     agentDir = mkdtempSync(join(tmpdir(), "pi-108-agentdir-"));
     prevAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -129,7 +110,6 @@ describe("issue #108: unread completed background agents survive session events"
     subagentsExtension(pi);
     const id = await spawnCompletedBackgroundAgent(tools);
 
-    // The exact #108 trigger: a session switch fires before the LLM read the result.
     await lifecycle.get("session_before_switch")?.();
 
     const res = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
@@ -160,11 +140,9 @@ describe("issue #108: unread completed background agents survive session events"
     subagentsExtension(pi);
     const id = await spawnCompletedBackgroundAgent(tools);
 
-    // LLM reads the result → resultConsumed=true.
     const first = await tools.get("get_subagent_result").execute("tc-read1", { agent_id: id }, undefined, undefined, ctx());
     expect(textOf(first)).toContain("THE-RESULT-PAYLOAD");
 
-    // Now a session switch SHOULD clean it up (consumed records are not preserved).
     await lifecycle.get("session_before_switch")?.();
 
     const second = await tools.get("get_subagent_result").execute("tc-read2", { agent_id: id }, undefined, undefined, ctx());

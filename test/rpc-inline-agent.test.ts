@@ -1,13 +1,3 @@
-/**
- * rpc-inline-agent.test.ts — an RPC spawn carrying its agent definition inline.
- *
- * Drives the real extension factory, so the whole spawn funnel
- * (`spawnTopLevel` → `spawnResolved` → manager → `runAgent`) is exercised. The
- * claims: an inline config skips type resolution (so `fallbackSubagent: none`
- * cannot reject it, and no fallback can replace it), it reaches `runAgent`
- * intact, and it never enters the agent registry the `Agent` tool and
- * `/agents` read.
- */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -81,8 +71,6 @@ describe("subagents:rpc:spawn with an inline agentConfig", () => {
     process.env.HOME = agentDir;
     prevCwd = process.cwd();
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
-    // Strict dispatch: an unknown type would be refused, so a success below
-    // proves the inline path never consulted the registry.
     writeFileSync(
       join(tmpDir, ".pi", "subagents.json"),
       JSON.stringify({ schedulingEnabled: false, fallbackSubagent: "none" }),

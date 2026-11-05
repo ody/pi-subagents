@@ -1,6 +1,4 @@
 // Size: the menu's item list and the per-setting handler table both enumerate the same 23 settings, so they change together.
-// The `/agents -> Settings` menu: a SettingsList over every setting, plus the
-// typed-input flow for numeric fields.
 
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
@@ -17,9 +15,7 @@ import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
 
 export interface SettingsMenuDeps {
-  /** Live view of the in-memory settings; writes go through `appliers`. */
   settings: Readonly<RuntimeSettings>;
-  /** Only the settings that live in `RuntimeSettings`; the rest are set through their own modules. */
   appliers: Pick<
     SettingsAppliers,
     | "setDefaultJoinMode"
@@ -39,7 +35,6 @@ export interface SettingsMenuDeps {
   manager: Pick<AgentManager, "getMaxConcurrent" | "getMaxConcurrentForeground" | "setMaxConcurrent" | "setMaxConcurrentForeground">;
   scheduler: Pick<SubagentScheduler, "stop">;
   settingsPersist: Pick<SettingsPersistence, "notifyApplied">;
-  /** The live strict-agent-files flag, which `settings.strictAgentFiles` does not track. */
   isStrictAgentFiles: () => boolean;
 }
 
@@ -75,10 +70,6 @@ type SettingId =
   | "toolDescriptionMode" | "reportUsage" | "showCost" | "showModel" | "viewerMarkdown"
   | "fleetView" | "agentMentions" | "rememberAgents" | "widgetMode";
 
-/**
- * One handler per setting id. The Record makes a missing id a type error; the
- * Map makes an unknown id a silent no-op (no prototype keys like "constructor").
- */
 function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Map<string, (value: string) => void> {
   const { settings, appliers, manager, scheduler, settingsPersist } = deps;
   const handlers: Record<SettingId, (value: string) => void> = {
@@ -90,7 +81,6 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
       }
     },
     maxConcurrentForeground: (value) => {
-      // 0 is meaningful here, unlike maxConcurrent above: it means unlimited.
       const n = parseInt(value, 10);
       if (n >= 0) {
         manager.setMaxConcurrentForeground(n);
@@ -148,7 +138,7 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
         ctx.ui.notify(`Scheduling already ${enabled ? "enabled" : "disabled"}.`, "info");
       } else {
         appliers.setSchedulingEnabled(enabled);
-        if (!enabled) scheduler.stop();  // immediate kill — outstanding fires stop ticking
+        if (!enabled) scheduler.stop();
         settingsPersist.notifyApplied(
           ctx,
           `Scheduling ${enabled ? "enabled" : "disabled"}. Tool spec change takes effect on next pi session.`,
@@ -187,8 +177,6 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
     worktreeIsolation: (value) => {
       const enabled = value === "on";
       setWorktreeIsolationEnabled(enabled);
-      // The refusal is live, but the tool schema is built at registration, so
-      // the isolation parameter only appears/disappears next session.
       settingsPersist.notifyApplied(
         ctx,
         `Worktree isolation ${enabled ? "enabled" : "disabled"}. Tool parameter updates on next pi session.`,
@@ -252,7 +240,6 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
   return new Map(Object.entries(handlers));
 }
 
-/** Apply one setting change from the menu. Unknown ids and out-of-range numbers are ignored. */
 export function applySettingValue(ctx: ExtensionCommandContext, deps: SettingsMenuDeps, id: string, value: string): void {
   settingHandlers(ctx, deps).get(id)?.(value);
 }
@@ -266,11 +253,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
     const dmt = readNumericSetting("defaultMaxTurns", manager);
     const gt = readNumericSetting("graceTurns", manager);
     const msd = readNumericSetting("maxSubagentDepth", manager);
-    // Label what unset actually does — it targets general-purpose even when
-    // that is unregistered (the permissive hardcoded tier), so showing "none"
-    // there would advertise strict dispatch for the most permissive state.
-    // `values` still offers only resolvable targets, so the user cannot
-    // persist a fallback that would hard-error on every dispatch.
     const fallbackValue = getFallbackSubagent() ?? "general-purpose";
     const fallbackValues = [...new Set([...getAvailableTypes(), NO_FALLBACK])];
 
@@ -445,8 +427,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
   }
 
   let list: SettingsList;
-  // Track current selection index directly (SettingsList doesn't expose it).
-  // Updated on arrow keys so Enter knows which field is selected immediately.
   let currentIndex = 0;
 
   const result = await ctx.ui.custom<string | undefined>((_tui, _theme, _kb, done) => {
@@ -471,14 +451,12 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       render: (w: number) => container.render(w),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
-        // Track navigation so Enter knows the current field
         if (matchesKey(data, "up")) {
           currentIndex = Math.max(0, currentIndex - 1);
         } else if (matchesKey(data, "down")) {
           currentIndex = Math.min(items.length - 1, currentIndex + 1);
         }
 
-        // Enter on numeric field → close and prompt for typed input
         if (matchesKey(data, Key.enter) && isNumericSettingId(items[currentIndex].id)) {
           done(items[currentIndex].id);
           return;
@@ -488,13 +466,10 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
     };
   });
 
-  // If a numeric field ID was returned, prompt for typed input
   if (isNumericSettingId(result)) {
     const current = readNumericSetting(result, manager);
     const label = NUMERIC_PROMPT_LABELS[result];
 
-    // Loop until user enters a valid integer or cancels (Esc / null).
-    // Silently trims whitespace; rejects non-numeric input by re-prompting.
     let input: string | undefined = await ctx.ui.input(label, current);
     while (input != null) {
       const trimmed = input.trim();
@@ -504,7 +479,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         await showSettings(ctx, deps);
         return;
       }
-      // Invalid — re-prompt with the user's last entry so they can edit it
       input = await ctx.ui.input(label, trimmed);
     }
   }
