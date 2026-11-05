@@ -4,17 +4,17 @@
 
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
-import type { AgentManager } from "../agent-manager.js";
-import { getAvailableTypes, getFallbackSubagent, isDefaultsDisabled, NO_FALLBACK, setFallbackSubagent } from "../agent-types.js";
-import { isScopeModelsEnabled, setScopeModelsEnabled } from "../model-scope.js";
-import { getMaxSubagentDepth, setMaxSubagentDepth } from "../nested-tools.js";
-import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../output-file.js";
-import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../runner-defaults.js";
-import type { RuntimeSettings, SettingsPersistence } from "../runtime-settings.js";
-import type { SubagentScheduler } from "../schedule.js";
-import type { SettingsAppliers, ToolDescriptionMode } from "../settings.js";
+import { getAvailableTypes, getFallbackSubagent, isDefaultsDisabled, NO_FALLBACK, setFallbackSubagent } from "../agents/agent-types.js";
+import { isScopeModelsEnabled, setScopeModelsEnabled } from "../config/model-scope.js";
+import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../config/runner-defaults.js";
+import type { RuntimeSettings, SettingsPersistence } from "../config/runtime-settings.js";
+import type { SettingsAppliers, ToolDescriptionMode } from "../config/settings.js";
+import type { AgentManager } from "../manager/agent-manager.js";
+import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../platform/output-file.js";
+import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../platform/worktree.js";
+import { getMaxSubagentDepth, setMaxSubagentDepth } from "../tool/nested-tools.js";
+import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
-import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../worktree.js";
 
 export interface SettingsMenuDeps {
   /** Live view of the in-memory settings; writes go through `appliers`. */

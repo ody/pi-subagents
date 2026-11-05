@@ -5,12 +5,12 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import { type ExtensionAPI, type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
-import { disableInContent, enableInContent, isEmptyStub, locateAgentFile, personalAgentsDir, projectAgentsDir, serializeAgentFile } from "../agent-file-toggle.js";
-import type { AgentManager } from "../agent-manager.js";
-import { getAgentConfig, getAllTypes } from "../agent-types.js";
-import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../model-resolver.js";
-import type { RuntimeSettings } from "../runtime-settings.js";
-import type { SubagentScheduler } from "../schedule.js";
+import { disableInContent, enableInContent, isEmptyStub, locateAgentFile, personalAgentsDir, projectAgentsDir, serializeAgentFile } from "../agents/agent-file-toggle.js";
+import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
+import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../config/model-resolver.js";
+import type { RuntimeSettings } from "../config/runtime-settings.js";
+import type { AgentManager } from "../manager/agent-manager.js";
+import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentConfig, AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { formatDuration, getDisplayName } from "./agent-format.js";
 import { buildAgentTree } from "./agent-tree.js";

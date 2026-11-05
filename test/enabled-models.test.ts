@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "../src/enabled-models.js";
+import { type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "../src/config/enabled-models.js";
 
 /** Mock models matching typical registry shape. */
 const MODELS = [

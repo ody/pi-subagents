@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerAgents } from "../src/agent-types.js";
+import { registerAgents } from "../src/agents/agent-types.js";
 import subagentsExtension from "../src/index.js";
 
 function makePi() {

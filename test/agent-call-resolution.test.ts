@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { detailBaseFor, resolveAgentCall } from "../src/agent-call-resolution.js";
-import { registerAgents, setFallbackSubagent } from "../src/agent-types.js";
+import { registerAgents, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { detailBaseFor, resolveAgentCall } from "../src/tool/agent-call-resolution.js";
 import type { AgentRecord } from "../src/types.js";
 
 const base = {

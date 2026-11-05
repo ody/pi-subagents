@@ -14,14 +14,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn() };
 });
 
-import { runAgent } from "../src/agent-runner.js";
-import { getAllTypes, getAvailableTypes, NO_FALLBACK, registerAgents, setFallbackSubagent } from "../src/agent-types.js";
+import { getAllTypes, getAvailableTypes, NO_FALLBACK, registerAgents, setFallbackSubagent } from "../src/agents/agent-types.js";
 import subagentsExtension from "../src/index.js";
+import { runAgent } from "../src/session/agent-runner.js";
 
 function makePi() {
   const tools = new Map<string, any>();

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { isSymlink, isUnsafeName, preloadSkills, safeReadFile } from "../src/skill-loader.js";
+import { isSymlink, isUnsafeName, preloadSkills, safeReadFile } from "../src/session/skill-loader.js";
 
 describe("preloadSkills", () => {
   let tmpDir: string;

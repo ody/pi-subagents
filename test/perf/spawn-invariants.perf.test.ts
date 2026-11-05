@@ -15,13 +15,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let loads = 0;
 
-vi.mock("../../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/agent-runner.js")>("../../src/agent-runner.js");
+vi.mock("../../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/session/agent-runner.js")>("../../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
 });
 
-vi.mock("../../src/custom-agents.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/custom-agents.js")>("../../src/custom-agents.js");
+vi.mock("../../src/agents/custom-agents.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/agents/custom-agents.js")>("../../src/agents/custom-agents.js");
   return {
     ...actual,
     loadCustomAgents: (...args: Parameters<typeof actual.loadCustomAgents>) => {
@@ -31,9 +31,9 @@ vi.mock("../../src/custom-agents.js", async () => {
   };
 });
 
-import { runAgent } from "../../src/agent-runner.js";
-import { registerAgents } from "../../src/agent-types.js";
+import { registerAgents } from "../../src/agents/agent-types.js";
 import subagentsExtension from "../../src/index.js";
+import { runAgent } from "../../src/session/agent-runner.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi } from "../helpers/boot-extension.js";
 
 let hermetic: Hermetic;

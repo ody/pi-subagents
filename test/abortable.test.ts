@@ -1,4 +1,4 @@
-// src/abortable.ts was the only module in the repo that no test imported. It is
+// src/tool/abortable.ts was the only module in the repo that no test imported. It is
 // reached indirectly through the get_subagent_result wait paths, but its two
 // real invariants were never asserted:
 //
@@ -22,7 +22,7 @@
 // is why they are asserted directly rather than through a consumer.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { abortable } from "../src/abortable.js";
+import { abortable } from "../src/tool/abortable.js";
 
 /**
  * Collect unhandled rejections for the duration of a block.

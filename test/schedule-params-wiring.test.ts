@@ -15,14 +15,14 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn() };
 });
 
+import { getDefaultMaxTurns, normalizeMaxTurns } from "../src/config/runner-defaults.js";
 import subagentsExtension from "../src/index.js";
-import { getDefaultMaxTurns, normalizeMaxTurns } from "../src/runner-defaults.js";
-import { resolveStorePath, ScheduleStore } from "../src/schedule-store.js";
+import { resolveStorePath, ScheduleStore } from "../src/triggers/schedule-store.js";
 import type { ScheduledSubagent } from "../src/types.js";
 import { ctx, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 

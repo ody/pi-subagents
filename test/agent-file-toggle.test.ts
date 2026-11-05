@@ -1,10 +1,10 @@
 // The `/agents` enable/disable operations edit an agent .md file's frontmatter.
-// The LOAD side (src/custom-agents.ts) parses that frontmatter with a real YAML
+// The LOAD side (src/agents/custom-agents.ts) parses that frontmatter with a real YAML
 // parser, so `enabled: false` is honored wherever it appears in the block. The
 // WRITE side here must agree — README.md documents `enabled: false` as a field
 // users hand-write, and a hand-authored file puts it wherever the author likes.
 //
-// These live in src/agent-file-toggle.ts rather than inside the `/agents`
+// These live in src/agents/agent-file-toggle.ts rather than inside the `/agents`
 // command closure because `registerCommand` is mocked in every wiring test,
 // which is why none of this had coverage.
 
@@ -21,8 +21,8 @@ import {
   isDisabledContent,
   isEmptyStub,
   locateAgentFile,
-} from "../src/agent-file-toggle.js";
-import { parseAgentFrontmatter } from "../src/custom-agents.js";
+} from "../src/agents/agent-file-toggle.js";
+import { parseAgentFrontmatter } from "../src/agents/custom-agents.js";
 
 /** What the loader concludes about a file, via the same parser it really uses. */
 function loaderSeesDisabled(content: string): boolean {

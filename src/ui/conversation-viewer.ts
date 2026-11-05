@@ -8,10 +8,10 @@
 
 import { type AgentSession, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { type Component, Input, Markdown, type MarkdownOptions, type MarkdownTheme, matchesKey, type TUI, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
-import { renderAgentName } from "../agent-color.js";
-import { extractText } from "../context.js";
+import { extractText } from "../session/context.js";
 import type { AgentActivity, AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
+import { renderAgentName } from "./agent-color.js";
 import type { Theme } from "./agent-format.js";
 import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel } from "./agent-format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";

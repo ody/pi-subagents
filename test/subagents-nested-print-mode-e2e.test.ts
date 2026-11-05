@@ -18,8 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Context, ToolCall } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { registerAgents } from "../src/agent-types.js";
-import { loadCustomAgents } from "../src/custom-agents.js";
+import { registerAgents } from "../src/agents/agent-types.js";
+import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import {
   agentCall,
   type FauxResponder,

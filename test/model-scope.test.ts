@@ -1,4 +1,4 @@
-// src/model-scope.ts had no test file. Its `error` verdict was reachable only
+// src/config/model-scope.ts had no test file. Its `error` verdict was reachable only
 // indirectly, through one nested-tools case; the `warn` verdict — the whole
 // reason the policy is a three-way split rather than a boolean — was never
 // exercised at all.
@@ -13,8 +13,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ModelRegistryRef } from "../src/enabled-models.js";
-import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "../src/model-scope.js";
+import type { ModelRegistryRef } from "../src/config/enabled-models.js";
+import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
 
 const MODELS = [
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },

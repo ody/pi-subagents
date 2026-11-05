@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildAgentToolDescription, firstSentence, formatToolsSuffix } from "../src/agent-tool-description.js";
-import { BUILTIN_TOOL_NAMES } from "../src/agent-types.js";
-import { getModelLabelFromConfig } from "../src/model-resolver.js";
+import { BUILTIN_TOOL_NAMES } from "../src/agents/agent-types.js";
+import { getModelLabelFromConfig } from "../src/config/model-resolver.js";
+import { buildAgentToolDescription, firstSentence, formatToolsSuffix } from "../src/tool/agent-tool-description.js";
 import type { AgentConfig } from "../src/types.js";
 
 const cfg = (over: Partial<AgentConfig>) => over as AgentConfig;

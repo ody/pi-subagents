@@ -201,7 +201,9 @@ No turn is ever spent in the main conversation, and nothing about the mention en
 
 #### Starting a new agent
 
-Claude Code does not start a mentioned agent itself. `@agent-<type>` becomes an *attachment* appending a `<system-reminder>` to your prompt — "the user has expressed a desire to invoke the agent X; please invoke the agent appropriately, passing in the required context to it" — and the main model makes the tool call. There is no tool forcing and no allowed-tools narrowing: the mention constrains *which* agent, not what it is told. So the model writes the agent's prompt, giving it the conversation context a cold spawn lacks.
+Claude Code does not start a mentioned agent itself. `@agent-<type>` becomes an *attachment* appending a `<system-reminder>` to your prompt — "the user has expressed a desire to invoke the agent X; please invoke the agent appropriately, passing in the required context to it" — and the main model makes the tool call. There is no tool forcing and no allowed-tools narrowing: the mention constrains *which* agent, not what it is told.
+
+So the model writes the agent's prompt, giving it the conversation context a cold spawn lacks.
 
 The cost is a visible turn — the model's reasoning and its tool block, narrating a decision you already made by typing the handle. This extension keeps the mechanism and moves it off-screen. The conversation is copied into a throwaway in-memory session, that clone takes the turn holding only the `Agent` tool, and what it starts is an ordinary top-level agent:
 
@@ -273,7 +275,9 @@ Four rules decide what a handle can name:
 
 Suggestions list live agents first, then resumable ones, then startable types — and then pi's own file rows, in the same popup: `@` stays the file picker it always was, and the handles are added to it rather than replacing it. Disable the whole thing via `/agents → Settings → Agent mentions`.
 
-A `direct`-mode start takes the non-tool spawn path shared with the scheduler and cross-extension RPC, so — like those — it writes no `.output` transcript. That is the trade for skipping the model call: a `model`-mode start goes through the real `Agent` tool and keeps everything. Live tool activity and the turn counter are *not* part of that trade — a direct start renders them like any other agent. A mention-*resumed* agent goes through the full resume wiring and keeps both in either mode.
+A `direct`-mode start takes the non-tool spawn path shared with the scheduler and cross-extension RPC, so — like those — it writes no `.output` transcript. That is the trade for skipping the model call: a `model`-mode start goes through the real `Agent` tool and keeps everything.
+
+Live tool activity and the turn counter are *not* part of that trade — a direct start renders them like any other agent. A mention-*resumed* agent goes through the full resume wiring and keeps both in either mode.
 
 ### Result rendering
 
@@ -804,7 +808,9 @@ Agents that finish in the background have no tool result of their own to ride on
 
 When several background agents finish together, their notification is topped with the batch total (`3 agents · 45.1k token · ~$0.042`) so the figures don't have to be added up by hand.
 
-The `~` marks it as pi's estimate rather than a billed figure. **A cost is shown only when there is one to show:** a model pi has no pricing data for reports zero, and `$0.00` beside its tokens would say the run was measured and found free rather than never measured — so nothing is printed at all, on every surface. For the same reason a real cost too small to render reads `<$0.0001`. Figures keep cents at minimum and four decimals at most (`~$0.0042`, `~$0.05`, `~$1.24`) — rounding everything to cents would print the same number for runs that differed fourfold.
+The `~` marks it as pi's estimate rather than a billed figure. **A cost is shown only when there is one to show:** a model pi has no pricing data for reports zero, and `$0.00` beside its tokens would say the run was measured and found free rather than never measured — so nothing is printed at all, on every surface.
+
+For the same reason a real cost too small to render reads `<$0.0001`. Figures keep cents at minimum and four decimals at most (`~$0.0042`, `~$0.05`, `~$1.24`) — rounding everything to cents would print the same number for runs that differed fourfold.
 
 Independent of `reportUsage`: this one is what you read, that one is what your session counts. Toggle via `/agents → Settings → Show cost`; applied live.
 
@@ -836,11 +842,17 @@ assistant  assistant text rendered; tool results verbatim and dim   (default)
 all        tool results rendered too
 ```
 
-Scoped rather than all-or-nothing because the two kinds of content have different contracts. Assistant text *is* Markdown — the model writes it that way, and the viewer was the only surface showing its source. A tool result is whatever bytes the tool produced, and a Markdown pass over one rewrites things that occur constantly in real output: `# section` in a shell script loses its `#`, a `---` line is swallowed as a setext heading, indented output is re-fenced, and `| a | b |` is redrawn as a box-drawing table. Each of those reads as the *tool* having misbehaved, which is why `all` is opt-in.
+Scoped rather than all-or-nothing because the two kinds of content have different contracts. Assistant text *is* Markdown — the model writes it that way, and the viewer was the only surface showing its source.
+
+A tool result is whatever bytes the tool produced, and a Markdown pass over one rewrites things that occur constantly in real output: `# section` in a shell script loses its `#`, a `---` line is swallowed as a setext heading, indented output is re-fenced, and `| a | b |` is redrawn as a box-drawing table. Each of those reads as the *tool* having misbehaved, which is why `all` is opt-in.
 
 Two rewrites are suppressed outright rather than left to the mode, because they change *data* rather than layout: ordered-list markers keep their source numbering (`3) 7) 9)` stays, instead of being renumbered `3. 4. 5.`) and backslash escapes are not normalised.
 
-Turn `all` on for tools that genuinely emit Markdown, and off again for a diff or a log. `m` in the viewer cycles the three and persists the choice, so the key and this setting are the same value — the footer shows which is in force as `m raw` / `m md` / `m md+`. Code fences are syntax-highlighted using pi's own Markdown theme — which is also why fenced code is the one part of a result *not* dimmed under `all`; result prose still is, so the transcript keeps its hierarchy. Applied live; also settable from `/agents → Settings → Viewer markdown`.
+Turn `all` on for tools that genuinely emit Markdown, and off again for a diff or a log. `m` in the viewer cycles the three and persists the choice, so the key and this setting are the same value — the footer shows which is in force as `m raw` / `m md` / `m md+`.
+
+Code fences are syntax-highlighted using pi's own Markdown theme. That is also why fenced code is the one part of a result *not* dimmed under `all`. Result prose still is, so the transcript keeps its hierarchy.
+
+Applied live. Also settable from `/agents → Settings → Viewer markdown`.
 
 ### Tool description
 
@@ -1006,7 +1018,9 @@ const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply) => {
 pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
 ```
 
-`abort()` itself only fires the run's `AbortController` and marks the record `"stopped"`. Releasing its pool slot, stopping any nested children, flushing its output file, and firing the completion notification happen once the run's own promise settles — which, for an agent wedged inside a tool call that never returns, might be never. A grace-period timer now forces that settle tail after a few seconds if the real one hasn't happened, so a stop through this channel reliably frees its slot and notifies even for a wedged agent, rather than leaking the slot and withholding the notification forever. A responsive agent settles through its own promise well inside that window and never touches the forced path.
+`abort()` itself only fires the run's `AbortController` and marks the record `"stopped"`. Releasing its pool slot, stopping any nested children, flushing its output file, and firing the completion notification happen once the run's own promise settles — which, for an agent wedged inside a tool call that never returns, might be never.
+
+A grace-period timer now forces that settle tail after a few seconds if the real one hasn't happened, so a stop through this channel reliably frees its slot and notifies even for a wedged agent, rather than leaking the slot and withholding the notification forever. A responsive agent settles through its own promise well inside that window and never touches the forced path.
 
 ### Consume
 
@@ -1111,76 +1125,81 @@ docs/                 # Long-form guides (README links out to them)
 test/                 # vitest suite; e2e/ and perf/ subdirectories
 src/
   index.ts            # Extension entry: builds shared state and wires the feature modules
-  mention-input.ts    # `@handle message` input hook: steer, resume or start the named agent
-  tool-result.ts      # Tool result text shape and AgentDetails building
-  activity-tracker.ts # Spawn callbacks that only repaint
-  notification-format.ts # Task-notification XML and notification details
-  lifecycle-events.ts # `subagents:*` event payload shape
   types.ts            # Type definitions (AgentConfig, AgentRecord, etc.)
-
-  # Agent registry
-  default-agents.ts   # Embedded default agent configs (general-purpose, Explore, Plan)
-  custom-agents.ts    # Load user-defined agents from .pi/agents/, .agents/agents/, global agents, and skill-embedded agents
-  agent-types.ts      # Unified agent registry (defaults + user), tool name resolution
-  agent-file-toggle.ts # Locate/edit an agent's .md: enabled: toggle, eject to frontmatter
-  agent-color.ts      # Claude Code/Agency Agents name color parsing and badge rendering
-
-  # Execution
-  agent-runner.ts     # Session creation, execution, graceful max_turns, steer/resume
-  extension-scope.ts  # Extension matching, extensions:/ext: parsing, live tool-scope enforcement
-  runner-defaults.ts  # Process-wide run defaults: max turns, grace turns, rememberAgents
-  session-text.ts     # Read response text, final-turn failure and transcript from a session
-  agent-manager.ts    # Agent lifecycle, concurrency queue, completion notifications
-  agent-start.ts      # Agent startup, worktree setup, and run settlement
-  agent-spawn.ts      # Spawn records and the inline spawn contract
-  agent-resume.ts     # Inline and detached agent-session resumes
-  agent-retention.ts  # Completed record eviction and resumable handles
-  agent-manager-rules.ts # Spawn eligibility and spawn input validation
-  agent-session-shutdown.ts # Graceful shutdown of a child AgentSession
-  nested-tools.ts     # Delegation tools handed to subagents (nested spawn/collect/steer)
-  child-context.ts    # AsyncLocalStorage flag marking work done for a child session
-  abortable.ts        # Race a wait against Esc without cancelling the background child
-  group-join.ts       # Group join manager: batched completion notifications with timeout
-  completion-notifier.ts # When completion nudges fire: hold window, group join, batching
-  background-resume.ts # Detached resume wiring: transcript, tracking, batching, UI refresh
-  status-note.ts      # Honest status note + salvaged partial output for non-normal outcomes
+  lifecycle-events.ts # `subagents:*` event payload shape
   usage.ts            # Token usage shapes, accumulators, session-stats readers, withUsageReporting
-  agent-call-resolution.ts # Agent tool params -> resolved invocation (dispatch, model, scope, details base)
-  agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
-  agent-tool-description.ts # Agent tool description text sent to the model (full, compact, custom)
-  agent-tool-render.ts   # Agent tool call/result rendering and the running-status block
-  agent-tool.ts       # Agent tool definition: schema, rendering hooks, execute dispatch
-  agent-tool-foreground.ts # Foreground Agent run: blocking spawn with streamed progress
-  agent-tool-background.ts # Background Agent spawn: detached start, batch join, launch text
-  agent-tool-resume.ts # Agent resume by ID, detached or blocking
-  agent-tool-schedule.ts # Scheduled Agent calls: parameter conflict checks and job registration
 
-  # Invocation surface
-  invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
-  model-resolver.ts   # Model resolution: exact provider/modelId with fuzzy fallback
-  enabled-models.ts   # Read pi's enabledModels settings (project over global)
-  model-scope.ts      # scopeModels allowlist policy, shared by top-level and nested tools
-  mention.ts          # `@handle message` grammar: suggestion triggers and send parsing
-  mention-clone.ts    # Run a mention's turn in a cloned conversation, off the main chat
-  cross-extension-rpc.ts # RPC handlers for cross-extension spawn/ping via pi.events
-  spawn-funnel.ts     # Trust boundary for programmatic spawns (RPC, mentions, registry)
-  thinking-levels.ts  # Advertised thinking levels, shared by the Agent tool and the create wizard
+  agents/             # What an agent is: definitions, registry, per-agent file edits
+    default-agents.ts # Embedded default agent configs (general-purpose, Explore, Plan)
+    custom-agents.ts  # Load user-defined agents from .pi/agents/, .agents/agents/, global agents, and skill-embedded agents
+    agent-types.ts    # Unified agent registry (defaults + user), tool name resolution
+    agent-file-toggle.ts # Locate/edit an agent's .md: enabled: toggle, eject to frontmatter
 
-  # Scheduling
-  schedule.ts         # SubagentScheduler: cron / +10m / interval / ISO dispatch
-  schedule-store.ts   # PID-locked, session-scoped, atomic schedule persistence
+  session/            # One child session: how it is built, run, and read
+    agent-runner.ts   # Session creation, execution, graceful max_turns, steer/resume
+    session-text.ts   # Read response text, final-turn failure and transcript from a session
+    extension-scope.ts # Extension matching, extensions:/ext: parsing, live tool-scope enforcement
+    child-context.ts  # AsyncLocalStorage flag marking work done for a child session
+    context.ts        # Parent conversation context for inherit_context
+    prompts.ts        # Config-driven system prompt builder
+    skill-loader.ts   # Preload skills (Pi-standard + Agent Skills spec layouts)
+    agent-session-shutdown.ts # Graceful shutdown of a child AgentSession
 
-  # Context & environment
-  skill-loader.ts     # Preload skills (Pi-standard + Agent Skills spec layouts)
-  output-file.ts      # Streaming output file transcripts for agent sessions
-  worktree.ts         # Git worktree isolation (create, cleanup, prune)
-  prompts.ts          # Config-driven system prompt builder
-  context.ts          # Parent conversation context for inherit_context
-  settings.ts         # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
-  runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
-  env.ts              # Environment detection (git, platform)
+  manager/            # Agent records over time: spawn, queue, settle, complete
+    agent-manager.ts  # Agent lifecycle, concurrency queue, completion notifications
+    agent-manager-rules.ts # Spawn eligibility and spawn input validation
+    agent-spawn.ts    # Spawn records and the inline spawn contract
+    agent-start.ts    # Agent startup, worktree setup, and run settlement
+    agent-resume.ts   # Inline and detached agent-session resumes
+    agent-retention.ts # Completed record eviction and resumable handles
+    background-resume.ts # Detached resume wiring: transcript, tracking, batching, UI refresh
+    group-join.ts     # Group join manager: batched completion notifications with timeout
+    completion-notifier.ts # When completion nudges fire: hold window, group join, batching
+    notification-format.ts # Task-notification XML and notification details
+    xml.ts            # Escaping for the task-notification XML payloads
+
+  tool/               # Model-facing tool surface: the Agent tool, child tools, result rendering
+    agent-tool.ts     # Agent tool definition: schema, rendering hooks, execute dispatch
+    agent-tool-description.ts # Agent tool description text sent to the model (full, compact, custom)
+    agent-tool-foreground.ts # Foreground Agent run: blocking spawn with streamed progress
+    agent-tool-background.ts # Background Agent spawn: detached start, batch join, launch text
+    agent-tool-resume.ts # Agent resume by ID, detached or blocking
+    agent-tool-schedule.ts # Scheduled Agent calls: parameter conflict checks and job registration
+    agent-tool-render.ts # Agent tool call/result rendering and the running-status block
+    agent-control-tools.ts # get_subagent_result, steer_subagent, stop_subagent tools
+    agent-call-resolution.ts # Agent tool params -> resolved invocation (dispatch, model, scope, details base)
+    invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
+    tool-result.ts    # Tool result text shape and AgentDetails building
+    nested-tools.ts   # Delegation tools handed to subagents (nested spawn/collect/steer)
+    abortable.ts      # Race a wait against Esc without cancelling the background child
+    status-note.ts    # Honest status note + salvaged partial output for non-normal outcomes
+    activity-tracker.ts # Spawn callbacks that only repaint
+
+  triggers/           # Every path that starts an agent without the Agent tool
+    mention.ts        # `@handle message` grammar: suggestion triggers and send parsing
+    mention-input.ts  # `@handle message` input hook: steer, resume or start the named agent
+    mention-clone.ts  # Run a mention's turn in a cloned conversation, off the main chat
+    cross-extension-rpc.ts # RPC handlers for cross-extension spawn/ping via pi.events
+    spawn-funnel.ts   # Trust boundary for programmatic spawns (RPC, mentions, registry)
+    schedule.ts       # SubagentScheduler: cron / +10m / interval / ISO dispatch
+    schedule-store.ts # PID-locked, session-scoped, atomic schedule persistence
+
+  config/             # How a run is configured: settings, defaults, model choice
+    settings.ts       # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
+    runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
+    runner-defaults.ts # Process-wide run defaults: max turns, grace turns, rememberAgents
+    model-resolver.ts # Model resolution: exact provider/modelId with fuzzy fallback
+    enabled-models.ts # Read pi's enabledModels settings (project over global)
+    model-scope.ts    # scopeModels allowlist policy, shared by top-level and nested tools
+    thinking-levels.ts # Advertised thinking levels, shared by the Agent tool and the create wizard
+
+  platform/           # Process and filesystem facades
+    env.ts            # Environment detection (git, platform)
+    worktree.ts       # Git worktree isolation (create, cleanup, prune)
+    output-file.ts    # Streaming output file transcripts for agent sessions
 
   ui/
+    agent-color.ts        # Claude Code/Agency Agents name color parsing and badge rendering
     agent-widget.ts       # Persistent widget: spinners, activity, status icons, theming
     widget-layout.ts      # Pure widget body layout: overflow prioritization and tree-connector fix-up
     agent-format.ts       # Display helpers: token/cost/duration formatters, activity text, Theme and AgentDetails types

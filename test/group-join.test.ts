@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GroupJoinManager } from "../src/group-join.js";
+import { GroupJoinManager } from "../src/manager/group-join.js";
 import type { AgentRecord } from "../src/types.js";
 
 function makeRecord(id: string, overrides: Partial<AgentRecord> = {}): AgentRecord {

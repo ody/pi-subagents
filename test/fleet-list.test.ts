@@ -1,7 +1,7 @@
 import { Editor, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentManager } from "../src/agent-manager.js";
-import { registerAgents } from "../src/agent-types.js";
+import { registerAgents } from "../src/agents/agent-types.js";
+import type { AgentManager } from "../src/manager/agent-manager.js";
 import type { AgentActivity, AgentConfig, AgentRecord, ViewerMarkdownMode } from "../src/types.js";
 import { getDisplayName } from "../src/ui/agent-format.js";
 import {

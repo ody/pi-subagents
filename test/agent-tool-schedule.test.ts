@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scheduleConflict } from "../src/agent-tool-schedule.js";
+import { scheduleConflict } from "../src/tool/agent-tool-schedule.js";
 
 const on = { schedulingEnabled: true, schedulerActive: true };
 

@@ -51,7 +51,7 @@ vi.mock("@earendil-works/pi-coding-agent", async () => {
   };
 });
 
-import { runMentionClone } from "../../src/mention-clone.js";
+import { runMentionClone } from "../../src/triggers/mention-clone.js";
 import { fauxModelBackend } from "../helpers/faux-model-backend.js";
 import { registerFauxProvider } from "../helpers/pi-ai.js";
 

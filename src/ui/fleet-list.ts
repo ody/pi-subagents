@@ -12,10 +12,10 @@
  */
 
 import { Editor, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { hasAgentBadge, renderAgentName } from "../agent-color.js";
-import type { AgentManager } from "../agent-manager.js";
+import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal } from "../usage.js";
+import { hasAgentBadge, renderAgentName } from "./agent-color.js";
 import { formatCost, type Theme } from "./agent-format.js";
 import { type AgentTreeNode, agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey } from "./agent-tree.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";

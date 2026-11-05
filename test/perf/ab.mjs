@@ -29,6 +29,10 @@
  *    benchmark file drive an older constructor. A benchmark that names a symbol
  *    the base lacks fails only that task, and is reported as "n/a" rather than
  *    taking the run down.
+ *  - The copied benchmarks import `src/` by its current paths. A base ref from
+ *    before the `src/` directory grouping (ADR 0006) lacks those paths, so
+ *    every bench that imports a moved module fails there. Use a base ref at or
+ *    after that move.
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";

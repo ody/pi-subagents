@@ -4,11 +4,11 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { buildNewAgentFile, personalAgentsDir, projectAgentsDir } from "../agent-file-toggle.js";
-import type { AgentManager } from "../agent-manager.js";
-import { BUILTIN_TOOL_NAMES } from "../agent-types.js";
-import { THINKING_LEVELS } from "../thinking-levels.js";
-import { isWorktreeIsolationEnabled } from "../worktree.js";
+import { buildNewAgentFile, personalAgentsDir, projectAgentsDir } from "../agents/agent-file-toggle.js";
+import { BUILTIN_TOOL_NAMES } from "../agents/agent-types.js";
+import { THINKING_LEVELS } from "../config/thinking-levels.js";
+import type { AgentManager } from "../manager/agent-manager.js";
+import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
 
 export interface CreateWizardDeps {
   pi: ExtensionAPI;

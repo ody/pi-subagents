@@ -15,20 +15,20 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../src/agent-runner.js")>("../src/agent-runner.js");
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
 });
 
 // The clone forks a real pi session and runs a real model turn. What this file
 // pins is the wiring around it — when it is called, with what, and what happens
 // when it comes back empty. mention-clone.test.ts covers the clone itself.
-vi.mock("../src/mention-clone.js", () => ({ runMentionClone: vi.fn() }));
+vi.mock("../src/triggers/mention-clone.js", () => ({ runMentionClone: vi.fn() }));
 
-import { resumeAgent, runAgent } from "../src/agent-runner.js";
+import { getDefaultMaxTurns, setDefaultMaxTurns } from "../src/config/runner-defaults.js";
 import subagentsExtension from "../src/index.js";
-import { runMentionClone } from "../src/mention-clone.js";
-import { getDefaultMaxTurns, setDefaultMaxTurns } from "../src/runner-defaults.js";
+import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
+import { runMentionClone } from "../src/triggers/mention-clone.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 
 let hermetic: Hermetic | undefined;

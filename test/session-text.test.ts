@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectResponseText, finalTurnError, getAgentConversation, getLastAssistantText } from "../src/session-text.js";
+import { collectResponseText, finalTurnError, getAgentConversation, getLastAssistantText } from "../src/session/session-text.js";
 
 function fakeSession(messages: unknown[]) {
   return { messages } as never;

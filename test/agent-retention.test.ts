@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type RetentionDeps, resolveMention, takenHandles } from "../src/agent-retention.js";
+import { type RetentionDeps, resolveMention, takenHandles } from "../src/manager/agent-retention.js";
 import type { AgentRecord, AgentTombstone } from "../src/types.js";
 
 function record(overrides: Partial<AgentRecord>): AgentRecord {

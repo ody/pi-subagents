@@ -8,7 +8,7 @@ import {
   isTopLevelAgent,
   occupiesForegroundSlot,
   occupiesPoolSlot,
-} from "../src/agent-manager-rules.js";
+} from "../src/manager/agent-manager-rules.js";
 
 describe("agent manager rules", () => {
   it("keeps the concurrency defaults", () => {

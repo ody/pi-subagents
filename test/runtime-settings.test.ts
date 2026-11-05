@@ -4,9 +4,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { saveAndEmitChanged } = vi.hoisted(() => ({ saveAndEmitChanged: vi.fn() }));
-vi.mock("../src/settings.js", () => ({ saveAndEmitChanged }));
+vi.mock("../src/config/settings.js", () => ({ saveAndEmitChanged }));
 
-import { createSettingsPersistence, type RuntimeSettings, snapshotSettings } from "../src/runtime-settings.js";
+import { createSettingsPersistence, type RuntimeSettings, snapshotSettings } from "../src/config/runtime-settings.js";
 
 function runtimeSettings(over: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {

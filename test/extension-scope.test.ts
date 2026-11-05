@@ -12,7 +12,7 @@ import {
   planExtensionLoad,
   resolveSessionToolScope,
   SUBAGENT_TOOL_NAMES,
-} from "../src/extension-scope.js";
+} from "../src/session/extension-scope.js";
 
 describe("EXCLUDED_TOOL_NAMES", () => {
   it("lists exactly the tools this extension registers", () => {

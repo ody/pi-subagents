@@ -19,15 +19,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, bench, describe, vi } from "vitest";
 
-vi.mock("../../src/agent-runner.js", async () => {
-  const actual = await vi.importActual<typeof import("../../src/agent-runner.js")>("../../src/agent-runner.js");
+vi.mock("../../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/session/agent-runner.js")>("../../src/session/agent-runner.js");
   return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
 });
 
-import { runAgent } from "../../src/agent-runner.js";
-import { registerAgents } from "../../src/agent-types.js";
-import { loadCustomAgents } from "../../src/custom-agents.js";
+import { registerAgents } from "../../src/agents/agent-types.js";
+import { loadCustomAgents } from "../../src/agents/custom-agents.js";
 import subagentsExtension from "../../src/index.js";
+import { runAgent } from "../../src/session/agent-runner.js";
 import { ctx, type Hermetic, hermeticDir, makePi } from "../helpers/boot-extension.js";
 
 /** A believable agent file: frontmatter to parse plus a body to read past. */
