@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { personalAgentsDir } from "../src/agents/agent-file-toggle.js";
+import { registerAgents } from "../src/agents/agent-types.js";
+import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import type { AgentConfig } from "../src/types.js";
-import { detailMenuOptions } from "../src/ui/agents-menu.js";
+import { type AgentsCommandDeps, detailMenuOptions, registerAgentsCommand } from "../src/ui/agents-menu.js";
 
 const cfg = (over: Partial<AgentConfig>) => over as AgentConfig;
 
@@ -33,5 +40,148 @@ describe("detailMenuOptions", () => {
 
   it("custom agent", () => {
     expect(detailMenuOptions(cfg({}), true)).toEqual(["Edit", "Disable", "Delete", "Back"]);
+  });
+});
+
+/**
+ * The eject and disable WRITES live inside the `/agents` command closure, so
+ * reaching them means booting the command and walking the screens it shows:
+ * top menu, agent-type list, detail screen, action. `ctx.ui.custom` renders the
+ * SettingsList in the real UI; here it yields the queued agent name, which is
+ * what that list returns when a row is activated. `ctx.ui.select` answers from a
+ * queue too, and records the titles so a test can see which screens ran.
+ */
+function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; lists?: (string | undefined)[] }) {
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => {
+      commands.set(name, command);
+    },
+  } as unknown as ExtensionAPI;
+
+  registerAgentsCommand(pi, {
+    manager: { listAgents: () => [], getActivity: () => undefined },
+    scheduler: { isActive: () => false, list: () => [] },
+    reloadCustomAgents: (strict?: boolean) => registerAgents(loadCustomAgents(cwd, strict)),
+    settings: { showCost: false, viewerMarkdown: "all" },
+    chooseViewerMarkdown: () => {},
+    showCreateWizard: async () => {},
+    showSettings: async () => {},
+  } as unknown as AgentsCommandDeps);
+
+  const pendingSelects = [...script.selects];
+  const pendingLists = [...(script.lists ?? [])];
+  const selectTitles: string[] = [];
+  const ctx = {
+    cwd,
+    modelRegistry: { find: () => undefined, getAvailable: () => [] },
+    ui: {
+      select: async (title: string) => {
+        selectTitles.push(title);
+        return pendingSelects.shift();
+      },
+      custom: async () => pendingLists.shift(),
+      notify: () => {},
+      confirm: async () => false,
+      editor: async () => undefined,
+    },
+  };
+
+  return {
+    selectTitles,
+    run: async () => {
+      const command = commands.get("agents");
+      if (!command) throw new Error("/agents was not registered");
+      await command.handler("", ctx);
+    },
+  };
+}
+
+describe("/agents on a skill-embedded agent", () => {
+  let tmpDir: string;
+  let previousHome: string | undefined;
+  let previousAgentDir: string | undefined;
+
+  // Deliberately carries what `serializeAgentFile` would drop: a YAML comment
+  // and a key it does not know. Only a verbatim copy keeps them.
+  const agentFile = [
+    "---",
+    "description: Scout the repo",
+    "prompt_mode: append",
+    "# the serializer drops comments and unknown keys",
+    "hand_written: true",
+    "---",
+    "",
+    "You are a scout.",
+    "",
+  ].join("\n");
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "pi-menu-"));
+    previousHome = process.env.HOME;
+    previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.HOME = tmpDir;
+    delete process.env.PI_CODING_AGENT_DIR;
+  });
+
+  afterEach(() => {
+    registerAgents(new Map());
+    if (previousHome == null) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** A skill under $PI_CODING_AGENT_DIR/skills that ships one agent. Returns its agent path. */
+  function writeSkill(): string {
+    const skillDir = join(tmpDir, ".pi", "agent", "skills", "sdd");
+    mkdirSync(join(skillDir, "agents"), { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "---\nname: sdd\ndescription: test skill\n---\n");
+    const agentPath = join(skillDir, "agents", "sdd-scout.md");
+    writeFileSync(agentPath, agentFile);
+    return agentPath;
+  }
+
+  /** The list and location answers every run below uses. */
+  const personalLocation = () => `Personal (${personalAgentsDir()})`;
+
+  it("Eject writes the skill file verbatim to a user location", async () => {
+    const skillPath = writeSkill();
+    const menu = runAgentsMenu(tmpDir, {
+      selects: ["Agent types (1)", "Eject (export as .md)", personalLocation(), undefined],
+      lists: ["sdd-scout", undefined],
+    });
+
+    await menu.run();
+
+    expect(menu.selectTitles).toEqual(["Agents", "sdd-scout", "Choose location", "Agents"]);
+    const target = join(personalAgentsDir(), "sdd-scout.md");
+    expect(readFileSync(target, "utf-8")).toBe(agentFile);
+    expect(readFileSync(target, "utf-8")).toContain("hand_written: true");
+    // The skill's own file is often on a read-only store; it is never rewritten.
+    expect(readFileSync(skillPath, "utf-8")).toBe(agentFile);
+  });
+
+  it("Disable writes a user stub that shadows the skill agent", async () => {
+    const skillPath = writeSkill();
+    const menu = runAgentsMenu(tmpDir, {
+      selects: ["Agent types (1)", "Disable", personalLocation(), undefined],
+      lists: ["sdd-scout", undefined],
+    });
+
+    await menu.run();
+
+    // A skill agent has no user file, so Disable takes the stub branch: the stub
+    // goes at the user path a Disable of a built-in default would use.
+    const stubPath = join(personalAgentsDir(), "sdd-scout.md");
+    expect(readFileSync(stubPath, "utf-8")).toBe("---\nenabled: false\n---\n");
+
+    // And it wins on load, because every user file outranks a skill agent.
+    const loaded = loadCustomAgents(tmpDir).get("sdd-scout");
+    expect(loaded?.enabled).toBe(false);
+    expect(loaded?.source).toBe("global");
+    expect(loaded?.sourcePath).toBe(stubPath);
+    expect(readFileSync(skillPath, "utf-8")).toBe(agentFile);
   });
 });

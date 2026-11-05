@@ -1216,4 +1216,34 @@ describe("loadCustomAgents — skill-embedded agents", () => {
     expect(loadCustomAgents(tmpDir).get("shared")?.description).toBe("From b");
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('Agent "shared" is shipped by two skills'));
   });
+
+  it("resolves a clash between a shallow and a deep skill breadth-first", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    // Chosen so the two traversals disagree. Root entries sorted are [alpha,
+    // zulu]: breadth-first visits the root-level skill `zulu` BEFORE descending
+    // into `alpha`, so the deeper skill `alpha/inner` loads last and wins. A
+    // depth-first walk finishes `alpha/inner` first and would keep `zulu`'s copy.
+    writeSkill("zulu", { shared: agentMd("From zulu") });
+    writeSkill("alpha/inner", { shared: agentMd("From alpha/inner") });
+
+    const shared = loadCustomAgents(tmpDir).get("shared");
+    expect(shared?.description).toBe("From alpha/inner");
+    expect(shared?.sourcePath).toBe(join(skillsDir, "alpha", "inner", "agents", "shared.md"));
+  });
+
+  it("names both files in the clash warning", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const shallow = writeSkill("zulu", { shared: agentMd("From zulu") });
+    const deep = writeSkill("alpha/inner", { shared: agentMd("From alpha/inner") });
+
+    loadCustomAgents(tmpDir);
+
+    // A packaging accident is only fixable if the warning says which two files
+    // to reconcile — dropping either path leaves the user with one half.
+    const warning = warn.mock.calls
+      .map(call => String(call[0]))
+      .find(message => message.includes('Agent "shared" is shipped by two skills'));
+    expect(warning).toContain(join(shallow, "agents", "shared.md"));
+    expect(warning).toContain(join(deep, "agents", "shared.md"));
+  });
 });
