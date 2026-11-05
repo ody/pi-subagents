@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Skills ship agents that rank below every user agent
+# 0009. Skills ship agents that rank below every user agent
 
 ## Context
 
