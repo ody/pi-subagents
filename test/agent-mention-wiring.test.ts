@@ -1,16 +1,3 @@
-/**
- * agent-mention-wiring.test.ts — the `input` hook that routes `@handle message`
- * to a subagent.
- *
- * This handler sits in front of every prompt the user types, and returning
- * `handled` discards the text. So the two failures that matter are opposite:
- * claiming input that was meant for the main model (silently eating it), and
- * failing to claim a real mention (sending "@explore fix it" to the main model
- * as if it were prose). Each case below pins one side.
- *
- * Booted through the real extension so the assertions cover the actual wiring —
- * handle assignment in AgentManager, resolution, and the steer/resume split.
- */
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,9 +7,6 @@ vi.mock("../src/session/agent-runner.js", async () => {
   return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
 });
 
-// The clone forks a real pi session and runs a real model turn. What this file
-// pins is the wiring around it — when it is called, with what, and what happens
-// when it comes back empty. mention-clone.test.ts covers the clone itself.
 vi.mock("../src/triggers/mention-clone.js", () => ({ runMentionClone: vi.fn() }));
 
 import { getDefaultMaxTurns, setDefaultMaxTurns } from "../src/config/runner-defaults.js";
@@ -32,7 +16,6 @@ import { runMentionClone } from "../src/triggers/mention-clone.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
-/** The most recently booted extension, so teardown runs even when a test throws. */
 let booted: Map<string, any> | undefined;
 
 beforeEach(() => {
@@ -43,10 +26,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  // The manager registry is a globalThis symbol claimed by the first activation
-  // that finds it free and released only on shutdown. A test that throws before
-  // its own shutdown would otherwise leave it pointing at a dead manager, and
-  // the NEXT test's `managerRegistry()` would silently read that one instead.
   await booted?.get("session_shutdown")?.();
   delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
   booted = undefined;
@@ -54,7 +33,6 @@ afterEach(async () => {
   hermetic = undefined;
 });
 
-/** Enough of an AgentSession for the manager's and index's hooks. */
 function fakeSession(overrides: Record<string, unknown> = {}) {
   return {
     steer: vi.fn().mockResolvedValue(undefined),
@@ -66,7 +44,6 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-/** A runAgent that never settles, so the agent stays "running". */
 function heldRun(session: any) {
   vi.mocked(runAgent).mockImplementation(
     (_ctx: any, _type: any, _prompt: any, opts: any) =>
@@ -76,7 +53,6 @@ function heldRun(session: any) {
   );
 }
 
-/** A runAgent that finishes immediately, leaving a resumable record behind. */
 function finishedRun(session: any) {
   vi.mocked(runAgent).mockResolvedValue({
     responseText: "first answer",
@@ -87,7 +63,6 @@ function finishedRun(session: any) {
   } as any);
 }
 
-/** Boot the real extension. `outputTranscript: false` keeps the run off disk. */
 function boot(settings: Record<string, unknown> = {}) {
   hermetic = hermeticDir({ settings: { outputTranscript: false, ...settings } });
   const b = makePi();
@@ -96,12 +71,6 @@ function boot(settings: Record<string, unknown> = {}) {
   return b;
 }
 
-/**
- * Boot with a mention that names a not-yet-running agent starting it HERE
- * rather than through a clone of the conversation. Messaging and resuming are
- * direct in either mode, so only the tests that START an agent by mention need
- * this — every other `boot()` below is on the default `model` mode.
- */
 function bootDirect(settings: Record<string, unknown> = {}) {
   return boot({ agentMentions: "direct", ...settings });
 }
@@ -143,9 +112,6 @@ describe("messaging a running agent", () => {
   });
 
   it("un-consumes the result so the agent's reply is still relayed", async () => {
-    // get_subagent_result may already have read this agent's last answer, which
-    // suppresses its completion notification. Without the reset, the reply to
-    // the message just sent would never reach the main loop.
     const { tools, lifecycle } = boot();
     heldRun(fakeSession());
 
@@ -229,10 +195,6 @@ describe("messaging a finished agent", () => {
   });
 
   it("honours the agent's output_transcript: false when resuming", async () => {
-    // The frontmatter flag overrides the project default (README, Persistent
-    // settings), and record.outputFile is the sole gate every downstream
-    // consumer keys off — so a resume must not be the path that re-enables a
-    // transcript the agent's author switched off.
     hermetic = hermeticDir({
       settings: { outputTranscript: true },
       agentFiles: { quiet: "---\ndescription: writes no transcript\noutput_transcript: false\n---\nbody" },
@@ -247,7 +209,7 @@ describe("messaging a finished agent", () => {
     await flush();
     const record = b.pi.__manager?.getRecord?.(id)
       ?? (globalThis as any)[Symbol.for("pi-subagents:manager")].getRecord(id);
-    expect(record.outputFile).toBeUndefined(); // spawn honoured it
+    expect(record.outputFile).toBeUndefined();
 
     await send(b.lifecycle, "@quiet anything else?");
 
@@ -256,9 +218,6 @@ describe("messaging a finished agent", () => {
   });
 
   it("does not attribute the new answer to the tool call that spawned it", async () => {
-    // The completion notification carries `<tool-use-id>`. A mention-resume has
-    // no tool call behind it, so leaving the spawning call's id on the record
-    // would point the orchestrator's new result at a call answered runs ago.
     const { pi, lifecycle, tools } = boot();
     finishedRun(fakeSession());
     vi.mocked(resumeAgent).mockResolvedValue({ text: "second answer", failure: undefined } as any);
@@ -277,9 +236,6 @@ describe("messaging a finished agent", () => {
   });
 
   it("relays the resumed answer through the ordinary completion notification", async () => {
-    // The whole point of resuming in the background rather than inline: the
-    // main model has to be told the answer came back, or the reply is stranded
-    // in the agent's transcript.
     const { pi, lifecycle, tools } = boot();
     finishedRun(fakeSession());
     vi.mocked(resumeAgent).mockResolvedValue({ text: "second answer", failure: undefined } as any);
@@ -300,7 +256,6 @@ describe("messaging a finished agent", () => {
 });
 
 describe("stacking the suggestion provider on pi's", () => {
-  /** A session_start ctx with the UI surface the registration path touches. */
   const uiCtx = (mode: string) =>
     ctx({
       mode,
@@ -315,8 +270,6 @@ describe("stacking the suggestion provider on pi's", () => {
     });
 
   it("registers exactly once, however often session_start fires", async () => {
-    // pi appends wrappers to a list it never prunes, so a second registration
-    // would layer a duplicate provider on top of the first.
     const { lifecycle } = boot();
     const first = uiCtx("tui");
     const second = uiCtx("tui");
@@ -361,7 +314,6 @@ describe("resolving which agent a handle means", () => {
   const managerRegistry = () => (globalThis as any)[Symbol.for("pi-subagents:manager")];
 
   it("matches the handle case-insensitively", async () => {
-    // The popup lowercases as you type, but nothing stops you typing it out.
     const { tools, lifecycle } = boot();
     const session = fakeSession();
     heldRun(session);
@@ -388,9 +340,6 @@ describe("resolving which agent a handle means", () => {
   });
 
   it("queues the message for an agent still waiting on a concurrency slot", async () => {
-    // A queued agent has no session yet, so the manager parks the message and
-    // flushes it on session creation. Reporting "sent" without that would be a
-    // lie the user only discovers when the agent ignores them.
     const { tools, lifecycle } = boot({ maxConcurrent: 1 });
     heldRun(fakeSession());
 
@@ -407,9 +356,6 @@ describe("resolving which agent a handle means", () => {
   });
 
   it("never reaches into a nested child, and starts a top-level agent instead", async () => {
-    // Nested agents are hidden from every top-level surface and only their
-    // owner may steer them. The handle still resolves — to a NEW top-level
-    // Explore — rather than punching through the ownership boundary.
     const { tools, lifecycle } = bootDirect();
     const child = fakeSession();
     heldRun(child);
@@ -427,8 +373,6 @@ describe("resolving which agent a handle means", () => {
   });
 
   it("starts a fresh agent once the old record has been evicted", async () => {
-    // README: handles live as long as their record, and after that the same
-    // mention starts a new agent rather than resurrecting anything.
     const { tools, lifecycle } = bootDirect();
     finishedRun(fakeSession());
 
@@ -473,8 +417,6 @@ describe("mentioning an agent that has never run", () => {
   });
 
   it("leaves model, thinking and max turns to the agent's own config", async () => {
-    // runAgent resolves all three from the config when the spawn omits them,
-    // so passing anything here would override frontmatter the user wrote.
     const { lifecycle } = bootDirect();
     heldRun(fakeSession());
 
@@ -488,9 +430,6 @@ describe("mentioning an agent that has never run", () => {
   });
 
   it("shows the turn limit it will actually be held to (#181)", async () => {
-    // The spawn passes no maxTurns on purpose (see the test above), so the
-    // tracker has to resolve the same limit runAgent will enforce — otherwise
-    // the row reads `↻1` where the Agent tool would read `↻1≤9`.
     const prevMax = getDefaultMaxTurns();
     try {
       const { lifecycle } = bootDirect({ defaultMaxTurns: 9 });
@@ -518,10 +457,6 @@ describe("mentioning an agent that has never run", () => {
   });
 
   it("tracks its tool activity, so the widget shows what it is doing (#181)", async () => {
-    // A mention spawn never passes through the Agent tool, which is where the
-    // activity tracker is normally created. Without one the widget and
-    // FleetView have no tool name and no turn count for the agent, so its row
-    // reads `thinking…` from start to finish.
     const { lifecycle } = bootDirect();
     heldRun(fakeSession());
 
@@ -584,14 +519,11 @@ describe("mentioning an agent that has never run", () => {
 });
 
 describe("letting a clone of the conversation start the agent", () => {
-  /** The clone stands in for a real forked session; mention-clone.test.ts covers the real one. */
   function cloneReturns(result: { spawned: boolean; error?: string }) {
     vi.mocked(runMentionClone).mockResolvedValue(result);
   }
 
   it("claims the turn, so nothing about the mention reaches the chat", async () => {
-    // The whole point of the clone: the model still decides how to invoke the
-    // agent, but it does so somewhere the user is not reading.
     const { pi, lifecycle } = boot();
     cloneReturns({ spawned: true });
 
@@ -604,9 +536,6 @@ describe("letting a clone of the conversation start the agent", () => {
   });
 
   it("hands the clone the resolved type, the message and the real Agent tool", async () => {
-    // The type, not the handle as typed — `subagent_type` is not lowercased.
-    // The tool must be the registered one, or the clone's spawn would be a
-    // second implementation rather than an ordinary top-level call.
     const { tools, lifecycle } = boot();
     cloneReturns({ spawned: true });
 
@@ -623,8 +552,6 @@ describe("letting a clone of the conversation start the agent", () => {
   });
 
   it("does not block the prompt on the clone's turn", async () => {
-    // prompt() is suspended until this hook returns, so awaiting a full model
-    // turn here would freeze the editor for its duration.
     const { lifecycle } = boot();
     let release: (() => void) | undefined;
     vi.mocked(runMentionClone).mockReturnValue(
@@ -649,14 +576,10 @@ describe("letting a clone of the conversation start the agent", () => {
       uiCtx,
     );
 
-    // The clone's turn happens first, so the agent does not exist yet. `direct`
-    // mode's "Started @explore" is the contrast: there, it does.
     expect(uiCtx.ui.notify).toHaveBeenCalledWith("Prompting @explore…", "info");
   });
 
   it("starts the agent directly when the clone cannot", async () => {
-    // A mention that produced a toast and no agent would be the worst outcome:
-    // silent, and indistinguishable from success.
     const { lifecycle } = boot();
     heldRun(fakeSession());
     cloneReturns({ spawned: false, error: "no session file" });
@@ -723,8 +646,6 @@ describe("letting a clone of the conversation start the agent", () => {
   });
 
   it("does not clone for a handle that names no agent", async () => {
-    // Otherwise `@nosuchagent hello` would spin up a conversation copy to
-    // invoke an agent that does not exist, and eat the prompt doing it.
     const { lifecycle } = boot();
 
     expect(await send(lifecycle, "@nosuchagent hello")).toEqual({ action: "continue" });
@@ -732,8 +653,6 @@ describe("letting a clone of the conversation start the agent", () => {
   });
 
   it("works headlessly, where the visible-turn version never could", async () => {
-    // The TUI-only guard exists because a claimed turn answers `pi -p` with
-    // silence. The clone starts a real agent whose completion still reports.
     const { lifecycle } = boot();
     cloneReturns({ spawned: true });
 
@@ -814,8 +733,6 @@ describe("input that is not a mention", () => {
   });
 
   it("ignores input the extension layer submitted", async () => {
-    // pi.sendMessage text arrives through the same hook; a notification that
-    // happened to start with @something must not be re-routed at an agent.
     const { tools, lifecycle } = boot();
     const session = fakeSession();
     heldRun(session);
@@ -829,11 +746,6 @@ describe("input that is not a mention", () => {
   });
 
   it("leaves a headless prompt to the main model", async () => {
-    // Pi defaults session.prompt() to source "interactive", so `pi -p "@explore
-    // …"` lands in this hook too. Claiming it there would answer with silence:
-    // the agent detaches, notify is a no-op outside the TUI, and print mode
-    // exits having printed nothing. Only `direct` has that problem — the model
-    // mode's headless behaviour is pinned separately below.
     const { lifecycle } = bootDirect();
     heldRun(fakeSession());
 
@@ -879,8 +791,6 @@ describe("input that is not a mention", () => {
   });
 
   it("disabled also blocks starting an agent, not just messaging one", async () => {
-    // The guard sits ahead of the parse, so every action is covered — but the
-    // start branch is the one that would otherwise spawn work nobody asked for.
     const { lifecycle } = boot({ agentMentions: false });
     heldRun(fakeSession());
 
@@ -929,8 +839,6 @@ describe("input that is not a mention", () => {
 
 describe("@main — the escape hatch", () => {
   it("strips the prefix and sends the rest to the main model", async () => {
-    // Without this there is no way to type text that merely *looks* like a
-    // mention. `transform`, not `handled`: the model must still get the turn.
     const { lifecycle } = boot();
 
     const result = await send(lifecycle, "@main @explore is not a mention");
@@ -961,7 +869,6 @@ describe("@main — the escape hatch", () => {
   });
 
   it("leaves a bare @main to the main model untouched", async () => {
-    // No message body is not a mention at all, reserved handle or not.
     const { lifecycle } = boot();
 
     expect(await send(lifecycle, "@main")).toEqual({ action: "continue" });
@@ -995,8 +902,6 @@ describe("@agent-<type> — Claude Code's manual spelling", () => {
   });
 
   it("prefers an agent literally named agent-<x> over the unwrapped spelling", async () => {
-    // Both could answer `@agent-explore`. The literal name has to win, or an
-    // agent the model deliberately called `agent-explore` is unreachable.
     const { tools, lifecycle } = boot();
     const literal = fakeSession();
     const plain = fakeSession();
@@ -1004,7 +909,7 @@ describe("@agent-<type> — Claude Code's manual spelling", () => {
       .mockImplementationOnce((_c: any, _t: any, _p: any, o: any) => new Promise(() => o.onSessionCreated?.(plain)) as any)
       .mockImplementationOnce((_c: any, _t: any, _p: any, o: any) => new Promise(() => o.onSessionCreated?.(literal)) as any);
 
-    await spawnBackground(tools); // plain Explore → @explore
+    await spawnBackground(tools);
     await tools.get("Agent").execute(
       "tc-named",
       { prompt: "go", description: "named", subagent_type: "Plan", name: "agent-explore", run_in_background: true },
@@ -1026,18 +931,9 @@ describe("@agent-<type> — Claude Code's manual spelling", () => {
 });
 
 describe("resuming an evicted agent by name", () => {
-  // Only the GC interval and Date are faked: `flush()` runs on setImmediate,
-  // and the manager's cleanup timer is started in its constructor, so the
-  // fake clock has to be installed before boot().
   beforeEach(() => vi.useFakeTimers({ toFake: ["setInterval", "Date"] }));
   afterEach(() => vi.useRealTimers());
 
-  /**
-   * Age the record past the cutoff and let the real GC evict it. The session
-   * file has to exist on disk: the dispatcher refuses to resume one it cannot
-   * find, so a fictional path would take the "session is gone" branch and
-   * every resume assertion below would pass for the wrong reason.
-   */
   async function evict(id: string) {
     const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
     const record = manager.getRecord(id);
@@ -1048,7 +944,6 @@ describe("resuming an evicted agent by name", () => {
     return manager;
   }
 
-  /** Inside the hermetic cwd, so teardown takes it with the rest. */
   const sessionPath = () => join(process.cwd(), "explore-session.jsonl");
 
   it("reopens the conversation instead of starting a fresh agent", async () => {
@@ -1078,8 +973,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("hands the resumed agent the handle back instead of numbering it", async () => {
-    // Otherwise the resume lands on `@explore-2` and the tombstone keeps
-    // `@explore`, so the name the user just typed still points at the corpse.
     const { lifecycle, tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1096,8 +989,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("stops resolving to the tombstone once the resume has taken the name", async () => {
-    // The fork this prevents: every later `@explore` reopening the SAME stale
-    // transcript, discarding whatever the resumed agent did in between.
     const { lifecycle, tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1114,7 +1005,6 @@ describe("resuming an evicted agent by name", () => {
       uiCtx,
     );
 
-    // Steered, not resumed again — and runAgent was called exactly once.
     expect(resumed.steer).toHaveBeenCalledWith("and one more thing");
     expect(vi.mocked(runAgent)).toHaveBeenCalledTimes(1);
     expect(uiCtx.ui.notify).toHaveBeenCalledWith("Sent to @explore", "info");
@@ -1143,12 +1033,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("refuses to reopen a conversation under a substitute agent", async () => {
-    // resolveSpawnType falls back to general-purpose for a type it cannot
-    // resolve (#183) — and "cannot resolve" includes merely disabled, which
-    // `/agents → Disable` does at any time. Inheriting that here would reopen
-    // an Explore transcript under general-purpose's prompt and tools while
-    // announcing "Resuming @scout", then re-tombstone under the substitute so
-    // the handle never finds its way back.
     hermetic = hermeticDir({
       settings: { outputTranscript: false },
       agentFiles: { scout: "---\ndescription: scouts\n---\nbody" },
@@ -1178,8 +1062,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("resumes again once the agent is re-enabled", async () => {
-    // So the refusal keeps the tombstone: dropping it would make a temporary
-    // `/agents → Disable` permanently lose the conversation.
     hermetic = hermeticDir({
       settings: { outputTranscript: false },
       agentFiles: { scout: "---\ndescription: scouts\nenabled: false\n---\nbody" },
@@ -1187,7 +1069,6 @@ describe("resuming an evicted agent by name", () => {
     const b = makePi();
     subagentsExtension(b.pi);
     booted = b.lifecycle;
-    // Spawn while it is still enabled, then disable, mention, re-enable.
     const file = join(process.cwd(), ".pi", "agents", "scout.md");
     writeFileSync(file, "---\ndescription: scouts\n---\nbody");
     finishedRun(fakeSession());
@@ -1211,17 +1092,11 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("keeps the agent resolvable when the resume itself fails", async () => {
-    // The type can have been deleted or disabled since the original run, and
-    // resolveSpawnType then refuses it. Dropping the tombstone on that path
-    // would lose the conversation for good, so the drop happens only after a
-    // spawn that actually succeeded.
     const { lifecycle, tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
     await flush();
     vi.mocked(runAgent).mockClear();
-    // Stands in for any spawn-time throw: startAgent calls runAgent inline, so
-    // a synchronous throw propagates back out of spawn().
     vi.mocked(runAgent).mockImplementationOnce(() => { throw new Error("Unknown agent type"); });
 
     const uiCtx = ctx();
@@ -1234,7 +1109,6 @@ describe("resuming an evicted agent by name", () => {
       "warning",
     );
 
-    // Still reachable: try again and it reopens the same conversation.
     heldRun(fakeSession());
     await send(lifecycle, "@explore try again");
     await flush();
@@ -1246,8 +1120,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("keeps the original description rather than relabelling from the message", async () => {
-    // The row already says what this agent is; a resume is the same work
-    // continuing, not a new task.
     const { lifecycle, tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1257,17 +1129,12 @@ describe("resuming an evicted agent by name", () => {
     await send(lifecycle, "@explore anything else?");
     await flush();
 
-    // runAgent receives the new record's id, which is the only handle a test
-    // has on an agent the dispatcher spawned without returning anything.
     const resumedId = (vi.mocked(runAgent).mock.calls[0][3] as any).agentId;
     const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
     expect(manager.getRecord(resumedId).description).toBe("find flaky tests");
   });
 
   it("does not let the tools steer or read an agent that is gone", async () => {
-    // A mention can resurrect it, but there is no live record to interrupt and
-    // no result to return — so the tools must say so rather than resolve to a
-    // tombstone and act on stale data.
     const { tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1285,9 +1152,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("reports a session that is gone, rather than starting something else", async () => {
-    // SessionManager.open runs inside runAgent, so a missing file rejects that
-    // promise as an ordinary agent error — the dispatcher never sees it. The
-    // check has to happen before the spawn, or this reports nothing at all.
     const { lifecycle, tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1309,8 +1173,6 @@ describe("resuming an evicted agent by name", () => {
   });
 
   it("forgets an unopenable session so the next mention starts fresh", async () => {
-    // A row that can only ever fail is worse than no row: it holds the handle
-    // and refuses every message sent to it.
     const { lifecycle, tools } = bootDirect();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1335,9 +1197,6 @@ describe("resuming an evicted agent by name", () => {
   });
 });
 
-// Claude Code's names work for the model as well as the human, because its
-// `@` is backed by the same SendMessage the LLM calls. These give ours the
-// same property: one name space, whoever is doing the addressing.
 describe("handles as tool arguments", () => {
   it("steers by handle, not just by raw id", async () => {
     const { tools, lifecycle: _l } = boot();

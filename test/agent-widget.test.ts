@@ -4,7 +4,6 @@ import type { AgentActivity, WidgetMode } from "../src/types.js";
 import { fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-format.js";
 import { AgentWidget, statusBarText } from "../src/ui/agent-widget.js";
 
-/** Fold an activity map into a fake manager: the widget reads `getActivity`. */
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;
 }
@@ -30,13 +29,10 @@ describe("formatSessionTokens", () => {
   });
 
   it("annotates compaction count alongside percent", () => {
-    // compactions only (e.g. immediately post-compaction, percent null)
     expect(formatSessionTokens(1234, null, theme, 1)).toBe("1.2k token (<dim>⇊1</dim>)");
     expect(formatSessionTokens(1234, null, theme, 3)).toBe("1.2k token (<dim>⇊3</dim>)");
-    // percent + compactions, joined with ` · `
     expect(formatSessionTokens(1234, 45, theme, 2)).toBe("1.2k token (<dim>45%</dim> · <dim>⇊2</dim>)");
     expect(formatSessionTokens(1234, 88, theme, 4)).toBe("1.2k token (<error>88%</error> · <dim>⇊4</dim>)");
-    // compactions=0 omitted
     expect(formatSessionTokens(1234, 45, theme, 0)).toBe("1.2k token (<dim>45%</dim>)");
   });
 
@@ -93,7 +89,6 @@ describe("AgentWidget", () => {
     };
   }
 
-  /** Render the widget for a manager and return the produced lines ("" if nothing rendered). */
   function renderLines(manager: unknown, activityId: string, mode?: () => WidgetMode, showModel = false): string {
     const widget = new AgentWidget(
       withActivity(manager as any, new Map([[activityId, makeActivity()]])),
@@ -113,7 +108,6 @@ describe("AgentWidget", () => {
       .join("\n");
   }
 
-  // "all" (and the no-policy constructor default) shows every agent.
   it("shows foreground agents in 'all' mode (and by default)", () => {
     const manager = { listAgents: () => [makeRecord("foreground", { isBackground: false })] };
     expect(renderLines(manager, "foreground")).toContain("foreground description");
@@ -138,7 +132,6 @@ describe("AgentWidget", () => {
     const lines = renderLines(manager, "parent", () => "all").split("\n");
     const parent = lines.findIndex(l => l.includes("parent description"));
     const child = lines.findIndex(l => l.includes("child description"));
-    // Header + activity line each, child immediately after its parent's pair.
     expect(parent).toBe(1);
     expect(child).toBe(3);
     expect(lines[child]?.startsWith("   ")).toBe(true);
@@ -159,9 +152,6 @@ describe("AgentWidget", () => {
     expect(renderLines(manager, "foreground", () => "background")).toBe("");
   });
 
-  // Also covers scheduler-spawned agents (isBackground=true, no `invocation`
-  // snapshot): if the filter still keyed off `invocation.runInBackground` —
-  // #118's original approach — this would wrongly vanish.
   it("renders background agents in 'background' mode", () => {
     const manager = { listAgents: () => [makeRecord("background", { isBackground: true })] };
     const lines = renderLines(manager, "background", () => "background");
@@ -169,15 +159,11 @@ describe("AgentWidget", () => {
     expect(lines).toContain("background description");
   });
 
-  // 'background' excludes only agents *known* to be foreground; one with no
-  // isBackground flag (e.g. a cross-extension RPC spawn) is kept, not hidden.
   it("keeps agents with no isBackground flag in 'background' mode", () => {
     const manager = { listAgents: () => [makeRecord("unflagged", {})] };
     expect(renderLines(manager, "unflagged", () => "background")).toContain("unflagged description");
   });
 
-  // The model is opt-in: the row is already dense, and the same pair is on the
-  // tool result and in the conversation viewer either way.
   it("names the model and thinking on a running row under showModel", () => {
     const manager = { listAgents: () => [makeRecord("bg", { isBackground: true })] };
 
@@ -210,8 +196,6 @@ describe("AgentWidget", () => {
       .toContain("haiku 4.5 · thinking: high (asked max)");
   });
 
-  // Queued agents stay a one-line count. A fan-out of ten would otherwise eat
-  // the whole widget and push every finished agent out of it.
   it("keeps queued agents on one summary line and finished agents visible", () => {
     const records = [
       ...[1, 2, 3].map(i => ({ ...makeRecord(`run${i}`, { isBackground: true }), status: "running" })),
@@ -284,20 +268,12 @@ describe("AgentWidget", () => {
     });
   });
 
-  // "off" hides the widget entirely — even a background agent renders nothing.
   it("renders nothing in 'off' mode", () => {
     const manager = { listAgents: () => [makeRecord("background", { isBackground: true })] };
     expect(renderLines(manager, "background", () => "off")).toBe("");
   });
 });
 
-// The widget caps itself at MAX_WIDGET_LINES (12) and, past that, hands out a
-// line budget in priority order: running pairs, then the queued summary, then
-// finished lines. Running and finished increment `hiddenRunning`/`hiddenFinished`
-// when they don't fit; the queued line is dropped with NO counter at all, so the
-// footer under-reports and — worse — the queue vanishes from the UI entirely.
-// That happens exactly when the concurrency limit is saturated, i.e. when the
-// queue is the thing the user most needs to see.
 describe("statusBarText", () => {
   it("formats running and queued counts", () => {
     expect(statusBarText(1, 0)).toBe("1 running agent");
@@ -345,36 +321,29 @@ describe("AgentWidget status bar and teardown", () => {
 
 describe("formatCost", () => {
   it("keeps the precision that distinguishes one run from another", () => {
-    // Rounding to cents would print the same figure for a run that cost four
-    // times another — the band most single subagent runs fall in.
     expect(formatCost(0.0042)).toBe("~$0.0042");
     expect(formatCost(0.0123)).toBe("~$0.0123");
     expect(formatCost(1.239)).toBe("~$1.24");
   });
 
   it("never pads a round figure with noise, nor cuts it below cents", () => {
-    expect(formatCost(0.05)).toBe("~$0.05");    // not ~$0.0500
-    expect(formatCost(0.4)).toBe("~$0.40");     // not ~$0.4
+    expect(formatCost(0.05)).toBe("~$0.05");
+    expect(formatCost(0.4)).toBe("~$0.40");
     expect(formatCost(12)).toBe("~$12.00");
   });
 
   it("shows nothing when there is nothing to show", () => {
-    // Zero is what a model with no pricing data reports, so `$0.00` would claim
-    // a measurement that was never made.
     expect(formatCost(0)).toBe("");
     expect(formatCost(Number.NaN)).toBe("");
     expect(formatCost(-1)).toBe("");
   });
 
   it("says a real but tiny cost is tiny, not zero", () => {
-    // The distinction the whole helper turns on: "measured, below what four
-    // decimals can show" must not render the same as "never measured".
     expect(formatCost(0.00002)).toBe("<$0.0001");
     expect(formatCost(0)).toBe("");
   });
 
   it("marks the figure as an estimate", () => {
-    // The tilde is the whole disclaimer — it sits beside exact token counts.
     expect(formatCost(0.5).startsWith("~")).toBe(true);
   });
 });
@@ -393,9 +362,6 @@ describe("AgentWidget cost display", () => {
       lifetimeUsage: { input: 1000, output: 200, cacheWrite: 0, cost },
       compactionCount: 0,
     };
-    // Carries figures of its own, in the shape the tracker used to have: spend
-    // is read from the record now, so these must not reach the line. Only the
-    // record accumulates a nested child's spend, and only it outlives the run.
     const activity = new Map([["a1", {
       activeTools: new Map(),
       toolUses: 1,
@@ -433,9 +399,6 @@ describe("AgentWidget cost display", () => {
   });
 
   it("keeps the cost visible after the agent finishes", () => {
-    // The activity entry is deleted the moment an agent finishes, so a finished
-    // line reading from it would drop the number precisely when the question
-    // "what did that cost" gets asked.
     const finished = {
       id: "a1", type: "general-purpose", description: "done agent", status: "completed",
       toolUses: 2, startedAt: Date.now() - 1000, completedAt: Date.now(),
@@ -455,8 +418,6 @@ describe("AgentWidget cost display", () => {
   });
 
   it("shows stats for an agent nobody is tracking live", () => {
-    // A scheduled agent has no activity entry — it spawns through the manager
-    // directly — and used to render with no tokens and no cost at all.
     const running = {
       id: "sched", type: "general-purpose", description: "scheduled agent", status: "running",
       toolUses: 1, startedAt: Date.now(),
@@ -511,7 +472,6 @@ describe("AgentWidget overflow accounting", () => {
     };
   }
 
-  /** Render a whole fleet (mixed statuses) and return the produced lines. */
   function renderFleet(counts: { running: number; queued: number; finished: number }): string[] {
     const agents = [
       ...Array.from({ length: counts.running }, (_, i) => record(`run${i}`, "running")),
@@ -532,17 +492,13 @@ describe("AgentWidget overflow accounting", () => {
     return factory({ terminal: { columns: 200 }, requestRender: () => {} }, theme).render();
   }
 
-  /** The `+N more (…)` footer, if the widget overflowed. */
   const footer = (lines: string[]) => lines.find(l => l.includes("more ("));
 
-  /** Every fleet shape worth rendering — swept, not sampled. */
   const SHAPES: { running: number; queued: number; finished: number }[] = [];
   for (let running = 0; running <= 8; running++)
     for (let queued = 0; queued <= 8; queued++)
       for (let finished = 0; finished <= 8; finished++) SHAPES.push({ running, queued, finished });
 
-  // Swept rather than sampled: reserving the queued row moves `budget` around by
-  // hand, and an off-by-one there overflows the cap only for specific shapes.
   it("never exceeds the line cap, for any fleet shape", () => {
     for (const counts of SHAPES) {
       expect(renderFleet(counts).length, JSON.stringify(counts)).toBeLessThanOrEqual(12);
@@ -555,24 +511,17 @@ describe("AgentWidget overflow accounting", () => {
       if (!f) continue;
       const total = Number(/\+(\d+) more/.exec(f)?.[1]);
       const where = `${JSON.stringify(counts)} → ${f}`;
-      // A visible footer means something was dropped, so "+0 more ()" is a lie...
       expect(total, where).toBeGreaterThan(0);
-      // ...and it counts agents that have their own row, so it can never exceed
-      // them — in particular the queued summary must not be counted as an agent.
       expect(total, where).toBeLessThanOrEqual(counts.running + counts.finished);
     }
   });
 
   it("keeps the queued summary visible when the running agents fill the widget", () => {
-    // 5 running (10 lines) consume the entire budget, so the queued line is
-    // dropped — and with it, any sign that 3 agents are waiting to start.
     const lines = renderFleet({ running: 5, queued: 3, finished: 1 });
     expect(lines.join("\n")).toContain("3 queued");
   });
 
   it("counts everything it hid — the footer total matches what is missing", () => {
-    // Computed rather than hardcoded, so this survives a scenario change but not
-    // a change to what the footer counts.
     const counts = { running: 5, queued: 3, finished: 1 };
     const lines = renderFleet(counts);
     const body = lines.join("\n");
@@ -598,10 +547,6 @@ describe("AgentWidget overflow accounting", () => {
     expect(footer(lines)).toBeUndefined();
   });
 
-  // A background resume runs an agent that already finished once. markFinished
-  // only seeds an age it has not seen before, so without markRunning the agent
-  // carries its previous run's age — already past the linger limit — and the
-  // resumed run's ✓ line never renders: the agent just disappears.
   it("shows the completion line again after a finished agent is resumed", () => {
     const agent = record("resumed", "completed");
     const activity = new Map([[agent.id, {
@@ -618,18 +563,15 @@ describe("AgentWidget overflow accounting", () => {
       return (factory?.({ terminal: { columns: 200 }, requestRender: () => {} }, theme).render() ?? []).join("\n");
     };
 
-    // First run finishes and ages out of the widget.
     widget.markFinished(agent.id);
     widget.onTurnStart();
     widget.onTurnStart();
     expect(render()).not.toContain("resumed description");
 
-    // Background resume puts it back on the running list.
     agent.status = "running";
     widget.markRunning(agent.id);
     expect(render()).toContain("resumed description");
 
-    // ...and its completion is visible when the resumed run settles.
     agent.status = "completed";
     widget.markFinished(agent.id);
     expect(render()).toContain("resumed description");

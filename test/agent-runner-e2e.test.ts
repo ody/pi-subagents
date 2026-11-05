@@ -81,7 +81,6 @@ describe("agent-runner end-to-end (real pi-mono session + real extension)", () =
 
   it("real pi-mono admits an extension-registered tool when it's in the allowlist (#47)", async () => {
     const active = await activeToolsFor({ extensions: [FIXTURE] });
-    // The extension actually loaded and its tool reached the live session.
     expect(active).toContain(EXT_TOOL);
     for (const b of BUILTINS) expect(active).toContain(b);
   });

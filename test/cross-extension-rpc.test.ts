@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { type EventBus, PROTOCOL_VERSION, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../src/triggers/cross-extension-rpc.js";
 
-/** Simple in-process event bus for testing. */
 function createEventBus(): EventBus {
   const listeners = new Map<string, Set<(data: unknown) => void>>();
   return {
@@ -38,8 +37,6 @@ describe("cross-extension RPC", () => {
     ctx = { session: true };
     deps = { events, pi: { events }, getCtx: () => ctx, manager };
   });
-
-  // --- ping ---
 
   describe("ping RPC", () => {
     it("replies with protocol version", async () => {
@@ -74,8 +71,6 @@ describe("cross-extension RPC", () => {
       expect(reply).not.toHaveBeenCalled();
     });
   });
-
-  // --- spawn ---
 
   describe("spawn RPC", () => {
     it("returns agent id on success", async () => {
@@ -201,9 +196,6 @@ describe("cross-extension RPC", () => {
     });
 
     it("returns error when the agent fails to start after spawn returns", async () => {
-      // With isolation: "worktree" the agent is not running when spawn() hands
-      // back an id — the repo copy is an awaited git call. A failure there has
-      // to be an error envelope, not an id for an agent that never ran.
       (manager.awaitStartup as ReturnType<typeof vi.fn>).mockRejectedValue(
         new Error('Cannot run with isolation: "worktree"'),
       );
@@ -246,17 +238,12 @@ describe("cross-extension RPC", () => {
         requestId: "req-s6", type: "general-purpose", prompt: "x",
       });
 
-      // Give any potential async handler time to fire
       await new Promise((r) => setTimeout(r, 20));
       expect(reply).not.toHaveBeenCalled();
     });
   });
 
-  // --- stop ---
-
   describe("stop RPC", () => {
-    // The default double reports a record with neither owner field, i.e. one of
-    // the session's own agents — the case the ownership guard must let through.
     it("returns success when agent is aborted", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
@@ -268,9 +255,6 @@ describe("cross-extension RPC", () => {
       expect(manager.abort).toHaveBeenCalledWith("agent-42");
     });
 
-    // `abort` returning false no longer means "no such agent" — the handler's
-    // own lookup covers that, and the only case left is a record that is neither
-    // running nor queued, i.e. one that has already finished.
     it("says so when the agent exists but has already finished", async () => {
       (manager.abort as ReturnType<typeof vi.fn>).mockReturnValue(false);
       registerRpcHandlers(deps);
@@ -294,8 +278,6 @@ describe("cross-extension RPC", () => {
       expect(manager.abort).not.toHaveBeenCalled();
     });
 
-    // A nested child has an owner that is waiting on it, so an id that leaked to
-    // another extension must not let it abort one out from under that owner.
     it("refuses to stop another agent's nested child", async () => {
       (manager.getRecord as ReturnType<typeof vi.fn>).mockReturnValue({ parentAgentId: "agent-1" });
       registerRpcHandlers(deps);
@@ -336,8 +318,6 @@ describe("cross-extension RPC", () => {
     });
   });
 
-  // --- consume ---
-
   describe("consume RPC", () => {
     it("returns success when the result is consumed", async () => {
       registerRpcHandlers(deps);
@@ -375,8 +355,6 @@ describe("cross-extension RPC", () => {
     });
   });
 
-  // --- concurrent requests ---
-
   describe("concurrent requests", () => {
     it("handles multiple simultaneous spawn requests independently", async () => {
       let callCount = 0;
@@ -400,9 +378,6 @@ describe("cross-extension RPC", () => {
       expect(reply2).toHaveBeenCalledWith({ success: true, data: { id: "agent-2" } });
     });
   });
-
-  // --- model override resolution (regression for cross-extension callers
-  //     that forward a serializable string instead of a Model object) ---
 
   describe("spawn RPC model override", () => {
     const fakeModel = { id: "gpt-5.5", provider: "openai-codex", name: "GPT 5.5" };
@@ -468,9 +443,6 @@ describe("cross-extension RPC", () => {
     });
 
     it("treats an explicit null model as no override at all", async () => {
-      // A JSON-forwarding caller can serialize an unset field as null. The
-      // runner reads `options.model ?? default`, so null means "inherit" —
-      // it must not be resolved, scope-checked, or dereferenced.
       registerRpcHandlers(deps);
       const reply = vi.fn();
       events.on("subagents:rpc:spawn:reply:req-m5", reply);
@@ -487,7 +459,7 @@ describe("cross-extension RPC", () => {
     });
 
     it("errors when ctx has no modelRegistry but a string model is given", async () => {
-      ctx = { session: true }; // no modelRegistry
+      ctx = { session: true };
       registerRpcHandlers(deps);
       const reply = vi.fn();
       events.on("subagents:rpc:spawn:reply:req-m4", reply);
@@ -503,9 +475,6 @@ describe("cross-extension RPC", () => {
       expect(manager.spawn).not.toHaveBeenCalled();
     });
   });
-  // --- scopeModels on the RPC spawn path (#240): an override on the RPC
-  //     payload is an orchestrator-level choice, so it gets the Agent tool's
-  //     hard error rather than reaching the spawn on an out-of-scope model. ---
 
   describe("spawn RPC model scope", () => {
     const ALLOWED = { id: "gpt-5.5", provider: "openai-codex", name: "GPT 5.5" };
@@ -524,9 +493,6 @@ describe("cross-extension RPC", () => {
     let prevEnabled: boolean;
 
     beforeEach(() => {
-      // resolveEnabledModels memoizes on (patterns, mtime+size of both settings
-      // files) — a fresh project dir per test keeps one case's allowlist from
-      // being served to the next. Same harness as test/model-scope.test.ts.
       projectDir = mkdtempSync(join(tmpdir(), "pi-rpc-scope-project-"));
       agentDir = mkdtempSync(join(tmpdir(), "pi-rpc-scope-global-"));
       prevAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -543,7 +509,7 @@ describe("cross-extension RPC", () => {
     });
 
     afterEach(() => {
-      setScopeModelsEnabled(prevEnabled); // module-global — restore for other suites
+      setScopeModelsEnabled(prevEnabled);
       if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
       rmSync(projectDir, { recursive: true, force: true });
@@ -562,8 +528,6 @@ describe("cross-extension RPC", () => {
     }
 
     it("refuses an out-of-scope string override, listing what is allowed", async () => {
-      // The reported case: a bare "sonnet" fuzzy-resolves across providers, so
-      // only the RESOLVED model can be compared against enabledModels.
       const call = await spawn("req-sc1", "sonnet");
       expect(call.success).toBe(false);
       expect(call.error).toMatch(/Model not in scope/);

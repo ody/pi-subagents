@@ -11,19 +11,16 @@ import {
   formatFleetTokens,
 } from "../src/ui/fleet-list.js";
 
-// ---- Key sequences (see node_modules/@earendil-works/pi-tui/dist/keys.js) ----
 const DOWN = "\x1b[B";
 const UP = "\x1b[A";
 const LEFT = "\x1b[D";
 const RIGHT = "\x1b[C";
 const ESC = "\x1b";
 const ENTER = "\r";
-// Kitty-protocol key-RELEASE for ↓ (event type 3) — listeners receive these too.
 const DOWN_RELEASE = "\x1b[1;1:3B";
 
 const theme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => `*${s}*` };
 
-/** An agent that renders as a badge — no default agent configures a color. */
 const BADGED_TYPE = "colored-reviewer";
 const PURPLE_BACKGROUND = "\u001b[48;2;130;125;189m";
 const BADGED_CONFIG: AgentConfig = {
@@ -37,15 +34,10 @@ const BADGED_CONFIG: AgentConfig = {
   promptMode: "replace",
 };
 
-/**
- * Visible text of a rendered row: ANSI stripped, along with this theme's fake
- * `<color>` / `*bold*` markers — all three stand in for zero-width escapes.
- */
 function plain(row: string): string {
   return row.replace(/\u001b\[[0-9;]*m/g, "").replace(/<\/?[a-zA-Z]+>|\*/g, "");
 }
 
-/** A no-op session so a record is "openable" by default (the list hides session-less agents). */
 const FAKE_SESSION = { subscribe: () => () => {}, messages: [] };
 
 function makeRecord(over: Partial<AgentRecord> = {}): AgentRecord {
@@ -63,7 +55,6 @@ function makeRecord(over: Partial<AgentRecord> = {}): AgentRecord {
   } as AgentRecord;
 }
 
-/** Fake manager exposing only what FleetList touches. */
 function withActivity(manager: AgentManager, activity: Map<string, AgentActivity>): AgentManager {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as AgentManager;
 }
@@ -81,20 +72,13 @@ interface Harness {
   fleet: FleetList;
   ui: FleetUICtx;
   manager: AgentManager;
-  /** The overlay component (a real ConversationViewer) once one is opened. */
   overlayComponent: () => { handleInput(data: string): void } | undefined;
-  /** Feed a key to the registered input handler; returns the consume result. */
   press: (data: string) => { consume?: boolean } | undefined;
-  /** Render the currently-registered below-editor widget at the given width. */
   render: (width?: number) => string[];
   setEditorText: (t: string) => void;
-  /** Whether an overlay has been opened. */
   overlayOpened: () => boolean;
-  /** Whether the most recently opened overlay's `done` was invoked (closed). */
   overlayClosed: () => boolean;
-  /** Simulate the viewer closing itself (Esc → done); flushes the close microtask. */
   closeOverlay: () => Promise<void>;
-  /** The fake `tui` handed to the widget factory; tests set `focusedComponent` on it. */
   widgetTui: { requestRender(): void; focusedComponent?: unknown };
 }
 
@@ -124,8 +108,6 @@ function harness(
       return new Promise<undefined>((resolve) => {
         const done = (r: undefined) => { closed = true; overlayDone = undefined; resolve(r); };
         overlayDone = done;
-        // Construct the overlay component so the controller wires viewerClose,
-        // and keep it so tests can drive the real ConversationViewer's input.
         overlayComponent = factory(fakeTui, theme, undefined, done);
       });
     }) as FleetUICtx["custom"],
@@ -187,7 +169,6 @@ describe("FleetList navigation", () => {
     const child = rows.findIndex(l => l.includes("nested-child"));
     expect(parent).toBeGreaterThan(0);
     expect(child).toBe(parent + 1);
-    // The parent carries an expanded marker; the child sits one level in.
     expect(rows[parent]).toContain("▾");
     expect(plain(rows[child] ?? "").indexOf("○")).toBeGreaterThan(plain(rows[parent] ?? "").indexOf("▾"));
   });
@@ -197,8 +178,8 @@ describe("FleetList navigation", () => {
       makeRecord({ id: "top", description: "top-level" }),
       makeRecord({ id: "nested", description: "nested-child", parentAgentId: "top" }),
     ]);
-    h.press(DOWN); // activate, main selected
-    h.press(DOWN); // the parent
+    h.press(DOWN);
+    h.press(DOWN);
     expect(h.press(LEFT)).toEqual({ consume: true });
     expect(h.render().join("\n")).not.toContain("nested-child");
     expect(h.render().find(l => l.includes("top-level"))).toContain("▸");
@@ -213,7 +194,7 @@ describe("FleetList navigation", () => {
     ]);
     h.press(DOWN);
     h.press(DOWN);
-    h.press(DOWN); // the child
+    h.press(DOWN);
     expect(h.render().find(l => l.includes("nested-child"))).toContain("●");
     h.press(LEFT);
     expect(h.render().find(l => l.includes("top-level"))).toContain("●");
@@ -227,9 +208,8 @@ describe("FleetList navigation", () => {
     const h = harness(agents);
     h.press(DOWN);
     h.press(DOWN);
-    h.press(DOWN); // "second"
+    h.press(DOWN);
     expect(h.render().find(l => l.includes("second"))).toContain("●");
-    // A newly started agent sorts before it — an index would have drifted.
     agents.push(makeRecord({ id: "a0", description: "earlier", startedAt: 1 }));
     expect(h.render().find(l => l.includes("second"))).toContain("●");
   });
@@ -240,10 +220,10 @@ describe("FleetList navigation", () => {
       makeRecord({ id: "mid", description: "middle", parentAgentId: "top" }),
       makeRecord({ id: "deep", description: "grandchild", parentAgentId: "mid" }),
     ]);
-    h.press(DOWN); // activate on main
-    h.press(DOWN); // top
-    h.press(DOWN); // mid
-    h.press(DOWN); // deep
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(DOWN);
     expect(h.render().find(l => l.includes("grandchild"))).toContain("●");
     h.press(ENTER);
     expect(h.overlayOpened()).toBe(true);
@@ -259,7 +239,6 @@ describe("FleetList navigation", () => {
     const h = harness([makeRecord()]);
     const res = h.press(DOWN);
     expect(res).toEqual({ consume: true });
-    // main selected, list active → nav hint shown
     expect(h.render().some(l => l.includes("enter view"))).toBe(true);
   });
 
@@ -279,10 +258,10 @@ describe("FleetList navigation", () => {
       makeRecord({ id: "a1", description: "one" }),
       makeRecord({ id: "a2", description: "two" }),
     ]);
-    h.press(DOWN);          // activate → selection on main (idx 0)
-    h.press(DOWN_RELEASE);  // release half of the SAME tap — must be a no-op
+    h.press(DOWN);
+    h.press(DOWN_RELEASE);
     expect(h.render().find(l => l.includes("main"))).toContain("●");
-    h.press(DOWN);          // a real second tap → first agent
+    h.press(DOWN);
     h.press(DOWN_RELEASE);
     expect(h.render().find(l => l.includes("one"))).toContain("●");
     expect(h.render().find(l => l.includes("two"))).toContain("○");
@@ -293,16 +272,13 @@ describe("FleetList navigation", () => {
       makeRecord({ id: "a1", description: "one" }),
       makeRecord({ id: "a2", description: "two" }),
     ]);
-    h.press(DOWN); // activate → main
-    h.press(DOWN); // → a1
+    h.press(DOWN);
+    h.press(DOWN);
     const selected = h.render().find(l => l.includes("one"))!;
-    // Selection marker keeps accent color; row content uses primary text color.
     expect(selected).toContain("<accent>●</accent>");
     expect(selected).toContain("<text>one</text>");
     expect(selected).toMatch(/<text>\d+s · ↓ [\d.]+k? tokens<\/text>/);
-    // Agent display name rendered with the text token too (this type has no badge).
     expect(selected).toContain(`<text>${getDisplayName("general-purpose")}</text>`);
-    // Inactive rows keep the muted/dim treatment.
     const unselected = h.render().find(l => l.includes("two"))!;
     expect(unselected).toContain("<dim>○</dim>");
     expect(unselected).toMatch(/<dim>\d+s · ↓ [\d.]+k? tokens<\/dim>/);
@@ -316,18 +292,16 @@ describe("FleetList navigation", () => {
         makeRecord({ id: "a1", type: BADGED_TYPE, description: "one" }),
         makeRecord({ id: "a2", type: BADGED_TYPE, description: "two" }),
       ]);
-      h.press(DOWN); // activate → main
+      h.press(DOWN);
       const before = h.render().find(l => l.includes("one"))!;
       expect(before).toContain(`${PURPLE_BACKGROUND}`);
       expect(before).toContain(` ${BADGED_CONFIG.displayName} `);
 
-      h.press(DOWN); // → a1
+      h.press(DOWN);
       const selected = h.render().find(l => l.includes("one"))!;
-      // Selection bolds the badge rather than repainting it (Claude Code's FleetView) …
       expect(selected).toContain(PURPLE_BACKGROUND);
       expect(selected).toContain(`* ${BADGED_CONFIG.displayName} *`);
       expect(selected).not.toContain(`<text>${BADGED_CONFIG.displayName}`);
-      // … so the description stays in the same column as when unselected.
       expect(plain(selected).indexOf("one")).toBe(plain(before).indexOf("one"));
     } finally {
       registerAgents(new Map());
@@ -340,20 +314,19 @@ describe("FleetList navigation", () => {
       makeRecord({ id: "a2", description: "two" }),
     ];
     const h = harness(agents);
-    h.press(DOWN); // activate → index 0 (main)
-    h.press(DOWN); // → 1 (a1)
+    h.press(DOWN);
+    h.press(DOWN);
     expect(h.render().find(l => l.includes("one"))).toContain("●");
-    h.press(DOWN); // → 2 (a2)
-    h.press(DOWN); // clamp at 2
+    h.press(DOWN);
+    h.press(DOWN);
     expect(h.render().find(l => l.includes("two"))).toContain("●");
     expect(h.render().find(l => l.includes("one"))).toContain("○");
   });
 
   it("↑ above 'main' deactivates (returns to the prompt)", () => {
     const h = harness([makeRecord()]);
-    h.press(DOWN); // activate, index 0
+    h.press(DOWN);
     expect(h.press(UP)).toEqual({ consume: true });
-    // back to inactive hint
     expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
   });
 
@@ -371,7 +344,7 @@ describe("FleetList navigation", () => {
     ]);
     h.press(DOWN);
     h.press(DOWN);
-    h.press(DOWN); // a2
+    h.press(DOWN);
     expect(h.press(UP)).toEqual({ consume: true });
     expect(h.render().find(l => l.includes("one"))).toContain("●");
     expect(h.render().some(l => l.includes("enter view"))).toBe(true);
@@ -379,11 +352,11 @@ describe("FleetList navigation", () => {
 
   it("consumes → on a leaf and ← on main without changing selection", () => {
     const h = harness([makeRecord({ id: "a1", description: "one" })]);
-    h.press(DOWN); // main
+    h.press(DOWN);
     expect(h.press(LEFT)).toEqual({ consume: true });
     expect(h.render().find(l => l.includes("main"))).toContain("●");
     expect(h.press(RIGHT)).toEqual({ consume: true });
-    h.press(DOWN); // a1 (leaf)
+    h.press(DOWN);
     expect(h.press(RIGHT)).toEqual({ consume: true });
     expect(h.render().find(l => l.includes("one"))).toContain("●");
   });
@@ -413,11 +386,11 @@ describe("FleetList navigation", () => {
         setWidget: () => {}, onTerminalInput: () => () => {}, getEditorText: () => "",
         notify: () => {}, custom: (() => new Promise<undefined>(() => {})) as FleetUICtx["custom"],
       });
-      fleet.update();          // shows list, arms the timer
-      fleet.setEnabled(false); // hides, clears the timer
-      fleet.setEnabled(true);  // re-shows — must re-arm the timer
+      fleet.update();
+      fleet.setEnabled(false);
+      fleet.setEnabled(true);
       const before = listAgents.mock.calls.length;
-      vi.advanceTimersByTime(250); // a tick should fire and re-read the roster
+      vi.advanceTimersByTime(250);
       expect(listAgents.mock.calls.length).toBeGreaterThan(before);
       fleet.dispose();
     } finally {
@@ -427,21 +400,12 @@ describe("FleetList navigation", () => {
 });
 
 describe("FleetList vs other focused components (#123)", () => {
-  // pi dispatches terminal input to extension listeners BEFORE the focused
-  // component (pi-tui TUI.handleInput), and ctx.ui.select/confirm/input swap
-  // the prompt editor out of the editor container while getEditorText() still
-  // reads the detached (empty) editor. So while another component owns the
-  // keyboard — another extension's selector (rpiv-ask-user-question), pi's own
-  // menus, our /agents settings — the list must not consume its keys.
-
-  /** A minimal real Editor — what pi focuses at the prompt (CustomEditor extends it). */
   function realEditor(): Editor {
     const fakeTui = { requestRender: () => {} };
     const theme = { borderColor: (s: string) => s, selectList: {} };
     return new Editor(fakeTui as any, theme as any);
   }
 
-  /** Hand the fleet list its `tui` (happens on first widget render in pi) with the given focus. */
   function focusInHarness(h: Harness, focused: unknown): void {
     h.widgetTui.focusedComponent = focused;
     h.render();
@@ -449,19 +413,18 @@ describe("FleetList vs other focused components (#123)", () => {
 
   it("does not steal ↓ from a focused selector (activation)", () => {
     const h = harness([makeRecord()]);
-    focusInHarness(h, { kind: "selector" }); // e.g. ExtensionSelectorComponent
-    expect(h.press(DOWN)).toBeUndefined(); // must flow through to the selector
+    focusInHarness(h, { kind: "selector" });
+    expect(h.press(DOWN)).toBeUndefined();
   });
 
   it("does not steal navigation keys from a selector opened while the list was active", () => {
     const h = harness([makeRecord()]);
     focusInHarness(h, realEditor());
-    expect(h.press(DOWN)).toEqual({ consume: true }); // activate at the prompt
-    focusInHarness(h, { kind: "selector" });          // a dialog takes focus
+    expect(h.press(DOWN)).toEqual({ consume: true });
+    focusInHarness(h, { kind: "selector" });
     expect(h.press(DOWN)).toBeUndefined();
     expect(h.press(ENTER)).toBeUndefined();
     expect(h.press(ESC)).toBeUndefined();
-    // and the list dropped back to its inactive hint
     expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
   });
 
@@ -473,7 +436,6 @@ describe("FleetList vs other focused components (#123)", () => {
 
   it("assumes the editor when focus is unknowable (no tui yet / nothing focused)", () => {
     const h = harness([makeRecord()]);
-    // No render yet → the list has never seen a tui: activation must still work.
     expect(h.press(DOWN)).toEqual({ consume: true });
   });
 });
@@ -482,14 +444,13 @@ describe("FleetList rendering", () => {
   it("renders main + agent rows with markers, type, description and right-aligned stats", () => {
     const h = harness([makeRecord({ description: "Sleep then report 1" })]);
     const lines = h.render(120);
-    // hint + blank + main + one agent
     expect(lines[0]).toContain("← for agents");
-    expect(lines.find(l => l.includes("main"))).toContain("●"); // main selected by default
+    expect(lines.find(l => l.includes("main"))).toContain("●");
     const agentLine = lines.find(l => l.includes("Sleep then report 1"))!;
     expect(agentLine).toContain("○");
     expect(agentLine).toContain(getDisplayName("general-purpose"));
     expect(agentLine).toContain("↓ 13.1k tokens");
-    expect(agentLine).toMatch(/\d+s · ↓/); // "<seconds>s · ↓ ..." (timing-agnostic)
+    expect(agentLine).toMatch(/\d+s · ↓/);
   });
 
   it("orders agents earliest-launched first (top)", () => {
@@ -501,7 +462,7 @@ describe("FleetList rendering", () => {
     const oldIdx = lines.findIndex(l => l.includes("oldest"));
     const newIdx = lines.findIndex(l => l.includes("newest"));
     expect(oldIdx).toBeGreaterThanOrEqual(0);
-    expect(oldIdx).toBeLessThan(newIdx); // earliest sits above the later one
+    expect(oldIdx).toBeLessThan(newIdx);
   });
 
   it("hides agents that have no session yet (pending)", () => {
@@ -519,7 +480,6 @@ describe("FleetList rendering", () => {
       makeRecord({ id: `a${i}`, description: `report ${i}` }));
     const h = harness(agents);
     const lines = h.render(120);
-    // 8 agents, cap 5 visible → "↓ 3 more"
     expect(lines.some(l => l.includes("↓ 3 more"))).toBe(true);
   });
 
@@ -538,21 +498,20 @@ describe("FleetList rendering", () => {
     const agents = Array.from({ length: 8 }, (_, i) =>
       makeRecord({ id: `a${i}`, description: `report ${i}` }));
     const h = harness(agents);
-    h.press(DOWN); // activate (main)
-    // step down to the last agent (8 agents → roster index 8)
+    h.press(DOWN);
     for (let i = 0; i < 8; i++) h.press(DOWN);
     const lines = h.render(120);
     expect(lines.find(l => l.includes("report 7"))).toContain("●");
-    expect(lines.some(l => l.includes("↑"))).toBe(true); // hidden-above indicator
+    expect(lines.some(l => l.includes("↑"))).toBe(true);
   });
 });
 
 describe("FleetList overlay lifecycle", () => {
   it("Enter on 'main' just deactivates (no overlay)", () => {
     const h = harness([makeRecord()]);
-    h.press(DOWN); // active, index 0 (main)
+    h.press(DOWN);
     h.press(ENTER);
-    expect(h.overlayOpened()).toBe(false); // never opened an overlay
+    expect(h.overlayOpened()).toBe(false);
     expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
   });
 
@@ -564,14 +523,12 @@ describe("FleetList overlay lifecycle", () => {
       makeRecord({ id: "a3", description: "three", session: fakeSession as any }),
     ];
     const h = harness(agents);
-    h.press(DOWN); // activate (main, idx 0)
-    h.press(DOWN); // a1 (idx 1)
-    h.press(DOWN); // a2 (idx 2)
-    h.press(ENTER); // open a2
-    // a1 finishes and drops out while viewing → a2 shifts from idx 2 to idx 1.
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(ENTER);
     agents.splice(0, 1);
     await h.closeOverlay();
-    // Selection follows a2 ("two") to its new position, not whatever is at idx 2 now.
     expect(h.render().find(l => l.includes("two"))).toContain("●");
     expect(h.render().find(l => l.includes("three"))).toContain("○");
   });
@@ -579,15 +536,15 @@ describe("FleetList overlay lifecycle", () => {
   it("wires the viewer's steer composer to manager.steer with the agent id", () => {
     const agents = [makeRecord({ id: "live", description: "the one" })];
     const h = harness(agents);
-    h.press(DOWN);  // activate (main)
-    h.press(DOWN);  // → the agent
-    h.press(ENTER); // open the conversation viewer
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(ENTER);
 
     const viewer = h.overlayComponent();
     expect(viewer).toBeDefined();
-    viewer!.handleInput("\r");                       // Enter → open composer
+    viewer!.handleInput("\r");
     for (const ch of "go left") viewer!.handleInput(ch);
-    viewer!.handleInput("\r");                       // Enter → send
+    viewer!.handleInput("\r");
 
     expect(h.manager.steer).toHaveBeenCalledWith("live", "go left");
   });
@@ -598,30 +555,26 @@ describe("FleetList overlay lifecycle", () => {
       viewerMarkdown: () => "all",
       onViewerMarkdown: (mode) => persisted.push(mode),
     });
-    h.press(DOWN);  // activate (main)
-    h.press(DOWN);  // → the agent
-    h.press(ENTER); // open the conversation viewer
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(ENTER);
 
     h.overlayComponent()!.handleInput("m");
 
-    // "all" → "off" proves the cycle started from the *setting*; the viewer's own
-    // fallback would have started at "assistant" and landed on "all". A recorded
-    // value at all proves the persist hook is wired, as it is from /agents.
     expect(persisted).toEqual(["off"]);
   });
 
   it("does NOT auto-close when the viewed agent finishes (final output stays readable)", () => {
     const agents = [makeRecord({ id: "live", description: "the one" })];
     const h = harness(agents);
-    h.press(DOWN); // active (main)
-    h.press(DOWN); // → the agent
-    h.press(ENTER); // opens overlay
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(ENTER);
     expect(h.overlayOpened()).toBe(true);
-    // The agent finishes, well past the linger window...
     agents[0] = makeRecord({ id: "live", description: "the one", status: "completed", completedAt: Date.now() - 60_000 });
     h.fleet.onAgentFinished("live");
-    expect(h.overlayClosed()).toBe(false);                          // viewer stays open
-    expect(h.render().some(l => l.includes("the one"))).toBe(true); // and stays listed while viewed
+    expect(h.overlayClosed()).toBe(false);
+    expect(h.render().some(l => l.includes("the one"))).toBe(true);
   });
 
   it("lingers a finished agent in the list, then drops it after the window", () => {
@@ -662,13 +615,6 @@ describe("FleetList cost display", () => {
   });
 
   it("reads the record, so the figures do not change when the agent finishes", () => {
-    // Spend used to come from the live activity tracker while an agent ran and
-    // from its record once the tracker was deleted. The two disagree: only the
-    // record carries a nested child's spend (nested-tools folds it into every
-    // ancestor), so the number jumped upward at completion.
-    // The stale shape on purpose: an activity entry carrying figures of its own
-    // is what the old fallback preferred, so a row that still renders the
-    // record's numbers proves the tracker is no longer consulted for spend.
     const tracked = new Map<string, AgentActivity>([["a1", {
       activeTools: new Map(), toolUses: 0, responseText: "", turnCount: 1,
       lifetimeUsage: { input: 1, output: 1, cacheWrite: 0, cost: 0.9 },

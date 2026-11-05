@@ -1,18 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../src/types.js";
 
-// ── Mock wrapTextWithAnsi ──────────────────────────────────────────────
-// We need to control what wrapTextWithAnsi returns to simulate the
-// upstream bug (returning lines wider than requested width).
-// vi.mock is hoisted and intercepts before conversation-viewer.ts binds
-// its import.
-
 let wrapOverride: ((text: string, width: number) => string[]) | null = null;
-/** Bumped per `new Markdown(...)`, so a test can assert the per-message cache holds. */
 let markdownConstructions = 0;
-/** Bumped per Markdown render attempt, including failed ones. */
 let markdownRenderCalls = 0;
-/** Forces the Markdown component to throw, for the viewer's fallback path. */
 let markdownThrows = false;
 
 vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
@@ -26,10 +17,6 @@ vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
       }
       render(width: number): string[] {
         markdownRenderCalls++;
-        // Real trigger is ~54 nested blockquotes overflowing pi-tui's recursive
-        // renderer. Forced rather than reproduced: a real overflow costs ~2.4s
-        // and its depth depends on the platform's stack limit, so reproducing it
-        // makes the test both slow and liable to stop triggering silently.
         if (markdownThrows) throw new RangeError("Maximum call stack size exceeded");
         return super.render(width);
       }
@@ -41,12 +28,8 @@ vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
   };
 });
 
-// Must import AFTER vi.mock declaration (vitest hoists vi.mock but the
-// dynamic import of the test subject must happen after)
 const { visibleWidth } = await import("@earendil-works/pi-tui");
 const { ConversationViewer, RESULT_MAX_CHARS } = await import("../src/ui/conversation-viewer.js");
-
-// ── Helpers ────────────────────────────────────────────────────────────
 
 function mockTui(rows = 40, columns = 80) {
   return {
@@ -90,8 +73,6 @@ function assertAllLinesFit(lines: string[], width: number) {
   }
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
-
 beforeEach(() => {
   wrapOverride = null;
   markdownConstructions = 0;
@@ -100,21 +81,16 @@ beforeEach(() => {
 });
 
 describe("ConversationViewer invocation line", () => {
-  /** The `↳` metadata row for a record, or "" when the viewer renders none. */
   function invocationLine(invocation: AgentRecord["invocation"]): string {
     const viewer = new ConversationViewer(
       mockTui(30, 200), mockSession([]), mockRecord({ invocation }), undefined,
       { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any,
       vi.fn(),
     );
-    // The row arrives inside the overlay's frame, padded out to the right
-    // border; what is under test is the metadata it carries.
     const row = viewer.render(200).find(l => l.includes("↳"));
     return row ? row.slice(row.indexOf("↳")).replace(/\s*│\s*$/, "") : "";
   }
 
-  // The canonical id, not the short label the widget uses: this overlay is
-  // opened to inspect one agent and has the width to disambiguate providers.
   it("names the model with its provider", () => {
     expect(invocationLine({
       modelName: "sonnet 4.6",
@@ -145,7 +121,6 @@ describe("ConversationViewer invocation line", () => {
 });
 
 describe("ConversationViewer cost display", () => {
-  /** The header line, with a cost of `cost` on the record and showCost `on`. */
   function header(on: boolean, cost: number): string {
     const record = mockRecord({
       lifetimeUsage: { input: 1000, output: 200, cacheWrite: 0, cost },
@@ -159,8 +134,6 @@ describe("ConversationViewer cost display", () => {
   }
 
   it("shows the cost beside the token count when enabled", () => {
-    // The viewer opens on finished agents, whose live activity entry is gone —
-    // so this reads the record, and would show nothing if it did not.
     const out = header(true, 0.0042);
     expect(out).toContain("1.2k token");
     expect(out).toContain("~$0.0042");
@@ -178,7 +151,6 @@ describe("ConversationViewer cost display", () => {
 });
 
 describe("ConversationViewer header and footer", () => {
-  /** Theme that tags each fragment with its color, so icon colors are visible. */
   const tagTheme = {
     fg: (c: string, t: string) => `<${c}>${t}</${c}>`,
     bold: (t: string) => t,
@@ -208,7 +180,7 @@ describe("ConversationViewer header and footer", () => {
     const text = Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n");
     const session = mockSession([{ role: "assistant", content: [{ type: "text", text }] }]);
     const viewer = new ConversationViewer(mockTui(20, 120), session, mockRecord({ status: "completed" }), undefined, tagTheme, vi.fn());
-    viewer.handleInput("\x1b[H"); // home: scroll to top, auto-scroll off
+    viewer.handleInput("\x1b[H");
     const footer = viewer.render(120).at(-2) ?? "";
     const m = footer.match(/(\d+) lines · (\d+)%/);
     expect(m).not.toBeNull();
@@ -412,14 +384,12 @@ describe("ConversationViewer", () => {
   });
 
   describe("Markdown rendering", () => {
-    /** ANSI stripped, so an assertion is about the text and not the styling. */
     const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
 
     function viewerFor(
       messages: any[],
       mode?: "off" | "assistant" | "all",
       onMode?: (m: any) => void,
-      /** Tall enough that the assertion reads the whole transcript, not the scrolled window. */
       rows = 200,
     ) {
       return new ConversationViewer(
@@ -448,9 +418,6 @@ describe("ConversationViewer", () => {
       expect(out).toContain("**bold**");
     });
 
-    // The reason `all` is not the default: a tool result is arbitrary bytes, and
-    // a Markdown pass rewrites several constructs that occur constantly in real
-    // command output. Each line here is a rewrite reproduced against pi-tui.
     it("leaves tool results byte-exact under the default mode", () => {
       const raw = [
         "#!/bin/sh",
@@ -495,7 +462,6 @@ describe("ConversationViewer", () => {
       expect(onMode).toHaveBeenLastCalledWith("off");
       const off = strip(viewer.render(80).join("\n"));
       expect(off).toContain("m raw");
-      // The override, not just the label, is what took effect.
       expect(off).toContain("# Heading");
 
       viewer.handleInput("m");
@@ -542,8 +508,8 @@ describe("ConversationViewer", () => {
       const lines = Array.from({ length: 3000 }, (_, i) => `line ${i}`);
       const out = strip(viewerFor(result(lines.join("\n")), undefined, undefined, 4000).render(80).join("\n"));
 
-      expect(out).toContain("line 100");                       // far past the old 500-char cut
-      expect(out).not.toContain("line 2999");                  // but still bounded
+      expect(out).toContain("line 100");
+      expect(out).not.toContain("line 2999");
       expect(out).toMatch(/\.\.\. \(truncated, [\d.]+[kM]? more characters\)/);
     });
 
@@ -553,13 +519,10 @@ describe("ConversationViewer", () => {
       const content = ((viewer as any).buildContentLines(76) as string[]).map(strip);
       const note = content.find(l => l.includes("... (truncated"));
 
-      // Appended into the content it lands inside the unterminated fence, where
-      // it picks up the code-block indent and reads as a line of the tool's source.
       expect(note).toMatch(/^\.\.\. \(truncated, [\d.]+[kM]? more characters\)$/);
     });
 
     it("reports the exact omitted character count", () => {
-      // UTF-16 code units, so the astral character here counts as two.
       const text = `${"x".repeat(RESULT_MAX_CHARS)}😀x`;
       const viewer = viewerFor(result(text));
       const content = ((viewer as any).buildContentLines(76) as string[]).map(strip);
@@ -568,9 +531,6 @@ describe("ConversationViewer", () => {
     });
 
     it("abbreviates a large omitted count so the notice fits a narrow frame", () => {
-      // The notice goes through truncateToWidth at innerW (width - 4). An exact
-      // count runs to seven digits on a multi-megabyte result and pushes the
-      // notice past 46, where the unit is cut off and only a number survives.
       const text = `${"x".repeat(RESULT_MAX_CHARS)}${"y".repeat(1_100_000)}`;
       const note = viewerFor(result(text)).render(50).map(strip).find(l => l.includes("truncated,"));
 
@@ -578,8 +538,6 @@ describe("ConversationViewer", () => {
     });
 
     it("rounds into the M bracket rather than reporting 1000k", () => {
-      // 999,999 / 1000 rounds to 1000.0 — the bracket has to be picked against
-      // the rounded value, not the raw one.
       const text = `${"x".repeat(RESULT_MAX_CHARS)}${"y".repeat(999_999)}`;
       const note = strip(viewerFor(result(text)).render(80).join("\n")).split("\n").find(l => l.includes("truncated,"));
 
@@ -587,8 +545,6 @@ describe("ConversationViewer", () => {
     });
 
     it("falls back to literal wrapping once for an unsafe streaming prefix", () => {
-      // render() is on the TUI's critical path, so a parser throw must degrade
-      // rather than take the overlay down with it.
       const messages = result("# heading");
       const viewer = viewerFor(messages, "all");
       markdownThrows = true;
@@ -596,8 +552,6 @@ describe("ConversationViewer", () => {
       expect(() => viewer.render(80)).not.toThrow();
       expect(strip(viewer.render(80).join("\n"))).toContain("# heading");
 
-      // An append-only delta keeps the unsafe prefix, so it must stay literal
-      // without retrying the recursive parser on every streamed update.
       messages[0].content[0].text += "\nmore";
       expect(strip(viewer.render(80).join("\n"))).toContain("more");
       expect(markdownRenderCalls).toBe(1);
@@ -606,8 +560,6 @@ describe("ConversationViewer", () => {
       expect(strip(viewer.render(80).join("\n"))).toContain("# heading");
       expect(markdownRenderCalls).toBe(1);
 
-      // Replacing the failed content can remove the unsafe prefix, so it gets
-      // one fresh Markdown attempt instead of staying literal forever.
       messages[0].content[0].text = "## safe";
       const replaced = strip(viewer.render(80).join("\n"));
       expect(markdownRenderCalls).toBe(2);
@@ -616,8 +568,6 @@ describe("ConversationViewer", () => {
     });
 
     it("tracks a tool result that keeps growing past the cap", () => {
-      // The live case: the capped prefix never changes, so the parse is reused,
-      // but the character count being held back has to keep moving.
       const msg = { role: "toolResult", toolUseId: "t", content: [{ type: "text", text: `${"row\n".repeat(4500)}` }] };
       const viewer = viewerFor([msg]);
       const elided = () => {
@@ -632,12 +582,10 @@ describe("ConversationViewer", () => {
 
       expect(before).toBeGreaterThan(0);
       expect(after).toBeGreaterThan(before);
-      expect(markdownConstructions).toBe(0); // default mode: results take the literal path
+      expect(markdownConstructions).toBe(0);
     });
 
     it("leaves a result under the cap untouched", () => {
-      // Deliberately between the old 500-char cap and the new one, so the test
-      // discriminates the cap's value and not merely its existence.
       const text = `head\n${"filler line\n".repeat(200)}tail`;
       const out = strip(viewerFor(result(text), undefined, undefined, 600).render(80).join("\n"));
 
@@ -655,8 +603,6 @@ describe("ConversationViewer", () => {
     });
 
     it("keeps tool results dim even when rendering them as Markdown", () => {
-      // Reads the content line directly: every bordered row carries the theme's
-      // escape on its `│`, so asserting on rendered output would pass either way.
       const viewer = viewerFor(result("plain result text"), "all");
       const line = (viewer as any).buildContentLines(76)
         .find((l: string) => strip(l).includes("plain result text"));
@@ -698,9 +644,6 @@ describe("ConversationViewer", () => {
 
     it("renders Markdown to fit, so the overwidth clamp never has to cut it", () => {
       const text = `# ${"Heading ".repeat(20)}\n\n| a | b |\n|---|---|\n| ${"x".repeat(90)} | 2 |\n\n\`\`\`js\nconst x = ${"1".repeat(120)};\n\`\`\``;
-      // From 20 up: below that the `[Assistant]` role label is itself wider than
-      // the viewport, so the clamp legitimately fires on chrome rather than content.
-      // Narrower widths stay covered by the wrapTextWithAnsi safety net above.
       for (const w of [20, 40, 80, 120]) {
         const viewer = new ConversationViewer(
           mockTui(30, w), mockSession(assistant(text)), mockRecord(), undefined, ansiTheme(), vi.fn(),
@@ -708,20 +651,12 @@ describe("ConversationViewer", () => {
         const content = (viewer as any).buildContentLines(w) as string[];
 
         assertAllLinesFit(content, w);
-        // `truncateToWidth` is the #7 backstop, not what keeps these in bounds —
-        // if it fires on Markdown output, content is being silently cut.
         expect(content.filter(l => strip(l).endsWith("..."))).toEqual([]);
       }
     });
   });
 
   describe("safety net against upstream wrapTextWithAnsi bugs", () => {
-    // These tests call buildContentLines() directly (via the private method)
-    // because render() has its own truncation via row(). The safety net in
-    // buildContentLines is what prevents the TUI crash — it must clamp
-    // independently of render().
-
-    /** Call the private buildContentLines method directly. */
     function callBuildContentLines(viewer: InstanceType<typeof ConversationViewer>, width: number): string[] {
       return (viewer as any).buildContentLines(width);
     }
@@ -810,16 +745,13 @@ describe("ConversationViewer", () => {
         tui, mockSession(), mockRecord({ status: "running" }), undefined, ansiTheme(), vi.fn(), onStop,
       );
 
-      // Idle footer offers the stop affordance.
       expect(viewer.render(W).join("\n")).toContain("x stop");
 
-      // First press arms (no abort yet) and re-renders.
       viewer.handleInput("x");
       expect(onStop).not.toHaveBeenCalled();
       expect(tui.requestRender).toHaveBeenCalled();
       expect(viewer.render(W).join("\n")).toContain("x again to STOP");
 
-      // Second press aborts.
       viewer.handleInput("x");
       expect(onStop).toHaveBeenCalledTimes(1);
     });
@@ -830,12 +762,12 @@ describe("ConversationViewer", () => {
         mockTui(30, W), mockSession(), mockRecord({ status: "running" }), undefined, ansiTheme(), vi.fn(), onStop,
       );
 
-      viewer.handleInput("x");                       // arm
-      viewer.handleInput("j");                       // scroll → disarm
+      viewer.handleInput("x");
+      viewer.handleInput("j");
       expect(viewer.render(W).join("\n")).toContain("x stop");
       expect(viewer.render(W).join("\n")).not.toContain("x again to STOP");
 
-      viewer.handleInput("x");                       // arms again, does NOT stop
+      viewer.handleInput("x");
       expect(onStop).not.toHaveBeenCalled();
     });
 
@@ -877,8 +809,7 @@ describe("ConversationViewer", () => {
       const { viewer } = makeViewer();
       expect(viewer.render(W).join("\n")).toContain("Enter steer");
 
-      viewer.handleInput("\r"); // Enter
-      // Composer is shown (its prompt + send/cancel hint), idle footer is gone.
+      viewer.handleInput("\r");
       const out = viewer.render(W).join("\n");
       expect(out).toContain("Enter send · Esc cancel");
       expect(out).not.toContain("Enter steer");
@@ -886,19 +817,19 @@ describe("ConversationViewer", () => {
 
     it("typing then Enter sends the trimmed message and closes the composer", () => {
       const { viewer, onSteer } = makeViewer();
-      viewer.handleInput("\r"); // open composer
+      viewer.handleInput("\r");
       for (const ch of "  hello  ") viewer.handleInput(ch);
-      viewer.handleInput("\r"); // send
+      viewer.handleInput("\r");
 
       expect(onSteer).toHaveBeenCalledWith("hello");
-      expect(viewer.render(W).join("\n")).not.toContain("Enter send"); // composer closed
+      expect(viewer.render(W).join("\n")).not.toContain("Enter send");
     });
 
     it("Esc cancels the composer without sending", () => {
       const { viewer, onSteer } = makeViewer();
-      viewer.handleInput("\r"); // open composer
+      viewer.handleInput("\r");
       for (const ch of "draft") viewer.handleInput(ch);
-      viewer.handleInput("\x1b"); // Esc
+      viewer.handleInput("\x1b");
 
       expect(onSteer).not.toHaveBeenCalled();
       expect(viewer.render(W).join("\n")).not.toContain("Enter send");
@@ -906,16 +837,15 @@ describe("ConversationViewer", () => {
 
     it("an empty submit just returns (like Esc), without calling onSteer", () => {
       const { viewer, onSteer } = makeViewer();
-      viewer.handleInput("\r"); // open composer
-      viewer.handleInput("\r"); // empty submit
+      viewer.handleInput("\r");
+      viewer.handleInput("\r");
       expect(onSteer).not.toHaveBeenCalled();
-      expect(viewer.render(W).join("\n")).not.toContain("Enter send"); // composer closed
+      expect(viewer.render(W).join("\n")).not.toContain("Enter send");
     });
 
     it("scroll keys are inert while composing (input owns them)", () => {
       const { viewer } = makeViewer();
-      viewer.handleInput("\r"); // open composer
-      // 'j' would normally scroll, but here it types into the composer.
+      viewer.handleInput("\r");
       viewer.handleInput("j");
       expect(viewer.render(W).join("\n")).toContain("Enter send · Esc cancel");
     });
@@ -943,7 +873,7 @@ describe("ConversationViewer", () => {
           tui, mockSession(), mockRecord({ status: "running" }),
           undefined, ansiTheme(), vi.fn(), undefined, undefined, vi.fn(),
         );
-        viewer.handleInput("\r"); // open composer
+        viewer.handleInput("\r");
         for (const ch of "x".repeat(200)) viewer.handleInput(ch);
         assertAllLinesFit(viewer.render(w), w);
       }

@@ -1,8 +1,4 @@
-/**
- * agent-runner.ts — Core execution engine: creates sessions, runs agents, collects results.
- *
- * Size: runAgent is one ordered setup sequence (prompt, extensions, tools, session, turn limits) whose steps share local state.
- */
+// Size: runAgent is one ordered setup sequence (prompt, extensions, tools, session, turn limits) whose steps share local state.
 
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";

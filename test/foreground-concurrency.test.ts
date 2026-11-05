@@ -96,7 +96,6 @@ describe("maxConcurrentForeground", () => {
     resolvers.get("a")!();
     expect(await first).toMatchObject({ record: { status: "completed", result: "a-result" } });
 
-    // FIFO: "b" was queued first, so "b" runs — not "c".
     expect(recordFor(manager, "b").status).toBe("running");
     expect(recordFor(manager, "c").status).toBe("queued");
 

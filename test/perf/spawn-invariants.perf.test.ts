@@ -1,16 +1,3 @@
-/**
- * spawn-invariants.perf.test.ts — how much disk work one `Agent` call is
- * allowed to do.
- *
- * `execute` opens with `reloadCustomAgents()`, which sweeps three directories
- * and parses the YAML frontmatter of every agent file it finds, synchronously.
- * The benchmark measures that at ~1.8 ms for 50 agent files and ~7.4 ms for
- * 200 — per call, and a fan-out pays it per agent. That cost is a deliberate
- * trade (new agent files work without a restart); paying it *twice* would not
- * be, and is exactly the kind of thing a refactor adds without noticing.
- *
- * Counted, not timed, for the reasons in `render-invariants.perf.test.ts`.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let loads = 0;
@@ -55,7 +42,6 @@ afterEach(() => {
   hermetic?.restore();
 });
 
-/** Boot the real extension in a hermetic cwd and hand back its Agent tool. */
 function bootAgentTool() {
   hermetic = hermeticDir({
     agentFiles: {
@@ -71,7 +57,7 @@ function bootAgentTool() {
 describe("one Agent call, one sweep of the agent directories", () => {
   it("reloads agent files at most once per background spawn", async () => {
     const agent = bootAgentTool();
-    loads = 0; // activation legitimately loads once; this counts the call only
+    loads = 0;
 
     await agent.execute(
       "tc-1",
@@ -100,8 +86,6 @@ describe("one Agent call, one sweep of the agent directories", () => {
     }
     await flush();
 
-    // Five calls, five sweeps at most — not five per call, and not one sweep per
-    // agent already running.
     expect(loads).toBeLessThanOrEqual(5);
   });
 });

@@ -1,18 +1,3 @@
-/**
- * foreground-concurrency-wiring.test.ts — `maxConcurrentForeground` (#253)
- * through the REAL extension, at the layer the setting exists to serve.
- *
- * pi's agent loop runs a message's tool calls through `Promise.all`, so two
- * blocking `Agent` calls in one message start within microseconds of each
- * other. These tests dispatch them the same way — two `execute()` calls without
- * awaiting the first — because that is the only shape in which the queue is
- * reachable, and it is the shape that constrains everything else here:
- *
- *   a tool `execute` that REJECTS rejects that whole Promise.all, killing
- *   unrelated tool calls in the same batch.
- *
- * So the Esc case below asserts `.resolves`, deliberately, not `.rejects`.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -33,15 +18,12 @@ beforeEach(() => {
 
 afterEach(async () => {
   await booted?.get("session_shutdown")?.();
-  // The manager registry is a globalThis symbol released only on shutdown; a
-  // test that threw first would leave the next one reading a dead manager.
   delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
   booted = undefined;
   hermetic?.restore();
   hermetic = undefined;
 });
 
-/** Boot the real extension with foreground concurrency pinned to one slot. */
 function boot(settings: Record<string, unknown> = {}) {
   hermetic = hermeticDir({
     settings: { outputTranscript: false, maxConcurrentForeground: 1, ...settings },
@@ -52,7 +34,6 @@ function boot(settings: Record<string, unknown> = {}) {
   return b;
 }
 
-/** Runs that settle only when their resolver is called, keyed by prompt. */
 function controllableRuns() {
   const resolvers = new Map<string, () => void>();
   vi.mocked(runAgent).mockImplementation(
@@ -75,7 +56,6 @@ function controllableRuns() {
   return resolvers;
 }
 
-/** Dispatch a blocking Agent call the way pi does — without awaiting it. */
 function callForeground(tools: Map<string, any>, prompt: string, opts: {
   signal?: AbortSignal;
   onUpdate?: (u: any) => void;
@@ -98,8 +78,7 @@ describe("maxConcurrentForeground, through the Agent tool", () => {
     const second = callForeground(tools, "beta");
     await flush();
 
-    // Only one started; "beta" is parked on the pool.
-    expect(runAgent).toHaveBeenCalledTimes(1);
+      expect(runAgent).toHaveBeenCalledTimes(1);
 
     resolvers.get("alpha")!();
     expect(textOf(await first)).toContain("alpha-RESULT");
@@ -110,8 +89,6 @@ describe("maxConcurrentForeground, through the Agent tool", () => {
     expect(textOf(await second)).toContain("beta-RESULT");
   });
 
-  // The Promise.all constraint. A queued agent aborted by Esc must come back as
-  // an ordinary stopped result, not as a throw that would take the batch down.
   it("resolves a queued call as STOPPED when the turn is interrupted", async () => {
     const { tools } = boot();
     const resolvers = controllableRuns();
@@ -123,20 +100,16 @@ describe("maxConcurrentForeground, through the Agent tool", () => {
 
     controller.abort();
 
-    const result = await second; // resolves — never rejects
+    const result = await second;
     expect(textOf(result)).toContain("STOPPED BY THE USER");
     expect(result.isError).toBeFalsy();
 
-    // Freeing the slot must not start the agent the user just stopped.
     resolvers.get("alpha")!();
     await first;
     await flush();
     expect(runAgent).toHaveBeenCalledTimes(1);
   });
 
-  // "thinking…" would be a lie for an agent that has not started and may not
-  // for minutes. The row keeps its spinner either way — a status the renderer
-  // does not know falls through to raw text and reads as hung.
   it("says it is queued in the live tool result, then stops saying it", async () => {
     const { tools } = boot();
     const resolvers = controllableRuns();
@@ -150,7 +123,6 @@ describe("maxConcurrentForeground, through the Agent tool", () => {
     const queuedActivity = secondUpdates.map(u => u.details?.activity);
     expect(queuedActivity.some((a: string) => a?.includes("waiting for a foreground slot"))).toBe(true);
     expect(secondUpdates.at(-1)?.details?.status).toBe("running");
-    // The agent that actually started never claims to be queued.
     expect(firstUpdates.every((u: any) => !u.details?.activity?.includes("queued"))).toBe(true);
 
     resolvers.get("alpha")!();

@@ -1069,9 +1069,6 @@ describe("AgentManager — abort() state machine", () => {
   });
 });
 
-// Regression for #44: ESC during a foreground Agent call must propagate to
-// the child. Pi delivers parent abort via AbortSignal; the manager wires the
-// signal's "abort" event to this.abort(id).
 describe("AgentManager — steer()", () => {
   let manager: AgentManager;
   afterEach(() => manager?.dispose());
@@ -1090,7 +1087,6 @@ describe("AgentManager — steer()", () => {
       return new Promise(() => {});
     });
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "r", isBackground: true });
-    // Simulate the session becoming ready.
     captured?.({ steer, dispose: vi.fn() });
 
     expect(manager.steer(id, "go left")).toBe(true);
@@ -1102,7 +1098,7 @@ describe("AgentManager — steer()", () => {
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "r", isBackground: true });
     const record = manager.getRecord(id)!;
-    record.session = undefined; // not ready
+    record.session = undefined;
 
     expect(manager.steer(id, "first")).toBe(true);
     expect(manager.steer(id, "second")).toBe(true);
@@ -1154,7 +1150,6 @@ describe("AgentManager — listAgents() ordering", () => {
     const b = manager.spawn(mockPi, mockCtx, "X", "2", { description: "b" });
     const c = manager.spawn(mockPi, mockCtx, "X", "3", { description: "c" });
 
-    // Force deterministic startedAt — Date.now() can collide on fast runs
     manager.getRecord(a)!.startedAt = 100;
     manager.getRecord(b)!.startedAt = 200;
     manager.getRecord(c)!.startedAt = 300;
@@ -1244,8 +1239,6 @@ describe("AgentManager — runAgent rejection leaves the record visible with err
   });
 });
 
-// #144 — a run that RESOLVES with a failed final turn (pi never rejects on
-// retry exhaustion) must map to status "error", not "completed".
 describe("AgentManager — resolved runs with a failed final turn map to error (#144)", () => {
   let manager: AgentManager;
   afterEach(() => manager?.dispose());
@@ -1303,7 +1296,7 @@ describe("AgentManager — resolved runs with a failed final turn map to error (
 
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "x", isBackground: true });
     const record = manager.getRecord(id)!;
-    record.status = "stopped"; // external abort() path
+    record.status = "stopped";
     resolveRun!({ responseText: "", session, aborted: false, steered: false, failure: "late error" });
     await record.promise;
 
@@ -1320,8 +1313,6 @@ describe("AgentManager — resolved runs with a failed final turn map to error (
     expect(record.status).toBe("completed");
 
     const { resumeAgent: resumeMock } = await import("../src/session/agent-runner.js");
-    // resumeAgent bounds its fallback to this invocation, so a failed empty
-    // resume yields text "" — never the prior turn's answer (#144 root-fix).
     vi.mocked(resumeMock).mockResolvedValue({
       text: "",
       failure: "retries exhausted on resume",
@@ -1331,7 +1322,7 @@ describe("AgentManager — resolved runs with a failed final turn map to error (
 
     expect(record.status).toBe("error");
     expect(record.error).toBe("retries exhausted on resume");
-    expect(record.result).toBe(""); // no stale prior answer
+    expect(record.result).toBe("");
   });
 
   it("resume(): partial text produced before the failure is kept as result", async () => {
@@ -1350,21 +1341,15 @@ describe("AgentManager — resolved runs with a failed final turn map to error (
     await manager.resume(id, "more");
 
     expect(record.status).toBe("error");
-    expect(record.result).toBe("new partial progress"); // salvageable, this-run text
+    expect(record.result).toBe("new partial progress");
   });
 });
 
-// The pool counter is decremented when a background agent settles, but ONLY for
-// records that took a slot in the first place. Nested children bypass the pool
-// (occupiesPoolSlot), so decrementing on their behalf drives runningBackground
-// negative and permanently lifts maxConcurrent. Only the START side of that rule
-// had coverage.
 describe("AgentManager — pool slot accounting on settle", () => {
   let manager: AgentManager;
 
   afterEach(() => manager?.dispose());
 
-  /** A run that only settles when its returned resolver is called. */
   function controllableRuns() {
     const resolvers = new Map<string, (v: any) => void>();
     vi.mocked(runAgent).mockImplementation((_ctx: any, _type: any, prompt: any) =>
@@ -1398,13 +1383,11 @@ describe("AgentManager — pool slot accounting on settle", () => {
     resolvers.get("child")!(undefined);
     await manager.getRecord(manager.listAgents().find(a => a.description === "child")!.id)?.promise;
 
-    // The parent still holds the only slot, so the sibling must stay queued.
     expect(manager.getRecord(siblingId)?.status).toBe("queued");
   });
 
   it("a nested child failing does not free a pool slot either", async () => {
     const rejectors = new Map<string, (e: any) => void>();
-    // Nothing resolves here — only the child is settled, by rejection.
     vi.mocked(runAgent).mockImplementation((_ctx: any, _type: any, prompt: any) =>
       new Promise<any>((_resolve, reject) => {
         rejectors.set(prompt as string, reject);
@@ -1430,8 +1413,6 @@ describe("AgentManager — pool slot accounting on settle", () => {
   });
 
   it("a top-level agent settling DOES free its slot", async () => {
-    // The other half of the rule — guards against over-correcting the fix into
-    // "never decrement", which would wedge the queue permanently.
     const resolvers = controllableRuns();
     manager = new AgentManager(undefined, 1);
 
@@ -1456,10 +1437,6 @@ describe("AgentManager — drainQueue failure handling", () => {
   afterEach(() => manager?.dispose());
 
   it("a spawn that throws at drain time errors that record and keeps draining", async () => {
-    // Strict worktree isolation is the documented drain-time failure: the check
-    // runs in startAgent, which drainQueue calls minutes after spawn() returned.
-    // If the throw escaped drainQueue, every agent still queued behind it would
-    // be stranded forever — a hang, not an error.
     const { createWorktree } = await import("../src/platform/worktree.js");
     const completed: AgentRecord[] = [];
     manager = new AgentManager(r => { completed.push(r); }, 1);
@@ -1472,7 +1449,7 @@ describe("AgentManager — drainQueue failure handling", () => {
         });
       }),
     );
-    vi.mocked(createWorktree).mockResolvedValueOnce(undefined); // "not a git repo"
+    vi.mocked(createWorktree).mockResolvedValueOnce(undefined);
 
     const firstId = manager.spawn(mockPi, mockCtx, "X", "first", { description: "first", isBackground: true });
     const boomId = manager.spawn(mockPi, mockCtx, "X", "boom", {
@@ -1489,14 +1466,10 @@ describe("AgentManager — drainQueue failure handling", () => {
     expect(boom.error).toContain('isolation: "worktree"');
     expect(boom.completedAt).toBeGreaterThan(0);
     expect(completed.map(r => r.id)).toContain(boomId);
-    // ...and the drain continued past the failure rather than stopping there.
     expect(manager.getRecord(lastId)?.status).toBe("running");
   });
 
   it("a cwd deleted between enqueue and drain is caught by the re-validation", async () => {
-    // spawn() validated this cwd when it was still there. startAgent checks
-    // again precisely because a queued agent can start minutes later (TOCTOU) —
-    // that second check has never run in a test.
     manager = new AgentManager(undefined, 1);
 
     let blocker: ((v: any) => void) | undefined;
@@ -1515,14 +1488,14 @@ describe("AgentManager — drainQueue failure handling", () => {
     });
     expect(manager.getRecord(goneId)?.status).toBe("queued");
 
-    rmSync(goneDir, { recursive: true, force: true }); // vanishes while queued
+    rmSync(goneDir, { recursive: true, force: true });
 
     blocker!(undefined);
     await manager.getRecord(firstId)?.promise;
 
     const gone = manager.getRecord(goneId)!;
     expect(gone.status).toBe("error");
-    expect(gone.error).toContain(goneDir); // the curated message, not a raw ENOENT
+    expect(gone.error).toContain(goneDir);
   });
 
   it("raising maxConcurrent releases queued agents immediately", async () => {
@@ -1550,9 +1523,6 @@ describe("AgentManager — pendingSteers flush", () => {
   afterEach(() => manager?.dispose());
 
   it("delivers steers queued before the session existed, in order, then clears them", async () => {
-    // A steer sent in the window between spawn and session creation is parked on
-    // the record. If the flush breaks, the user's course correction is silently
-    // dropped — steer_subagent already told them it was queued.
     const steer = vi.fn().mockResolvedValue(undefined);
     let release: (() => void) | undefined;
     vi.mocked(runAgent).mockImplementation((_ctx: any, _type: any, _prompt: any, opts: any) =>
@@ -1576,7 +1546,6 @@ describe("AgentManager — pendingSteers flush", () => {
     await record.promise;
 
     expect(steer.mock.calls.map(c => c[0])).toEqual(["first correction", "second correction"]);
-    // Cleared, or every later session creation would re-deliver the same steers.
     expect(record.pendingSteers).toBeUndefined();
   });
 
@@ -1603,11 +1572,6 @@ describe("AgentManager — pendingSteers flush", () => {
   });
 });
 
-// waitForAll() had zero coverage despite backing the Symbol.for registry entry
-// and the print-mode host's shutdown hold. Its loop exists BECAUSE drainQueue
-// respects maxConcurrent: a single Promise.allSettled pass would return while
-// queued agents had not even started. That reads like a redundant loop, which
-// is exactly why it needs a test — collapsing it resolves early and silently.
 describe("AgentManager — waitForAll", () => {
   let manager: AgentManager;
 
@@ -1627,17 +1591,11 @@ describe("AgentManager — waitForAll", () => {
     const ids = ["a", "b", "c"].map(p =>
       manager.spawn(mockPi, mockCtx, "X", p, { description: p, isBackground: true }),
     );
-    // Only the first can be running; the other two are behind the pool.
     expect(manager.getRecord(ids[1])?.status).toBe("queued");
 
     let settled = false;
     const all = manager.waitForAll().then(() => { settled = true; });
 
-    // Release ONLY the running one. A queued record has no `.promise` yet — it
-    // is created when the queue starts it — so a single `Promise.allSettled`
-    // pass sees just this one agent and would resolve here, with two agents
-    // still unstarted. The retry loop is what makes that not happen, and
-    // asserting after releasing everything would hide the difference entirely.
     await new Promise(r => setImmediate(r));
     resolvers.get("a")!();
     await new Promise(r => setImmediate(r));
@@ -1663,9 +1621,6 @@ describe("AgentManager — waitForAll", () => {
   });
 
   it("waits for an agent whose worktree is still being created", async () => {
-    // The startup gap: the record is "running" but has no `.promise` yet,
-    // because the repo copy is an awaited git call. Waiting only on `.promise`
-    // would let a `/wait` return before the agent had run at all.
     const { createWorktree } = await import("../src/platform/worktree.js");
     let releaseCopy!: () => void;
     vi.mocked(createWorktree).mockImplementationOnce(
@@ -1693,8 +1648,6 @@ describe("AgentManager — waitForAll", () => {
   });
 
   it("does not reject when an agent fails", async () => {
-    // allSettled, not all — one failing agent must not leave the caller hanging
-    // on a rejection it never asked for.
     vi.mocked(runAgent).mockRejectedValue(new Error("boom"));
     manager = new AgentManager();
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "p", isBackground: true });
@@ -1706,8 +1659,6 @@ describe("AgentManager — waitForAll", () => {
 
 describe("AgentManager — dispose prunes worktree repos", () => {
   it("prunes the process cwd and every repo a worktree was created from", async () => {
-    // Pruning needs pi (the git call is async now), so it is handed in at
-    // dispose. A manager disposed without one just skips it.
     const { createWorktree, pruneWorktrees } = await import("../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce({
       path: "/wt/copy", branch: "b", baseSha: "abc", workPath: "/wt/copy",
@@ -1727,7 +1678,6 @@ describe("AgentManager — dispose prunes worktree repos", () => {
 
     manager.dispose(mockPi);
     expect(pruneWorktrees).toHaveBeenCalledWith(mockPi, process.cwd());
-    // The caller-supplied cwd's repo too — that is where its worktree lived.
     expect(pruneWorktrees).toHaveBeenCalledWith(mockPi, "/");
   });
 });
@@ -1739,7 +1689,6 @@ describe("AgentManager — background resume", () => {
     manager?.dispose();
   });
 
-  // Spawn a background agent and let it settle so it holds a session to resume.
   async function spawnSettled(mgr: AgentManager): Promise<string> {
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "first",
@@ -1759,16 +1708,14 @@ describe("AgentManager — background resume", () => {
     const onComplete = vi.fn();
     manager = new AgentManager(onComplete);
     const id = await spawnSettled(manager);
-    onComplete.mockClear(); // drop the spawn's own completion
+    onComplete.mockClear();
 
-    // Deferred resumeAgent so we can observe the mid-flight state.
     let finish!: (v: { text: string; failure?: string }) => void;
     vi.mocked(resumeAgent).mockImplementation(
       () => new Promise((resolve) => { finish = resolve; }),
     );
 
     const record = await manager.resume(id, "keep going", undefined, { isBackground: true });
-    // Returned immediately: still running, with a tracked promise, no notify yet.
     expect(record?.status).toBe("running");
     expect(record?.promise).toBeDefined();
     expect(onComplete).not.toHaveBeenCalled();
@@ -1797,7 +1744,7 @@ describe("AgentManager — background resume", () => {
 
     expect(manager.getRecord(id)!.status).toBe("error");
     expect(manager.getRecord(id)!.error).toBe("provider exploded");
-    expect(manager.getRecord(id)!.result).toBe("partial"); // #144: keep this-run text
+    expect(manager.getRecord(id)!.result).toBe("partial");
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
@@ -1822,16 +1769,14 @@ describe("AgentManager — background resume", () => {
 
     expect(onToolActivity).toHaveBeenCalledWith({ type: "end", toolName: "grep" });
     expect(onAssistantUsage).toHaveBeenCalledWith({ input: 5, output: 3, cacheWrite: 0, cost: 0 });
-    // Internal record bookkeeping still runs alongside the forwarded callbacks.
     expect(manager.getRecord(id)!.toolUses).toBe(1);
     expect(manager.getRecord(id)!.lifetimeUsage).toEqual({ input: 5, output: 3, cacheWrite: 0, cost: 0 });
   });
 
   it("queues a background resume when the concurrency pool is full", async () => {
-    manager = new AgentManager(undefined, 1); // maxConcurrent = 1
+    manager = new AgentManager(undefined, 1);
     const id = await spawnSettled(manager);
 
-    // Occupy the single slot with a never-settling background spawn.
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
     const blockerId = manager.spawn(mockPi, mockCtx, "general-purpose", "blocker", {
       description: "blocker",
@@ -1840,7 +1785,7 @@ describe("AgentManager — background resume", () => {
     expect(manager.getRecord(blockerId)!.status).toBe("running");
 
     vi.mocked(resumeAgent).mockImplementation(() => new Promise(() => {}));
-    vi.mocked(resumeAgent).mockClear(); // drop call history from earlier tests
+    vi.mocked(resumeAgent).mockClear();
     const record = await manager.resume(id, "later", undefined, { isBackground: true });
 
     expect(record?.status).toBe("queued");
@@ -1858,15 +1803,9 @@ describe("AgentManager — background resume", () => {
 
     expect(record?.status).toBe("completed");
     expect(record?.result).toBe("inline result");
-    // Foreground resume returns its result inline and never notified (historical).
     expect(onComplete).not.toHaveBeenCalled();
   });
 
-  // A detached resume returns while the record is still "running", so nothing
-  // stops a second resume of the same agent. Starting one would replace
-  // record.abortController — leaving the live run unreachable from /agents stop
-  // and abortAll() — and then reject from session.prompt(), whose settle path
-  // would report a failure and abort the children of a run still in progress.
   it("refuses to background-resume an agent whose run is still in flight", async () => {
     const onComplete = vi.fn();
     manager = new AgentManager(onComplete);
@@ -1884,18 +1823,15 @@ describe("AgentManager — background resume", () => {
 
     expect(second).toBeUndefined();
     expect(resumeAgent).toHaveBeenCalledTimes(1);
-    // The in-flight run is untouched: same controller, still running, no
-    // spurious completion notification.
     expect(manager.getRecord(id)!.abortController).toBe(liveController);
     expect(manager.getRecord(id)!.status).toBe("running");
     expect(onComplete).not.toHaveBeenCalled();
-    // Still stoppable — the point of keeping the original controller.
     expect(manager.abort(id)).toBe(true);
     expect(liveController!.signal.aborted).toBe(true);
   });
 
   it("refuses to background-resume an agent that is still queued", async () => {
-    manager = new AgentManager(undefined, 1); // maxConcurrent = 1
+    manager = new AgentManager(undefined, 1);
     const id = await spawnSettled(manager);
 
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
@@ -1912,16 +1848,10 @@ describe("AgentManager — background resume", () => {
     expect(resumeAgent).not.toHaveBeenCalled();
   });
 
-  // onStarted is where the Agent tool hangs output-file streaming. It must fire
-  // when the run actually begins — not when resume() returns — or a resume that
-  // is stopped while queued leaves a live session subscription behind: abort()
-  // drops a queued record without reaching settle(), which is what tears that
-  // subscription down.
   it("fires onStarted when the run starts, not when a queued resume is registered", async () => {
-    manager = new AgentManager(undefined, 1); // maxConcurrent = 1
+    manager = new AgentManager(undefined, 1);
     const id = await spawnSettled(manager);
 
-    // Occupy the only slot with a run we can release on demand.
     let releaseBlocker!: (v: any) => void;
     vi.mocked(runAgent).mockImplementation(() => new Promise((resolve) => { releaseBlocker = resolve; }));
     manager.spawn(mockPi, mockCtx, "general-purpose", "blocker", {
@@ -1945,7 +1875,7 @@ describe("AgentManager — background resume", () => {
   });
 
   it("never fires onStarted for a queued resume that is stopped before it drains", async () => {
-    manager = new AgentManager(undefined, 1); // maxConcurrent = 1
+    manager = new AgentManager(undefined, 1);
     const id = await spawnSettled(manager);
 
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
@@ -1964,10 +1894,6 @@ describe("AgentManager — background resume", () => {
   });
 });
 
-// A `name` on the spawn adds a SECOND handle rather than replacing the
-// type-derived one. That is the property the whole design rests on: if naming
-// freed up `explore`, then `@explore fix it` would quietly start a second
-// Explore alongside the running one instead of reaching it.
 describe("AgentManager — names as additive aliases", () => {
   let manager: AgentManager;
 
@@ -2007,8 +1933,6 @@ describe("AgentManager — names as additive aliases", () => {
   });
 
   it("numbers an alias that collides with its own type handle", () => {
-    // `name: "explore"` on an Explore would otherwise produce two identical
-    // names on one record, and later a second agent could take one of them.
     resolvedRun();
     manager = new AgentManager();
     const record = manager.getRecord(spawnNamed(manager, "Explore", "explore"))!;
@@ -2020,7 +1944,7 @@ describe("AgentManager — names as additive aliases", () => {
   it("stops a later type handle from colliding with an existing alias", () => {
     resolvedRun();
     manager = new AgentManager();
-    spawnNamed(manager, "Plan", "explore"); // alias squats the Explore name
+    spawnNamed(manager, "Plan", "explore");
     const second = manager.getRecord(spawnNamed(manager, "Explore"))!;
 
     expect(second.handle).toBe("explore-2");
@@ -2044,8 +1968,6 @@ describe("AgentManager — names as additive aliases", () => {
   });
 
   it("never names a nested child, however it was spawned", () => {
-    // Nested agents are hidden from every top-level surface; a name would make
-    // one addressable through a boundary only its owner may cross.
     resolvedRun();
     manager = new AgentManager();
     const id = manager.spawn(mockPi, mockCtx, "Explore", "go", {
@@ -2097,7 +2019,6 @@ describe("AgentManager — effective model and thinking write-back", () => {
     vi.restoreAllMocks();
   });
 
-  /** Run a spawn whose session reports the given runtime model/level. */
   async function spawnWithSession(
     invocation: AgentRecord["invocation"],
     runtime: { model?: { provider: string; id: string; name?: string }; thinkingLevel?: string },
@@ -2149,9 +2070,6 @@ describe("AgentManager — effective model and thinking write-back", () => {
   });
 
   it("does not overwrite a request the agent file already overrode", async () => {
-    // Frontmatter pinned `low` over a caller's `max`, then the model clamped it
-    // again. The caller asked for `max` — that is what the surfaces must say,
-    // not the intermediate value frontmatter chose.
     const record = await spawnWithSession(
       { thinking: "low", requestedThinking: "max" },
       { model: { provider: "anthropic", id: "claude-haiku-4-5" }, thinkingLevel: "minimal" },
@@ -2162,8 +2080,6 @@ describe("AgentManager — effective model and thinking write-back", () => {
   });
 
   it("gives a spawn that carried no invocation one to display", async () => {
-    // Cross-extension RPC and `@handle` spawns pass none, and used to render no
-    // metadata at all.
     const record = await spawnWithSession(
       undefined,
       { model: { provider: "openai-codex", id: "gpt-5.6-sol" }, thinkingLevel: "xhigh" },
@@ -2177,8 +2093,6 @@ describe("AgentManager — effective model and thinking write-back", () => {
   });
 
   it("keeps the requested level when the session reports no level of its own", async () => {
-    // An older pi or a stubbed session degrades to "nothing to say about the
-    // level", which must not read as "no level" on every surface.
     const record = await spawnWithSession(
       { thinking: "max" },
       { model: { provider: "anthropic", id: "claude-haiku-4-5" } },

@@ -105,7 +105,6 @@ describe("AgentManager — abort() forced settle", () => {
     const id2 = manager.spawn(mockPi, mockCtx, "Y", "q", { description: "d", isBackground: true });
     expect(manager.getRecord(id2)?.status).toBe("running");
 
-    // id1's real settle finally arrives, long after the forced one.
     resolveFirst({ responseText: "late", session: mockSession(), aborted: false, steered: false });
     await manager.getRecord(id1)?.promise;
 
