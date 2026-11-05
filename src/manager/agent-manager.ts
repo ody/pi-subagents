@@ -330,12 +330,18 @@ export class AgentManager {
    * any nested children running forever, none of which a wedged agent's own
    * promise will ever fix.
    *
-   * `abortOwnedChildren` and the output-file flush are ordinarily done by the
-   * real completion handler right before it calls `settleRun` (see the
-   * `.then`/`.catch` tails in `startAgent`) — that handler may never run here,
-   * so this does them itself. The release-and-notify tail is `settleRun`
-   * itself, shared with the real path via the `settled` guard: whichever of
-   * the two runs first wins, and the other is a no-op.
+   * `abortOwnedChildren`, the output-file flush, and writing `record.result`
+   * are ordinarily done by the real completion handler right before it calls
+   * `settleRun` (see the `.then`/`.catch` tails in `startAgent`) — that handler
+   * may never run here, so this does them itself. The release-and-notify tail is
+   * `settleRun` itself, shared with the real path via the `settled` guard:
+   * whichever of the two runs first wins, and the other is a no-op.
+   *
+   * The result copy is guarded on `record.result` being unset: a responsive
+   * agent's own settle may have already written a real result, and the streamed
+   * text is only ever a fallback for the agent that never got that far. Without
+   * it, a wedged agent's notification and `get_subagent_result` both report
+   * "No output." for work that did produce text.
    */
   private forceSettle(record: AgentRecord): void {
     if (record.settled) return;
@@ -343,6 +349,10 @@ export class AgentManager {
     if (record.outputCleanup) {
       try { record.outputCleanup(); } catch { /* ignore */ }
       record.outputCleanup = undefined;
+    }
+    if (record.result === undefined) {
+      const streamed = this.getActivity(record.id)?.responseText.trim();
+      if (streamed) record.result = streamed;
     }
     this.settleRun(record, true, record.pool);
   }

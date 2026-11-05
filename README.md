@@ -589,7 +589,7 @@ An already-completed, errored, or otherwise terminal agent reports its status an
 
 The reply carries whatever assistant text the agent had streamed before the stop; an agent stopped before it produced any says so instead of showing an empty block.
 
-The full result still arrives later through the ordinary completion notification — stopping does **not** mark the result consumed, because at stop time `get_subagent_result`'s data (`record.result`) does not exist yet.
+The result arrives later through the ordinary completion notification, but only if the agent finishes. A stopped agent's notification carries whatever partial output it had streamed, which is also what `get_subagent_result` returns afterwards. Stopping does **not** mark the result consumed, because at stop time `get_subagent_result`'s data (`record.result`) does not exist yet.
 
 ## Commands
 
@@ -1020,7 +1020,9 @@ pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
 
 `abort()` itself only fires the run's `AbortController` and marks the record `"stopped"`. Releasing its pool slot, stopping any nested children, flushing its output file, and firing the completion notification happen once the run's own promise settles — which, for an agent wedged inside a tool call that never returns, might be never.
 
-A grace-period timer now forces that settle tail after a few seconds if the real one hasn't happened, so a stop through this channel reliably frees its slot and notifies even for a wedged agent, rather than leaking the slot and withholding the notification forever. A responsive agent settles through its own promise well inside that window and never touches the forced path.
+A grace-period timer now forces that settle tail after a few seconds if the real one hasn't happened, so a stop through this channel reliably frees its slot and notifies even for a wedged agent, rather than leaking the slot and withholding the notification forever.
+
+The forced tail also copies the streamed response text into `record.result` when no result exists, so the notification carries partial output instead of "No output.". A responsive agent settles through its own promise well inside that window and never touches the forced path.
 
 ### Consume
 

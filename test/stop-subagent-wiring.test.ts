@@ -246,6 +246,44 @@ describe("stop_subagent", () => {
     }
   });
 
+  it("the stopped notification names the orchestrating agent and carries the partial output", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      const { pi, tools, lifecycle } = makePi();
+      subagentsExtension(pi);
+      const run = heldRun();
+
+      const id = await spawnBackground(tools);
+      await flush();
+      run.stream("partial thinking so far");
+      await stop(tools, id);
+
+      await vi.advanceTimersByTimeAsync(FORCED_SETTLE_GRACE_MS);
+      await vi.advanceTimersByTimeAsync(NUDGE_HOLD_MS);
+
+      const notified = vi.mocked(pi.sendMessage).mock.calls
+        .find(([message]: any[]) => message?.customType === "subagent-notification");
+      expect(notified).toBeDefined();
+      // A smart-join batch notification can land BEFORE the forced settle, when
+      // there is no result to preview yet. The forced settle is what supplies
+      // the partial output, so the last notification is the one to read.
+      const content = String((vi.mocked(pi.sendMessage).mock.calls.at(-1) as any[])[0].content);
+      // The stop came from the model, not a human — the notification must not
+      // read as if someone was watching over the agent's shoulder.
+      expect(content).toContain("STOPPED BY THE ORCHESTRATING AGENT");
+      expect(content).not.toContain("STOPPED BY THE USER");
+      expect(content).toContain("<status>Stopped</status>");
+      // The forced settle copies the streamed text into record.result, so the
+      // notification carries what the agent produced instead of "No output.".
+      expect(content).toContain("partial thinking so far");
+      expect(content).not.toContain("No output.");
+
+      await lifecycle.get("session_shutdown")?.();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("stoppedBy: 'agent' changes the note a following get_subagent_result reads back", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);

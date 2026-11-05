@@ -151,7 +151,9 @@ The same predicate silently scopes the events. **Every lifecycle event is top-le
 
 **Stop no longer just fires the abort signal and stops there.** `manager.abort(id)` — the same call this channel makes — used to release the run's concurrency slot, stop its nested children, and notify only once the run's own promise settled, which for an agent wedged inside a tool call that never returns might never happen.
 
-A grace-period timer (5s) now forces that settle tail if the real one hasn't fired by then, so a `subagents:rpc:stop` call reliably frees its slot and fires `subagents:completed`/`:failed` within a few seconds even for a wedged agent, instead of leaking the slot and withholding the event forever. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
+A grace-period timer (5s) now forces that settle tail if the real one hasn't fired by then, so a `subagents:rpc:stop` call reliably frees its slot and fires `subagents:completed`/`:failed` within a few seconds even for a wedged agent, instead of leaking the slot and withholding the event forever.
+
+The forced tail also copies the streamed response text into `record.result` when no result exists, so that event (and the notification) carries the partial output instead of an empty `result`. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
 
 ## The notification race
 

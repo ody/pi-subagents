@@ -453,7 +453,9 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
   const stopTool = defineTool({
     name: NESTED_TOOL_NAMES[3],
     label: "Stop Nested Agent",
-    description: "Stop a running or queued nested agent owned by this parent.",
+    description:
+      "Stop a running or queued nested agent owned by this parent. Its result arrives through the completion " +
+      "notification only if it finishes — a stopped agent's notification carries any partial output.",
     parameters: Type.Object({
       agent_id: Type.String(),
     }),
