@@ -30,7 +30,7 @@ Never do these to meet a limit:
 - Split a cohesive unit in the middle.
 - Extract a fragment with one caller and no name of its own.
 - Add barrel files or re-export shims.
-- Shorten code by lengthening lines, deleting blank lines or comments, or writing dense one-liners.
+- Shorten code by lengthening lines, deleting blank lines, or writing dense one-liners.
 
 A split changes no behavior. It moves code, updates imports, updates the matching tests and updates the `src/` file map in `README.md`, in one commit with no other change. New per-concern code goes in a module that exposes `registerX(pi, deps)`, and `index.ts` only wires.
 
