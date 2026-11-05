@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A stopped agent always settles, and the model can stop its own agents
+# 0008. A stopped agent always settles, and the model can stop its own agents
 
 ## Context
 
