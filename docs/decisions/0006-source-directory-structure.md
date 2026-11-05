@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Source files are grouped into concern directories, not layers
+# 0006. Source files are grouped into concern directories, not layers
 
 ## Context
 
