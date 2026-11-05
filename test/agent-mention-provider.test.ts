@@ -30,7 +30,6 @@ function record(over: Partial<AgentRecord>): AgentRecord {
 }
 
 function managerWith(...records: AgentRecord[]): AgentManager {
-  // listAgents() is newest-first, matching the real manager's contract.
   return {
     listAgents: () => [...records].sort((a, b) => b.startedAt - a.startedAt),
     listTombstones: () => [],

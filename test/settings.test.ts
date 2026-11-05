@@ -12,13 +12,6 @@ import {
   saveSettings,
 } from "../src/config/settings.js";
 
-/**
- * Tests for persistent settings. Uses two tmp directories:
- * - `globalDir`: redirected via PI_CODING_AGENT_DIR so getAgentDir() returns it.
- *   Simulates `~/.pi/agent/` — the global scope.
- * - `projectDir`: passed explicitly as cwd to load/save.
- *   Simulates the user's project root. Settings live at `<projectDir>/.pi/subagents.json`.
- */
 describe("settings persistence", () => {
   let globalDir: string;
   let projectDir: string;
@@ -75,10 +68,10 @@ describe("settings persistence", () => {
     writeGlobal({ maxConcurrent: 16, graceTurns: 10, defaultJoinMode: "async" });
     writeProject({ maxConcurrent: 4, defaultMaxTurns: 50 });
     expect(loadSettings(projectDir)).toEqual({
-      maxConcurrent: 4, // project wins
-      graceTurns: 10, // from global
-      defaultJoinMode: "async", // from global
-      defaultMaxTurns: 50, // from project only
+      maxConcurrent: 4,
+      graceTurns: 10,
+      defaultJoinMode: "async",
+      defaultMaxTurns: 50,
     });
   });
 
@@ -102,7 +95,6 @@ describe("settings persistence", () => {
     saveSettings({ schedulingEnabled: true }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ schedulingEnabled: true });
 
-    // Absence — caller's "use default" signal — must not become a stored false.
     saveSettings({}, projectDir);
     expect(loadSettings(projectDir)).toEqual({});
   });
@@ -113,7 +105,7 @@ describe("settings persistence", () => {
     saveSettings({ fleetView: true }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ fleetView: true });
     writeProject({ fleetView: "on" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips agentMentions modes; drops an unknown one", () => {
@@ -122,13 +114,10 @@ describe("settings persistence", () => {
       expect(loadSettings(projectDir)).toEqual({ agentMentions: mode });
     }
     writeProject({ agentMentions: "on" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // unknown mode dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("reads the pre-mode agentMentions booleans as their modes", () => {
-    // The setting shipped as a boolean before `model` existed, so a config
-    // written then — or hand-written from the old README — must keep working.
-    // `true` meant "on", and on is now `model`.
     writeProject({ agentMentions: true } as any);
     expect(loadSettings(projectDir)).toEqual({ agentMentions: "model" });
     writeProject({ agentMentions: false } as any);
@@ -141,7 +130,7 @@ describe("settings persistence", () => {
     saveSettings({ rememberAgents: true }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ rememberAgents: true });
     writeProject({ rememberAgents: "on" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips widgetMode; keeps valid values, drops invalid", () => {
@@ -150,7 +139,7 @@ describe("settings persistence", () => {
     saveSettings({ widgetMode: "background" }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ widgetMode: "background" });
     writeProject({ widgetMode: "sideways" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // invalid value dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips viewerMarkdown; keeps valid values, drops invalid", () => {
@@ -159,7 +148,7 @@ describe("settings persistence", () => {
     saveSettings({ viewerMarkdown: "all" }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ viewerMarkdown: "all" });
     writeProject({ viewerMarkdown: "markdown" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // invalid value dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips outputTranscript; drops non-boolean", () => {
@@ -168,13 +157,10 @@ describe("settings persistence", () => {
     saveSettings({ outputTranscript: true }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ outputTranscript: true });
     writeProject({ outputTranscript: "no" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips backgroundByDefault (true and false), and absence stays absent", () => {
-    // `false` is the load-bearing case: it's how a user restores the previous
-    // foreground default, so it must survive a save/load rather than being
-    // read back as absent and re-defaulting to background.
     saveSettings({ backgroundByDefault: false }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ backgroundByDefault: false });
 
@@ -198,7 +184,7 @@ describe("settings persistence", () => {
     saveSettings({ worktreeIsolation: true }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ worktreeIsolation: true });
     writeProject({ worktreeIsolation: "off" } as any);
-    expect(loadSettings(projectDir)).toEqual({}); // non-boolean dropped
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips reportUsage and showCost; drops non-boolean", () => {
@@ -206,8 +192,6 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({ reportUsage: true, showCost: true });
     saveSettings({ reportUsage: false, showCost: false }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ reportUsage: false, showCost: false });
-    // The sanitizer is an allowlist: a key it does not name is dropped, and the
-    // setting silently never applies.
     writeProject({ reportUsage: "on", showCost: 1 } as any);
     expect(loadSettings(projectDir)).toEqual({});
   });
@@ -232,9 +216,7 @@ describe("settings persistence", () => {
     writeGlobal({ maxConcurrent: 16 });
     saveSettings({ maxConcurrent: 2 }, projectDir);
 
-    // Project file contains the new value
     expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 2 });
-    // Global file unchanged
     expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ maxConcurrent: 16 });
   });
 
@@ -253,7 +235,6 @@ describe("settings persistence", () => {
     writeProject({ maxConcurrent: 2, futureField: "ignored" });
     const loaded = loadSettings(projectDir);
     expect(loaded.maxConcurrent).toBe(2);
-    // Unknown fields are stripped by the sanitizer — old versions won't persist garbage
     expect((loaded as Record<string, unknown>).futureField).toBeUndefined();
   });
 
@@ -283,8 +264,6 @@ describe("settings persistence", () => {
       expect(loadSettings(projectDir).maxConcurrent).toBeUndefined();
     });
 
-    // Unlike maxConcurrent above, 0 is the DEFAULT here and means unlimited —
-    // dropping it would make the default unrepresentable in the file.
     it("keeps maxConcurrentForeground: 0 (explicit unlimited)", () => {
       writeProject({ maxConcurrentForeground: 0 });
       expect(loadSettings(projectDir)).toEqual({ maxConcurrentForeground: 0 });
@@ -324,10 +303,6 @@ describe("settings persistence", () => {
     });
 
     it("accepts `none` and `false` as the disabled fallback, nothing else", () => {
-      // Only the boolean needs an alias: it would otherwise be dropped, leaving
-      // the PERMISSIVE default while the author believed strict was on. Every
-      // string stays an agent name, so a mistaken "off" fails loudly at dispatch
-      // instead of meaning one thing here and another in the resolver.
       for (const spelling of ["none", "NONE", " none ", false]) {
         writeProject({ fallbackSubagent: spelling });
         expect(loadSettings(projectDir).fallbackSubagent?.toLowerCase()).toBe("none");
@@ -337,7 +312,6 @@ describe("settings persistence", () => {
     });
 
     it("drops values that aren't a string or `false`, without coercing them", () => {
-      // String(["none"]) is "none" — coercing would silently enable strict mode.
       for (const junk of [["none"], null, 42, true, {}]) {
         writeProject({ fallbackSubagent: junk });
         expect(loadSettings(projectDir)).toEqual({});
@@ -443,10 +417,10 @@ describe("settings persistence", () => {
 
     it("keeps valid fields while dropping invalid siblings", () => {
       writeProject({
-        maxConcurrent: 4, // ok
-        defaultMaxTurns: -5, // dropped
-        graceTurns: 3, // ok
-        defaultJoinMode: "nope", // dropped
+        maxConcurrent: 4,
+        defaultMaxTurns: -5,
+        graceTurns: 3,
+        defaultJoinMode: "nope",
       });
       expect(loadSettings(projectDir)).toEqual({ maxConcurrent: 4, graceTurns: 3 });
     });
@@ -482,8 +456,6 @@ describe("settings persistence", () => {
     });
 
     it("saveSettings returns false when the target dir cannot be created", () => {
-      // Place a regular file where the parent of the settings file would go —
-      // mkdirSync + writeFileSync both fail with ENOTDIR / EEXIST.
       const filePosingAsCwd = join(tmpdir(), `pi-settings-notdir-${Date.now()}`);
       writeFileSync(filePosingAsCwd, "");
       try {
@@ -548,7 +520,6 @@ describe("settings persistence", () => {
       };
     });
 
-    // 0 is a real value here, so `if (s.x)` truthiness would silently skip it.
     it("applies maxConcurrentForeground, including an explicit 0", () => {
       applySettings({ maxConcurrentForeground: 3 }, appliers);
       expect(appliers.setMaxConcurrentForeground).toHaveBeenCalledWith(3);
@@ -594,8 +565,6 @@ describe("settings persistence", () => {
     });
 
     it("applies fallbackSubagent through to the registry", () => {
-      // Without this, deleting the applySettings line for this field leaves the
-      // whole suite green while `subagents.json` silently stops working.
       applySettings({ fallbackSubagent: "none" }, appliers);
       expect(appliers.setFallbackSubagent).toHaveBeenCalledWith("none");
     });
@@ -633,7 +602,7 @@ describe("settings persistence", () => {
       expect(appliers.setDefaultJoinMode).toHaveBeenCalledWith("group");
       expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(false);
       expect(appliers.setScopeModels).toHaveBeenCalledWith(true);
-      expect(appliers.setStrictAgentFiles).not.toHaveBeenCalled();  // absent from this snapshot
+      expect(appliers.setStrictAgentFiles).not.toHaveBeenCalled();
       expect(appliers.setDisableDefaultAgents).toHaveBeenCalledWith(true);
       expect(appliers.setToolDescriptionMode).toHaveBeenCalledWith("compact");
       expect(appliers.setFleetView).toHaveBeenCalledWith(false);
@@ -651,35 +620,35 @@ describe("settings persistence", () => {
       applySettings({ widgetMode: "off" }, appliers);
       expect(appliers.setWidgetMode).toHaveBeenCalledWith("off");
       applySettings({}, appliers);
-      expect(appliers.setWidgetMode).toHaveBeenCalledTimes(1); // absence is "use default"
+      expect(appliers.setWidgetMode).toHaveBeenCalledTimes(1);
     });
 
     it("applies viewerMarkdown; skips it when absent", () => {
       applySettings({ viewerMarkdown: "all" }, appliers);
       expect(appliers.setViewerMarkdown).toHaveBeenCalledWith("all");
       applySettings({}, appliers);
-      expect(appliers.setViewerMarkdown).toHaveBeenCalledTimes(1); // absence is "use default"
+      expect(appliers.setViewerMarkdown).toHaveBeenCalledTimes(1);
     });
 
     it("applies fleetView (true and false); skips it when absent", () => {
       applySettings({ fleetView: true }, appliers);
       expect(appliers.setFleetView).toHaveBeenCalledWith(true);
       applySettings({}, appliers);
-      expect(appliers.setFleetView).toHaveBeenCalledTimes(1); // absence is "use default"
+      expect(appliers.setFleetView).toHaveBeenCalledTimes(1);
     });
 
     it("applies agentMentions; skips it when absent", () => {
       applySettings({ agentMentions: "direct" }, appliers);
       expect(appliers.setAgentMentions).toHaveBeenCalledWith("direct");
       applySettings({}, appliers);
-      expect(appliers.setAgentMentions).toHaveBeenCalledTimes(1); // absence is "use default"
+      expect(appliers.setAgentMentions).toHaveBeenCalledTimes(1);
     });
 
     it("applies rememberAgents; skips it when absent", () => {
       applySettings({ rememberAgents: false }, appliers);
       expect(appliers.setRememberAgents).toHaveBeenCalledWith(false);
       applySettings({}, appliers);
-      expect(appliers.setRememberAgents).toHaveBeenCalledTimes(1); // absence is "use default"
+      expect(appliers.setRememberAgents).toHaveBeenCalledTimes(1);
     });
 
     it("applies scopeModels: false", () => {
@@ -723,16 +692,11 @@ describe("settings persistence", () => {
       expect(appliers.setBackgroundByDefault).toHaveBeenCalledWith(true);
     });
 
-    // Absence must leave the in-memory default (background) alone — calling
-    // the applier with `undefined` would read as foreground at the spawn site.
     it("does not call setBackgroundByDefault when the field is absent", () => {
       applySettings({ maxConcurrent: 4 }, appliers);
       expect(appliers.setBackgroundByDefault).not.toHaveBeenCalled();
     });
 
-    // Wiring tests for the master switch — ensures the schedulingEnabled
-    // field flows from the parsed settings into the applier callback that
-    // sets the in-memory flag in index.ts.
     it("calls setSchedulingEnabled(true) when schedulingEnabled is true", () => {
       applySettings({ schedulingEnabled: true }, appliers);
       expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(true);
@@ -743,9 +707,6 @@ describe("settings persistence", () => {
       expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(false);
     });
 
-    // Absence preserves the in-memory default — the applier must NOT be
-    // called, otherwise loading a settings file without the field would
-    // overwrite the runtime default with `undefined`.
     it("does not call setSchedulingEnabled when the field is absent", () => {
       applySettings({ maxConcurrent: 4 }, appliers);
       expect(appliers.setSchedulingEnabled).not.toHaveBeenCalled();
@@ -825,7 +786,6 @@ describe("settings persistence", () => {
 
       expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: {} });
       expect(result).toEqual({});
-      // No setters fired — defaults preserved
       expect(appliers.setMaxConcurrent).not.toHaveBeenCalled();
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
       expect(appliers.setGraceTurns).not.toHaveBeenCalled();
@@ -846,7 +806,6 @@ describe("settings persistence", () => {
         persisted: true,
       });
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
-      // File actually written
       expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual(snapshot);
     });
 

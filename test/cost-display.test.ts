@@ -1,14 +1,3 @@
-/**
- * cost-display.test.ts — what `showCost` puts on each surface, and what it must
- * never put there.
- *
- * Two rules run through all of it. A cost is shown only when there is one to
- * show: a model pi has no rates for reports 0, and printing `$0.00` beside its
- * tokens would claim the run was measured and free. And each surface punctuates
- * its own — the stats line joins with `·`, the foreground result with `,`, the
- * `get_subagent_result` header with `|` — which is why the cost travels as a
- * number and is formatted at the end, not baked into the token string.
- */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -23,7 +12,6 @@ import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helper
 
 const COST = 0.0123;
 
-/** One foreground run that spends `cost` on a single assistant message. */
 function runSpending(cost: number) {
   vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, opts: any) => {
     opts.onAssistantUsage?.({ input: 1000, output: 200, cacheWrite: 0, cost });
@@ -66,8 +54,6 @@ describe("cost display", () => {
       const text = textOf(await spawn(tools));
 
       expect(text).toContain("~$0.0123");
-      // Comma-joined with the rest, not glued to the token count with the "·"
-      // that the widget uses — the separator belongs to the surface.
       expect(text).toMatch(/1\.2k token, ~\$0\.0123/);
     });
 
@@ -83,7 +69,7 @@ describe("cost display", () => {
       runSpending(0);
 
       const text = textOf(await spawn(tools));
-      expect(text).toContain("1.2k token");   // tokens are still exact
+      expect(text).toContain("1.2k token");
       expect(text).not.toContain("$");
     });
   });
@@ -95,13 +81,10 @@ describe("cost display", () => {
       await spawn(tools);
       await flush();
 
-      // The agent above ran in the foreground; look it up by the handle its
-      // type gets, which is how the orchestrator would reach it.
       const text = textOf(await tools.get("get_subagent_result").execute(
         "tc-2", { agent_id: "general-purpose" }, undefined, undefined, ctx(),
       ));
 
-      // Pipe-separated `Label: value` fields, matching its neighbours.
       expect(text).toContain("Cost: ~$0.0123");
     });
 
@@ -120,11 +103,6 @@ describe("cost display", () => {
   });
 
   describe("the background completion notification the model reads", () => {
-    /**
-     * The <task-notification> text sent into the parent conversation. Held
-     * behind a 200ms nudge debounce (plus batch finalization), so this polls
-     * rather than waiting a fixed beat.
-     */
     async function notificationText(pi: any): Promise<string> {
       for (let i = 0; i < 60 && pi.sendMessage.mock.calls.length === 0; i++) {
         await new Promise((r) => setTimeout(r, 25));
@@ -149,9 +127,6 @@ describe("cost display", () => {
     });
 
     it("omits it when disabled — this is LLM context, not a display", async () => {
-      // A figure the orchestrator was not asked to track is one it may start
-      // reporting unprompted, so the setting gates the context too, not just
-      // what a human sees.
       const { pi, tools } = boot({ showCost: false, defaultJoinMode: "async" });
       runSpending(COST);
 
@@ -173,7 +148,6 @@ describe("cost display", () => {
   });
 
   describe("the completion notification", () => {
-    /** Render a notification through the extension's registered renderer. */
     function render(pi: any, details: any): string {
       const [, renderer] = pi.registerMessageRenderer.mock.calls[0];
       const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };

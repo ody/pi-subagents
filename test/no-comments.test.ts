@@ -10,38 +10,6 @@ const HEADER_SCAN_LINES = 30;
 const SIZE_HEADER = /^\s*(\/\/|\/\*+|\*)\s*Size:\s*\S/;
 const BIOME_IGNORE = /^\s*(\/\/|\/\*+)\s*biome-ignore\s+\S+:\s*\S/;
 
-const ALLOWLIST: Record<string, number> = {
-  "src/manager/agent-manager.ts": 83,
-  "src/session/agent-runner.ts": 127,
-  "test/abort-forced-settle.test.ts": 22,
-  "test/agent-file-toggle.test.ts": 64,
-  "test/agent-manager.test.ts": 199,
-  "test/agent-mention-provider.test.ts": 76,
-  "test/agent-mention-wiring.test.ts": 121,
-  "test/agent-runner-e2e.test.ts": 19,
-  "test/agent-runner.test.ts": 199,
-  "test/agent-widget.test.ts": 60,
-  "test/background-resume-wiring.test.ts": 27,
-  "test/conversation-viewer.test.ts": 84,
-  "test/cost-display.test.ts": 13,
-  "test/cross-extension-rpc.test.ts": 32,
-  "test/fallback-subagent-wiring.test.ts": 19,
-  "test/fleet-list.test.ts": 105,
-  "test/foreground-concurrency-wiring.test.ts": 15,
-  "test/foreground-concurrency.test.ts": 82,
-  "test/nested-delegation-e2e.test.ts": 34,
-  "test/output-file-compaction-e2e.test.ts": 22,
-  "test/output-file.test.ts": 27,
-  "test/perf/no-fs-on-render.perf.test.ts": 3,
-  "test/perf/render-invariants.perf.test.ts": 19,
-  "test/perf/spawn-invariants.perf.test.ts": 5,
-  "test/perf/spawn.bench.ts": 7,
-  "test/settings.test.ts": 48,
-  "test/status-note-wiring.test.ts": 47,
-  "test/steer-subagent-wiring.test.ts": 11,
-  "test/usage.test.ts": 27,
-};
-
 function walk(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
@@ -98,32 +66,9 @@ describe("no code comments (ADR 0010)", () => {
     expect(files.length).toBeGreaterThan(0);
   });
 
-  it("allowlist is sorted by path", () => {
-    const paths = Object.keys(ALLOWLIST);
-    expect(paths).toEqual([...paths].sort());
-  });
-
-  it("allowlist names only existing files", () => {
-    const present = new Set(files.map((f) => f.rel));
-    expect(Object.keys(ALLOWLIST).filter((rel) => !present.has(rel))).toEqual([]);
-  });
-
   for (const f of files) {
-    const pin = ALLOWLIST[f.rel];
-    if (pin === undefined) {
-      it(`${f.rel} has no comments`, () => {
-        expect(f.where, `${f.rel} has ${f.comments.length} comment(s); ADR 0010 allows none`).toEqual([]);
-      });
-      continue;
-    }
-    it(`${f.rel} stays at or below its allowlist pin of ${pin}`, () => {
-      expect(f.comments.length, `${f.rel} has ${f.comments.length} comment(s), pin is ${pin}`).toBeLessThanOrEqual(pin);
-    });
-    it(`${f.rel} drops out of the allowlist at 0 comments`, () => {
-      expect(
-        f.comments.length,
-        `${f.rel} reached 0 comments; remove its allowlist entry "${f.rel}": ${pin}`,
-      ).toBeGreaterThan(0);
+    it(`${f.rel} has no comments`, () => {
+      expect(f.where, `${f.rel} has ${f.comments.length} comment(s); ADR 0010 allows none`).toEqual([]);
     });
   }
 });

@@ -46,11 +46,6 @@ describe("encodeCwd", () => {
   });
 });
 
-/**
- * Minimal AgentSession fake. streamToOutputFile only reads `session.messages`
- * and calls `session.subscribe(cb)`, so we provide just those — plus test-only
- * helpers to mutate state and fire events deterministically.
- */
 function makeFakeSession(initialMessages: unknown[] = []) {
   let messages: unknown[] = [...initialMessages];
   let cb: ((event: unknown) => void) | null = null;
@@ -67,7 +62,6 @@ function makeFakeSession(initialMessages: unknown[] = []) {
     push(...msgs: unknown[]) {
       messages.push(...msgs);
     },
-    /** Swap the whole array, like pi's compaction (`agent.state.messages = ...`). */
     replaceAll(msgs: unknown[]) {
       messages = msgs;
     },
@@ -80,7 +74,6 @@ function makeFakeSession(initialMessages: unknown[] = []) {
   };
 }
 
-/** Drain the microtask queue (the compaction re-anchor is deferred one tick). */
 const microtask = () => Promise.resolve();
 
 describe("streamToOutputFile", () => {
@@ -107,7 +100,7 @@ describe("streamToOutputFile", () => {
     streamToOutputFile(session as never, outPath, "agent-1", "/work");
 
     session.push({ role: "assistant", content: [{ type: "text", text: "ok" }] });
-    expect(readEntries()).toHaveLength(1); // only the initial entry
+    expect(readEntries()).toHaveLength(1);
 
     session.fire({ type: "turn_end" });
     expect(readEntries()).toHaveLength(2);
@@ -140,7 +133,6 @@ describe("streamToOutputFile", () => {
     session.push({ role: "assistant", content: [{ type: "text", text: "two" }] });
     session.fire({ type: "turn_end" });
 
-    // Fire a redundant turn_end with no new messages — must not duplicate
     session.fire({ type: "turn_end" });
 
     expect(readEntries()).toHaveLength(3);
@@ -158,10 +150,6 @@ describe("streamToOutputFile", () => {
     expect(readEntries()).toHaveLength(1);
   });
 
-  // ---- Compaction (#145): pi replaces session.messages with a shorter,
-  // summarized array; streaming must survive it. Event sequences below mirror
-  // pi's real order of operations (verified against agent-session 0.80.6).
-
   it("resumes streaming after compaction shrinks the message array (#145)", async () => {
     const session = makeFakeSession([{ role: "user", content: "go" }]);
     streamToOutputFile(session as never, outPath, "agent-1", "/work");
@@ -171,9 +159,8 @@ describe("streamToOutputFile", () => {
       { role: "user", content: "q2" },
       { role: "assistant", content: [{ type: "text", text: "two" }] },
     );
-    session.fire({ type: "turn_end" }); // 4 messages flushed
+    session.fire({ type: "turn_end" });
 
-    // Compaction: summary + kept tail, much shorter than what was written.
     session.fire({ type: "compaction_start", reason: "manual" });
     session.replaceAll([
       { role: "user", content: "summary of earlier turns" },
@@ -186,7 +173,6 @@ describe("streamToOutputFile", () => {
     session.fire({ type: "turn_end" });
 
     const entries = readEntries();
-    // initial + one + q2 + two + AFTER — the kept tail is NOT re-written.
     expect(entries).toHaveLength(5);
     expect(JSON.stringify(entries.at(-1))).toContain("AFTER");
   });
@@ -195,11 +181,9 @@ describe("streamToOutputFile", () => {
     const session = makeFakeSession([{ role: "user", content: "go" }]);
     streamToOutputFile(session as never, outPath, "agent-1", "/work");
 
-    // A message lands with no turn_end yet (e.g. overflow mid-turn)...
     session.push({ role: "assistant", content: [{ type: "text", text: "tail-before-compact" }] });
     expect(readEntries()).toHaveLength(1);
 
-    // ...then compaction starts: the tail must reach the file before the array is replaced.
     session.fire({ type: "compaction_start", reason: "overflow" });
     expect(JSON.stringify(readEntries().at(-1))).toContain("tail-before-compact");
   });
@@ -211,16 +195,13 @@ describe("streamToOutputFile", () => {
     session.push({ role: "assistant", content: [{ type: "text", text: "big" }] });
     session.fire({ type: "turn_end" });
 
-    // pi's overflow-retry order: compaction_end fires, THEN the trailing error
-    // assistant message is sliced off. A synchronous anchor would sit one past
-    // the trimmed array and skip the first post-compaction message.
     session.fire({ type: "compaction_start", reason: "overflow" });
     session.replaceAll([
       { role: "user", content: "summary" },
       { role: "assistant", content: [{ type: "text", text: "err" }], stopReason: "error" },
     ]);
     session.fire({ type: "compaction_end", reason: "overflow", aborted: false, result: { summary: "s" }, willRetry: true });
-    session.replaceAll([{ role: "user", content: "summary" }]); // the post-emit trim
+    session.replaceAll([{ role: "user", content: "summary" }]);
     await microtask();
 
     session.push({ role: "assistant", content: [{ type: "text", text: "RETRY-ANSWER" }] });
@@ -234,7 +215,6 @@ describe("streamToOutputFile", () => {
     streamToOutputFile(session as never, outPath, "agent-1", "/work");
 
     session.fire({ type: "compaction_start", reason: "manual" });
-    // Aborted/failed: session.messages is left untouched by pi.
     session.fire({ type: "compaction_end", reason: "manual", aborted: true, result: undefined });
     session.fire({ type: "compaction_end", reason: "manual", aborted: false, result: undefined, errorMessage: "boom" });
     await microtask();
@@ -243,7 +223,7 @@ describe("streamToOutputFile", () => {
     session.fire({ type: "turn_end" });
 
     const entries = readEntries();
-    expect(entries).toHaveLength(2); // nothing skipped, nothing duplicated
+    expect(entries).toHaveLength(2);
     expect(JSON.stringify(entries.at(-1))).toContain("still-streaming");
   });
 
@@ -251,7 +231,6 @@ describe("streamToOutputFile", () => {
     const session = makeFakeSession([{ role: "user", content: "go" }]);
     const cleanup = streamToOutputFile(session as never, outPath, "agent-1", "/work");
 
-    // Trailing message arrives with no turn_end before shutdown
     session.push({ role: "assistant", content: [{ type: "text", text: "tail" }] });
     expect(readEntries()).toHaveLength(1);
 
@@ -259,15 +238,11 @@ describe("streamToOutputFile", () => {
     expect(readEntries()).toHaveLength(2);
     expect(session.isSubscribed()).toBe(false);
 
-    // Post-cleanup messages must not be written, even if events would otherwise fire
     session.push({ role: "assistant", content: [{ type: "text", text: "ghost" }] });
     session.fire({ type: "turn_end" });
     expect(readEntries()).toHaveLength(2);
   });
 
-  // A background resume reuses the agent's existing transcript and its existing
-  // session, which already holds every prior turn. Anchoring at the default 1
-  // would re-emit that whole history into the file behind the new run's turns.
   it("starts at the given index so a resume appends only its own turns", () => {
     const prior = [
       { role: "user", content: "do the thing" },
@@ -278,14 +253,11 @@ describe("streamToOutputFile", () => {
     const session = makeFakeSession(prior);
     streamToOutputFile(session as never, outPath, "agent-1", "/work", session.messages.length);
 
-    // The resumed prompt lands as an ordinary user message at the anchor index.
     session.push({ role: "user", content: "keep going" });
     session.push({ role: "assistant", content: [{ type: "text", text: "third answer" }] });
     session.fire({ type: "turn_end" });
 
     const entries = readEntries();
-    // Initial entry from beforeEach + exactly the two new messages — none of the
-    // four the session was already carrying.
     expect(entries).toHaveLength(3);
     const body = JSON.stringify(entries);
     expect(body).toContain("keep going");

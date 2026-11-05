@@ -141,7 +141,7 @@ describe("Agent tool — background resume wiring", () => {
     let runSignal: AbortSignal | undefined;
     vi.mocked(resumeAgent).mockImplementation((_s: any, _p: any, opts: any) => {
       runSignal = opts.signal;
-      return new Promise(() => {}); // never settles — the run is still in flight
+      return new Promise(() => {});
     });
 
     const toolAbort = new AbortController();

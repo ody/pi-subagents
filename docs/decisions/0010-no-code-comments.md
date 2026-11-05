@@ -35,10 +35,6 @@ Rejected: keeping "why" comments only, because "why" versus "what" is a judgment
 
 ## Consequences
 
-Rationale that lives only in a comment today is lost unless its owner moves it to an ADR, a commit message or a test first. The issue references lose nothing, since none resolves in this repo. `git blame` plus the commit message take over.
+Rationale that once lived only in a comment is recoverable from git history, which `git blame` and the commit message now carry.
 
 Revisit if a recurring class of surprising code cannot be made clear by naming or tests, or if a tool starts to read another comment form.
-
-The hook command in [ADR 0005](0005-git-hooks.md) gains the new test when the test lands.
-
-The test cannot land before the strip. Land them in one change, or start the test with a ratchet allowlist like `test/file-size.test.ts` that pins each file's comment count and may only shrink.

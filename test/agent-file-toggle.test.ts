@@ -1,13 +1,3 @@
-// The `/agents` enable/disable operations edit an agent .md file's frontmatter.
-// The LOAD side (src/agents/custom-agents.ts) parses that frontmatter with a real YAML
-// parser, so `enabled: false` is honored wherever it appears in the block. The
-// WRITE side here must agree — README.md documents `enabled: false` as a field
-// users hand-write, and a hand-authored file puts it wherever the author likes.
-//
-// These live in src/agents/agent-file-toggle.ts rather than inside the `/agents`
-// command closure because `registerCommand` is mocked in every wiring test,
-// which is why none of this had coverage.
-
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,7 +14,6 @@ import {
 } from "../src/agents/agent-file-toggle.js";
 import { parseAgentFrontmatter } from "../src/agents/custom-agents.js";
 
-/** What the loader concludes about a file, via the same parser it really uses. */
 function loaderSeesDisabled(content: string): boolean {
   return parseFrontmatter<Record<string, unknown>>(content).frontmatter.enabled === false;
 }
@@ -41,7 +30,6 @@ describe("enableInContent", () => {
   });
 
   it("strips enabled: false when another key precedes it", () => {
-    // The shape a user gets by following README.md — `description` first.
     const { content, changed } = enableInContent(HAND_AUTHORED_DISABLED);
     expect(changed).toBe(true);
     expect(loaderSeesDisabled(content)).toBe(false);
@@ -92,11 +80,6 @@ describe("disableInContent", () => {
     expect(disableInContent(HAND_AUTHORED_DISABLED).outcome).toBe("already-disabled");
   });
 
-  // The previous guard was `content.includes("\nenabled: false\n")`, which a
-  // trailing space defeats. It then inserted a SECOND `enabled: false`, and
-  // duplicate map keys make the whole file unparseable — so an agent the user
-  // asked to disable disappeared from `/agents` entirely (since #212 an
-  // unparseable agent file is skipped, not surfaced).
   it("never writes a file the loader cannot parse", () => {
     for (const src of [
       "---\ndescription: x\nenabled: false  \n---\nbody\n",
@@ -126,11 +109,6 @@ describe("disableInContent", () => {
   });
 
   it("toggles a BOM-prefixed file, and leaves the BOM where it found it", () => {
-    // Editors across the Windows/CJK world emit UTF-8 with a BOM by default, so
-    // an agent file written in one is ordinary input, not a curiosity. The read
-    // side normalises the BOM away (see parseAgentFrontmatter), so the write
-    // side must edit the block rather than refuse it — and must not strip the
-    // BOM from the user's file while doing so.
     const src = "﻿---\ndescription: 侦察\n---\n\n本文。\n";
 
     const { content, outcome } = disableInContent(src);
@@ -144,10 +122,6 @@ describe("disableInContent", () => {
 
 describe("parseAgentFrontmatter", () => {
   it("reads a BOM-prefixed file's fields instead of dropping them", () => {
-    // The bug this guards: an unnormalised BOM made the fence miss, so the
-    // frontmatter came back empty and the *whole file* became the body. `tools`
-    // going missing is the sharp edge — the agent then registers with the
-    // default toolset, a wider grant than its author wrote.
     const src = "﻿---\ndescription: 侦察\ntools: none\n---\n\n本文。\n";
 
     const { frontmatter, body } = parseAgentFrontmatter<Record<string, unknown>>(src);
@@ -181,12 +155,6 @@ describe("isDisabledContent", () => {
     expect(isDisabledContent(ENABLED)).toBe(false);
   });
 
-  // Detection is a read, so it asks the loader's parser instead of mirroring it.
-  // A mirror has to be right about two independent things, and a regex was wrong
-  // about both: YAML's other spellings of `false`, and pi's fence scan, which
-  // closes the block at any line *starting* `---` — so `----` ends it early and
-  // the keys after it are body text, not frontmatter. Getting that backwards told
-  // a user their running agent was "already disabled".
   it.each([
     ["lowercase bare false", "---\ndescription: x\nenabled: false\n---\nbody\n", true],
     ["False", "---\ndescription: x\nenabled: False\n---\nbody\n", true],
@@ -200,14 +168,11 @@ describe("isDisabledContent", () => {
     ["YAML 1.1 'no' is a string here", "---\ndescription: x\nenabled: no\n---\nbody\n", false],
     ["key only in the body", "---\ndescription: x\n---\nenabled: false\n", false],
   ])("agrees with the loader: %s", (_label, content, expected) => {
-    expect(loaderSeesDisabled(content)).toBe(expected); // premise: what the loader concludes
-    expect(isDisabledContent(content)).toBe(expected); // we must conclude the same
+    expect(loaderSeesDisabled(content)).toBe(expected);
+    expect(isDisabledContent(content)).toBe(expected);
   });
 });
 
-// The defect, stated as an invariant rather than as a list of shapes: the two
-// sides must never disagree about whether a file is disabled. Whatever the
-// loader reads as disabled, `/agents → Enable` has to be able to re-enable.
 describe("read and write paths agree", () => {
   const shapes: Array<[string, string]> = [
     ["key first", EXTENSION_WRITTEN_DISABLED],
@@ -218,7 +183,7 @@ describe("read and write paths agree", () => {
 
   for (const [label, content] of shapes) {
     it(`a file the loader reads as disabled can be enabled — ${label}`, () => {
-      expect(loaderSeesDisabled(content)).toBe(true); // premise: the loader agrees it's disabled
+      expect(loaderSeesDisabled(content)).toBe(true);
       expect(enableInContent(content).changed).toBe(true);
     });
   }
@@ -232,9 +197,6 @@ describe("read and write paths agree", () => {
 
 describe("isEmptyStub", () => {
   it("recognises the stub behind a BOM", () => {
-    // Correct today only because String.trim() counts U+FEFF as whitespace —
-    // true, but nowhere stated, and this function eyeballs raw content instead
-    // of going through parseAgentFrontmatter like every other reader.
     expect(isEmptyStub("\uFEFF---\n---")).toBe(true);
   });
 
@@ -303,10 +265,6 @@ describe("findAgentFile", () => {
     expect(findAgentFile("nope", tmpDir)).toBeUndefined();
   });
 
-  // An agent's type comes from its frontmatter `name:` now, so `<type>.md` is a
-  // guess. Getting it wrong is not a harmless miss: `/agents → Disable` takes
-  // the no-file branch and writes a NEW stub, which loses to the real file on
-  // load — so the agent stays enabled while the toast reports success.
   describe("locateAgentFile", () => {
     it("uses the file the loader read, whatever it is called", () => {
       write(join(tmpDir, ".pi", "agents"), "reviewer");
@@ -352,19 +310,9 @@ describe("findAgentFile", () => {
   });
 });
 
-// `/agents → Create agent → Manual` writes an agent file from free-text prompts.
-// The description is whatever the user typed into `ctx.ui.input("Description
-// (one line)")` — no validation, no escaping — and it was interpolated straight
-// into a YAML scalar.
-//
-// That matters more than a formatting nit because of how a broken agent file is
-// handled since #212: it is SKIPPED with a warning (or aborts startup under
-// strictAgentFiles). So the wizard reports "Created <path>", and the agent the
-// user just built silently does not exist.
 describe("buildNewAgentFile", () => {
   const base = { tools: "read, grep", systemPrompt: "Do the thing.", description: "Scout" };
 
-  /** What the loader makes of the generated file. */
   const parse = (content: string) => parseFrontmatter<Record<string, unknown>>(content).frontmatter;
 
   it("round-trips an ordinary description", () => {
@@ -372,32 +320,22 @@ describe("buildNewAgentFile", () => {
   });
 
   it("survives a description containing a colon", () => {
-    // "Scout: find things" is an entirely natural thing to type, and an
-    // unquoted YAML scalar treats the colon as a nested mapping — the parser
-    // throws and the whole file is unloadable.
     const content = buildNewAgentFile({ ...base, description: "Scout: find things" });
     expect(() => parse(content)).not.toThrow();
     expect(parse(content).description).toBe("Scout: find things");
   });
 
   it("keeps a description containing a # instead of truncating it", () => {
-    // `#` opens a YAML comment, so "audit #security" silently becomes "audit".
     const content = buildNewAgentFile({ ...base, description: "audit #security" });
     expect(parse(content).description).toBe("audit #security");
   });
 
   it("leaves a `provider/model:thinking` suffix intact", () => {
-    // Not a hazard on its own — YAML splits on ": " (colon then space), so a
-    // bare `:high` suffix is a valid plain scalar either way. Pinned because
-    // it's the shape most likely to be typed into the custom-model prompt, and
-    // quoting must not mangle it.
     const content = buildNewAgentFile({ ...base, model: "anthropic/claude-sonnet-4-6:high" });
     expect(parse(content).model).toBe("anthropic/claude-sonnet-4-6:high");
   });
 
   it("survives a custom model containing a colon-space or a #", () => {
-    // The custom-model prompt is free text with no validation, so it has the
-    // same two hazards the description does.
     for (const model of ["anthropic/foo: bar", "anthropic/x #c"]) {
       const content = buildNewAgentFile({ ...base, model });
       expect(() => parse(content), model).not.toThrow();
