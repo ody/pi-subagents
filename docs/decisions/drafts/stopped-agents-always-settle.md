@@ -18,7 +18,7 @@ An agent wedged inside a tool call never resolves its `runAgent` promise. `Agent
 
 The model-facing `stop_subagent` tool, and the nested copy in `src/nested-tools.ts`, follow these rules:
 
-- It acts only on agents the caller owns: `isTopLevelAgent` records for the top-level tool, the caller's own children for the nested one. Anything else is reported as not found.
+- It acts only on agents the caller owns, per the ownership ADR.
 - Stopping an agent that already settled is a success that reports its terminal status, not an error.
 - It never marks the result consumed or cancels the completion notification. The full result has not been written yet when the tool returns. The top-level tool also returns the partial streamed text.
 - It sets `stoppedBy: "agent"` before calling `abort()`, so the forced settle reports who stopped it.
