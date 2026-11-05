@@ -8,7 +8,7 @@ A skill that needs work done in a clean context has to dispatch a sub-agent. Wit
 
 Skill directories are often read-only package-manager or Nix store paths, and are frequently symlink farms. pi itself finds skills as any directory holding a `SKILL.md`, at any depth, following symlinks.
 
-`loadSkillAgents` in `src/custom-agents.ts` scans only `$PI_CODING_AGENT_DIR/skills/`. Project skill directories and skills pi loads from packages are not scanned.
+`loadSkillAgents` in `src/agents/custom-agents.ts` scans only `$PI_CODING_AGENT_DIR/skills/`. Project skill directories and skills pi loads from packages are not scanned.
 
 ## Decision
 
@@ -29,7 +29,7 @@ Rules:
 - Traversal is breadth-first and sorted by name at each level, so a clash between two skills resolves the same way on every machine. The clash logs a warning naming both files; it is a packaging accident, not an override.
 - `/agents` never writes to a skill's file. Eject copies the file verbatim to a user location; Disable writes a user stub that shadows it. Edit, Delete, and Reset are not offered.
 
-Done check: `npx vitest run test/custom-agents.test.ts` passes.
+Done check: `npx vitest run test/custom-agents.test.ts test/agents-menu.test.ts` passes.
 
 ## Consequences
 
