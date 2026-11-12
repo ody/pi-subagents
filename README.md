@@ -108,7 +108,7 @@ Schedules are **session-scoped**: they reset on `/new` and restore on `/resume`.
 
 **Disable the feature entirely**: `/agents → Settings → Scheduling → disabled` removes `schedule` from the `agent` tool spec (no LLM-context cost), hides the menu entry, and stops any active scheduler. The schema-level removal takes effect on the next pi session; the runtime kill is immediate. Re-enable from the same menu.
 
-A job stores the caller's raw `model`, `thinking`, `max_turns`, and `run_in_background` with `version: 2`, and resolves them each time it fires, disclosing overrides like the `Agent` tool. A stored `model` that no longer resolves fails that firing without spawning, and the job records `lastStatus: error`. In a job without `version: 2`, `thinking` and `max_turns` are ignored at fire time and resolve from the agent file, then the defaults.
+A job stores the caller's raw `model`, `thinking`, `max_turns`, and `run_in_background` with `version: 2`, and resolves them each time it fires, disclosing overrides like the `agent` tool. A stored `model` that no longer resolves fails that firing without spawning, and the job records `lastStatus: error`. In a job without `version: 2`, `thinking` and `max_turns` are ignored at fire time and resolve from the agent file, then the defaults.
 
 Restrictions:
 
@@ -232,7 +232,7 @@ Either way the started agent honours its own frontmatter — `model:`, `thinking
 
 - **`direct`** sends your message unchanged and carries no overrides.
 - **`model`** reads your words, so `@plan with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run.
-- The clone's `Agent` tool refuses `max_turns`, `run_in_background`, `resume`, and `schedule`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool.
+- The clone's `agent` tool refuses `max_turns`, `run_in_background`, `resume`, and `schedule`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool.
 - The clone's forced background start is not disclosed as an override.
 - A refused clone call is reported as a warning toast with the refusal message, and the agent is not started directly.
 
@@ -647,7 +647,7 @@ There are two independent pools.
 
 **Background** (`maxConcurrent`, default 10). Excess agents are automatically queued and start as running agents complete. The widget shows queued agents as a collapsed count. Since agents run in the background by default, nearly every spawn takes a slot; the limit was raised from 4 so that ordinary parallel fan-outs don't queue.
 
-**Foreground** (`maxConcurrentForeground`, default `0` = unlimited). Off by default, so nothing changes unless you set it. pi dispatches a message's tool calls through `Promise.all`, so several `agent` calls with `run_in_background: false` in one message have always started at once — this bounds that. Useful mainly with local models, where parallel agents thrash the prompt cache. A queued foreground agent appears in `/agents → Running agents` as `queued` and can be stopped there; its `Agent` call says so while it waits and then returns its result normally.
+**Foreground** (`maxConcurrentForeground`, default `0` = unlimited). Off by default, so nothing changes unless you set it. pi dispatches a message's tool calls through `Promise.all`, so several `agent` calls with `run_in_background: false` in one message have always started at once — this bounds that. Useful mainly with local models, where parallel agents thrash the prompt cache. A queued foreground agent appears in `/agents → Running agents` as `queued` and can be stopped there; its `agent` call says so while it waits and then returns its result normally.
 
 The two are deliberately **not** one limit. A foreground agent blocks the parent anyway — the parent could have done that work itself without paying a slot — so charging it to the background pool would let a saturated pool starve the main session.
 
@@ -830,7 +830,7 @@ Independent of `reportUsage`: this one is what you read, that one is what your s
 
 Off by default because the row already carries the description, turns, tool uses, tokens and elapsed time, and every character it gains is one the description loses on a narrow terminal. The other surfaces show the pair either way: the `agent` tool result names the model beside its tags, and the conversation viewer's `↳` row spells out the canonical `provider/model-id`.
 
-Both places report what the run *actually* used, read back from the child session once pi has resolved its defaults and clamped the level to what the model supports — not what the call asked for. Where those differ, the losing side is kept beside the effective value rather than dropped. The `Agent` tool result and the viewer show every field where the caller displaced an agent file's value:
+Both places report what the run *actually* used, read back from the child session once pi has resolved its defaults and clamped the level to what the model supports — not what the call asked for. Where those differ, the losing side is kept beside the effective value rather than dropped. The `agent` tool result and the viewer show every field where the caller displaced an agent file's value:
 
 | Field | Reads |
 | --- | --- |

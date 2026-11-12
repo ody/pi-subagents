@@ -56,7 +56,7 @@ describe("loadCustomAgents (runs on every Agent call)", () => {
   }
 });
 
-describe("Agent tool — background spawn", () => {
+describe("agent tool — background spawn", () => {
   vi.mocked(runAgent).mockImplementation(async () => ({
     responseText: "done",
     session: { dispose: vi.fn() } as any,
