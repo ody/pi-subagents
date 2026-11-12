@@ -16,6 +16,7 @@ vi.mock("@earendil-works/pi-coding-agent", async () => {
   };
 });
 
+import { FORCED_BACKGROUND } from "../src/tool/invocation-config.js";
 import { agentMentionReminder } from "../src/triggers/mention.js";
 import { runMentionClone } from "../src/triggers/mention-clone.js";
 
@@ -230,26 +231,72 @@ describe("attributing the spawn to the real session", () => {
     expect(tool.execute.mock.calls[0][1]).toEqual({
       subagent_type: "Plan",
       prompt: "sketch the migration",
-      run_in_background: true,
+      [FORCED_BACKGROUND]: true,
     });
   });
 
-  it("forces the spawn into the background — a foreground result goes nowhere", async () => {
+  it("forces the spawn into the background without passing run_in_background, so it is not disclosed", async () => {
     const tool = agentTool();
     cloneSession(callsAgent({ subagent_type: "Explore", prompt: "go" }));
 
     await runMentionClone(opts({ agentTool: tool }));
 
-    expect(tool.execute.mock.calls[0][1]).toMatchObject({ run_in_background: true });
+    const forwarded = tool.execute.mock.calls[0][1];
+    expect(forwarded[FORCED_BACKGROUND]).toBe(true);
+    expect(forwarded).not.toHaveProperty("run_in_background");
   });
 
-  it("overrides a clone that explicitly asked for a foreground run", async () => {
+  it("lets the clone set model and thinking from the user's words", async () => {
     const tool = agentTool();
-    cloneSession(callsAgent({ subagent_type: "Explore", prompt: "go", run_in_background: false }));
+    cloneSession(callsAgent({ subagent_type: "Explore", prompt: "review the ADR", model: "deepseek flash", thinking: "high" }));
+
+    const result = await runMentionClone(opts({ agentTool: tool }));
+
+    expect(result).toEqual({ spawned: true });
+    expect(tool.execute.mock.calls[0][1]).toMatchObject({ model: "deepseek flash", thinking: "high" });
+  });
+
+  it("fills inherit_context, isolated, and isolation as on the main tool", async () => {
+    const tool = agentTool();
+    cloneSession(callsAgent({ subagent_type: "Explore", prompt: "go", inherit_context: true, isolated: true, isolation: "worktree" }));
 
     await runMentionClone(opts({ agentTool: tool }));
 
-    expect(tool.execute.mock.calls[0][1]).toMatchObject({ run_in_background: true });
+    expect(tool.execute.mock.calls[0][1]).toMatchObject({ inherit_context: true, isolated: true, isolation: "worktree" });
+  });
+
+  it.each([
+    ["max_turns", 5],
+    ["run_in_background", false],
+    ["resume", "a1"],
+    ["schedule", "5m"],
+  ])("refuses %s, tells the clone, and reports it", async (name, value) => {
+    const tool = agentTool();
+    const captured: any[] = [];
+    cloneSession(async (t) => {
+      captured.push(await t.execute("c1", { subagent_type: "Explore", prompt: "go", [name]: value }, undefined, undefined, {}));
+    });
+
+    const result = await runMentionClone(opts({ agentTool: tool }));
+
+    expect(tool.execute).not.toHaveBeenCalled();
+    expect(captured[0].isError).toBe(true);
+    expect(captured[0].content[0].text).toContain(name);
+    expect(result.spawned).toBe(false);
+    expect(result.refusal).toContain(name);
+  });
+
+  it("still spawns when the clone retries after a refusal", async () => {
+    const tool = agentTool();
+    cloneSession(async (t) => {
+      await t.execute("c1", { subagent_type: "Explore", prompt: "go", max_turns: 3 }, undefined, undefined, {});
+      await callsAgent()(t);
+    });
+
+    const result = await runMentionClone(opts({ agentTool: tool }));
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ spawned: true });
   });
 
   it("refuses a second spawn from the same mention", async () => {

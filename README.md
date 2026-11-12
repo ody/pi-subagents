@@ -228,11 +228,17 @@ The agent it starts is attributed to the *real* session, so its transcript and `
 | `direct` | the agent starts here, immediately, with your message verbatim as its prompt. No model call at all, so no latency before it begins |
 | `off` | `@` means only "attach a file" again |
 
-Either way the started agent honours its own frontmatter — `model:`, `thinking:`, `max_turns:` all apply, since neither path passes them.
+Either way the started agent honours its own frontmatter — `model:`, `thinking:`, `max_turns:` all apply, unless you name a model or reasoning level in `model` mode.
+
+- **`direct`** sends your message unchanged and carries no overrides.
+- **`model`** reads your words, so `@plan with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run.
+- The clone's `Agent` tool refuses `max_turns`, `run_in_background`, `resume`, and `schedule`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool.
+- The clone's forced background start is not disclosed as an override.
+- A refused clone call is reported as a warning toast with the refusal message, and the agent is not started directly.
 
 Mentioning something as the very first thing in a session works: there is simply no history to carry, and the clone still runs on your model and system prompt.
 
-If it cannot deliver at all — a model can always answer in prose instead of calling the tool — the agent is started directly with your text and the toast says so, rather than leaving you with nothing running.
+If the clone never calls the tool — a model can always answer in prose instead — the agent is started directly with your text and the toast says so, rather than leaving you with nothing running.
 
 `model` is also the only mode that works outside the TUI: `pi -p '@plan the migration'` clones, spawns, and reports through the normal completion path, where a direct start would have detached the agent and printed nothing. Messaging and resuming stay TUI-only for that reason, in both modes.
 

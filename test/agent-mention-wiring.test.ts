@@ -519,7 +519,7 @@ describe("mentioning an agent that has never run", () => {
 });
 
 describe("letting a clone of the conversation start the agent", () => {
-  function cloneReturns(result: { spawned: boolean; error?: string }) {
+  function cloneReturns(result: { spawned: boolean; error?: string; refusal?: string }) {
     vi.mocked(runMentionClone).mockResolvedValue(result);
   }
 
@@ -594,6 +594,24 @@ describe("letting a clone of the conversation start the agent", () => {
     expect(runAgent).toHaveBeenCalled();
     expect(uiCtx.ui.notify).toHaveBeenCalledWith(
       "Started @explore directly — no session file",
+      "warning",
+    );
+  });
+
+  it("reports a refused clone call to the user and does not start the agent directly", async () => {
+    const { lifecycle } = boot();
+    cloneReturns({ spawned: false, refusal: "Refused: an @mention run cannot set max_turns." });
+
+    const uiCtx = ctx();
+    await lifecycle.get("input")(
+      { type: "input", text: "@explore find the flaky test", source: "interactive" },
+      uiCtx,
+    );
+    await flush();
+
+    expect(runAgent).not.toHaveBeenCalled();
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith(
+      "Could not start @explore: Refused: an @mention run cannot set max_turns.",
       "warning",
     );
   });

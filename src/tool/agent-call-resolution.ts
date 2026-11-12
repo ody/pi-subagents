@@ -60,7 +60,7 @@ export function detailBaseFor(detailBase: DetailBase, rec: AgentRecord | undefin
 export function resolveAgentCall(
   params: AgentCallParams,
   ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
-  opts: { worktreeAllowed: boolean; defaultRunInBackground: boolean },
+  opts: { worktreeAllowed: boolean; defaultRunInBackground: boolean; forceBackground?: boolean },
 ): AgentCallResolution {
   const rawType = params.subagent_type as SubagentType;
   const dispatch = resolveSpawnType(rawType);
@@ -78,6 +78,7 @@ export function resolveAgentCall(
   const resolvedConfig = resolveAgentInvocationConfig(customConfig, params, {
     worktreeAllowed: opts.worktreeAllowed,
     defaultRunInBackground: opts.defaultRunInBackground,
+    forceBackground: opts.forceBackground,
   });
 
   let model = ctx.model;

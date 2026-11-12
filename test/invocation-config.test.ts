@@ -209,6 +209,17 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
     expect(resolved.overridden?.runInBackground).toBe(true);
   });
 
+  it("forces background without recording it as an override of the file's foreground", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ runInBackground: false }),
+      {},
+      { forceBackground: true },
+    );
+
+    expect(resolved.runInBackground).toBe(true);
+    expect(resolved.overridden).toBeUndefined();
+  });
+
   it("keeps a caller max_turns of 0 as an explicit unlimited over the file's limit", () => {
     const resolved = resolveAgentInvocationConfig(makeConfig({ maxTurns: 20 }), { max_turns: 0 });
 
