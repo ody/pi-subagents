@@ -58,6 +58,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     delete safeOptions.reclaim;
     delete safeOptions.blocking;
     delete safeOptions.capability;
+    delete safeOptions.ephemeral;
     return spawnResolved(piRef, ctxRef, type, prompt, safeOptions, rawAgentConfig);
   };
 

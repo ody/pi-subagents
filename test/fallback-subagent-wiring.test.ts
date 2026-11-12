@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,7 +162,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
     expect(runAgent).not.toHaveBeenCalled();
   });
 
-  it("never persists a blank type into a scheduled job", async () => {
+  it("refuses a scheduled call with a blank type instead of storing a job", async () => {
     const { tools, lifecycle } = boot();
     await lifecycle.get("session_start")({}, ctx());
 
@@ -171,14 +171,13 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
       { prompt: "later", description: "blank type", subagent_type: "   ", schedule: "+1h" },
       undefined, undefined, ctx(),
     );
-    expect(textOf(result)).toContain("Scheduled");
+    expect(textOf(result)).toContain("A scheduled call needs a subagent_type");
 
     const storeDir = join(cwd, ".pi", "subagent-schedules");
-    const jobs = readdirSync(storeDir).flatMap((f) =>
-      JSON.parse(readFileSync(join(storeDir, f), "utf-8")).jobs ?? [],
-    );
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].subagent_type).toBe("general-purpose");
+    const jobs = existsSync(storeDir)
+      ? readdirSync(storeDir).flatMap((f) => JSON.parse(readFileSync(join(storeDir, f), "utf-8")).jobs ?? [])
+      : [];
+    expect(jobs).toHaveLength(0);
   });
 
   it("never blocks resume, which ignores subagent_type entirely", async () => {

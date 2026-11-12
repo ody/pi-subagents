@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { EPHEMERAL_DISPLAY_NAME } from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, isMintedVerdict } from "../config/capability-policy.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
@@ -21,6 +22,7 @@ export interface SpawnOptions {
   resumeSessionFile?: string;
   reclaim?: { handle: string; alias?: string };
   agentConfig?: AgentConfig;
+  ephemeral?: { handleSeed: string };
   capability?: GrantedCapability;
   model?: Model<any>;
   maxTurns?: number;
@@ -88,7 +90,9 @@ export function spawnAgent(
     type,
     handle: !isTopLevelAgent(options)
       ? undefined
-      : options.reclaim?.handle ?? assignHandle(handleBase(type), deps.takenHandles()),
+      : options.reclaim?.handle ?? assignHandle(handleBase(options.ephemeral?.handleSeed ?? type), deps.takenHandles()),
+    displayName: options.ephemeral ? EPHEMERAL_DISPLAY_NAME : undefined,
+    promptMode: options.ephemeral ? options.agentConfig?.promptMode : undefined,
     description: options.description,
     alias: isTopLevelAgent(options) ? options.reclaim?.alias : undefined,
     status: options.isBackground ? "queued" : "running",

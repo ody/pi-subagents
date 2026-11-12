@@ -1,11 +1,18 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, resolveSpawnType, resolveType } from "../agents/agent-types.js";
+import {
+  type BuiltEphemeralAgent,
+  buildEphemeralAgent,
+  type EphemeralParams,
+  ephemeralIsolationConflict,
+  namedAgentParamConflict,
+} from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
 import { describeModel, resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
-import type { AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
+import type { AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
 import { buildInvocationTags, getDisplayName, getPromptModeLabel } from "../ui/agent-format.js";
 import { resolveAgentInvocationConfig } from "./invocation-config.js";
 
@@ -17,8 +24,9 @@ export interface DetailBase {
   tags: string[] | undefined;
 }
 
-export type AgentCallParams = Parameters<typeof resolveAgentInvocationConfig>[1] & {
-  subagent_type: string;
+export type AgentCallParams = Parameters<typeof resolveAgentInvocationConfig>[1] & Partial<Omit<EphemeralParams, "description" | "isolated">> & {
+  subagent_type?: string;
+  name?: string;
   description: string;
   resume?: string;
   schedule?: unknown;
@@ -40,6 +48,8 @@ export type AgentCallResolution =
       isolation: IsolationMode | undefined;
       outputTranscript: boolean;
       capability: GrantedCapability | undefined;
+      agentConfig: AgentConfig | undefined;
+      ephemeral: { handleSeed: string } | undefined;
       effectiveMaxTurns: number | undefined;
       agentInvocation: AgentInvocation;
       detailBase: DetailBase;
@@ -49,10 +59,10 @@ export function detailBaseFor(detailBase: DetailBase, rec: AgentRecord | undefin
   if (!rec?.invocation) return detailBase;
   const type = rec.type;
   const { modelName: recModelName, tags } = buildInvocationTags(rec.invocation);
-  const recModeLabel = getPromptModeLabel(type);
+  const recModeLabel = getPromptModeLabel(rec);
   const recTags = recModeLabel ? [recModeLabel, ...tags] : tags;
   return {
-    displayName: getDisplayName(type),
+    displayName: getDisplayName(rec),
     description: rec.description,
     subagentType: type,
     modelName: recModelName,
@@ -65,12 +75,17 @@ function mintCapability(
   ctx: Pick<ExtensionContext, "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
   type: SubagentType,
   isolated: boolean,
+  built: BuiltEphemeralAgent | undefined,
 ): { ok: true; capability: GrantedCapability | undefined } | { ok: false; message: string } {
   if (params.resume || params.schedule) return { ok: true, capability: undefined };
   try {
     const capability = resolveCapability({
       type,
       cwd: ctx.cwd,
+      config: built?.config,
+      raw: built?.supplied,
+      explicitTools: built?.explicitTools,
+      ephemeral: built !== undefined,
       isolated,
       notify: (message, level) => ctx.ui.notify(message, level),
     });
@@ -80,23 +95,49 @@ function mintCapability(
   }
 }
 
-export function resolveAgentCall(
+function omitsType(params: AgentCallParams): boolean {
+  return !params.resume && (params.subagent_type ?? "").trim() === "";
+}
+
+function typeParamConflict(params: AgentCallParams): string | undefined {
+  if (omitsType(params)) {
+    if (params.schedule) return "A scheduled call needs a subagent_type. An ephemeral agent cannot be scheduled.";
+    return ephemeralIsolationConflict({ ...params, description: params.description });
+  }
+  if (params.resume) return undefined;
+  return namedAgentParamConflict(params);
+}
+
+function dispatchType(
   params: AgentCallParams,
-  ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
-  opts: { worktreeAllowed: boolean; defaultRunInBackground: boolean },
-): AgentCallResolution {
-  const rawType = params.subagent_type as SubagentType;
-  const dispatch = resolveSpawnType(rawType);
+  built: BuiltEphemeralAgent | undefined,
+): { ok: false; message: string } | { ok: true; subagentType: SubagentType; requestedType: string; fallbackNote: string } {
+  const rawType = (params.subagent_type ?? "") as SubagentType;
+  const dispatch = built ? { ok: true as const, type: built.type, fellBackFrom: undefined } : resolveSpawnType(rawType);
   if (!dispatch.ok && !params.resume) return { ok: false, message: dispatch.message };
   const subagentType = dispatch.ok ? dispatch.type : rawType;
   const requestedType = (dispatch.ok && dispatch.fellBackFrom) || subagentType;
   const fallbackNote = dispatch.ok && dispatch.fellBackFrom !== undefined
     ? `Note: Unknown agent type "${dispatch.fellBackFrom}" — using ${resolveType(subagentType) ? subagentType : "the fallback agent config"}.\n\n`
     : "";
+  return { ok: true, subagentType, requestedType, fallbackNote };
+}
 
-  const displayName = getDisplayName(subagentType);
+export function resolveAgentCall(
+  params: AgentCallParams,
+  ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
+  opts: { worktreeAllowed: boolean; defaultRunInBackground: boolean },
+): AgentCallResolution {
+  const conflict = typeParamConflict(params);
+  if (conflict) return { ok: false, message: conflict };
+  const built = omitsType(params) ? buildEphemeralAgent({ ...params, description: params.description }) : undefined;
+  const dispatched = dispatchType(params, built);
+  if (!dispatched.ok) return dispatched;
+  const { subagentType, requestedType, fallbackNote } = dispatched;
 
-  const customConfig = getAgentConfig(subagentType);
+  const displayName = getDisplayName({ type: subagentType, displayName: built?.config.displayName });
+
+  const customConfig = built ? undefined : getAgentConfig(subagentType);
 
   const resolvedConfig = resolveAgentInvocationConfig(customConfig, params, {
     worktreeAllowed: opts.worktreeAllowed,
@@ -124,7 +165,7 @@ export function resolveAgentCall(
   if (scopeVerdict.kind === "error") return { ok: false, message: scopeVerdict.message };
   if (scopeVerdict.kind === "warn") ctx.ui.notify(scopeVerdict.message, "warning");
 
-  const minted = mintCapability(params, ctx, subagentType, resolvedConfig.isolated);
+  const minted = mintCapability(params, ctx, subagentType, resolvedConfig.isolated, built);
   if (!minted.ok) return minted;
   const capability = minted.capability;
 
@@ -155,7 +196,7 @@ export function resolveAgentCall(
     runInBackground,
     isolation,
   };
-  const modeLabel = getPromptModeLabel(subagentType);
+  const modeLabel = getPromptModeLabel({ type: subagentType, promptMode: built?.config.promptMode });
   const { tags: invocationTags } = buildInvocationTags(agentInvocation);
   const agentTags = modeLabel ? [modeLabel, ...invocationTags] : invocationTags;
   const detailBase = {
@@ -180,6 +221,8 @@ export function resolveAgentCall(
     isolation,
     outputTranscript,
     capability,
+    agentConfig: built?.config,
+    ephemeral: built ? { handleSeed: params.name ?? params.description } : undefined,
     effectiveMaxTurns,
     agentInvocation,
     detailBase,
