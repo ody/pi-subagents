@@ -20,7 +20,7 @@ import { runForegroundAgent } from "./agent-tool-foreground.js";
 import { renderAgentCall, renderAgentResult } from "./agent-tool-render.js";
 import { resumeAgentCall } from "./agent-tool-resume.js";
 import { scheduleAgentCall } from "./agent-tool-schedule.js";
-import { isolationParam } from "./invocation-config.js";
+import { FORCED_BACKGROUND, isolationParam } from "./invocation-config.js";
 import { textResult } from "./tool-result.js";
 
 export interface AgentToolDeps {
@@ -153,6 +153,7 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       const call = resolveAgentCall(callParams, ctx, {
         worktreeAllowed: isWorktreeIsolationEnabled(),
         defaultRunInBackground: settings.backgroundByDefault,
+        forceBackground: (params as Record<symbol, unknown>)[FORCED_BACKGROUND] === true,
       });
       if (!call.ok) return textResult(call.message);
       const { runInBackground, outputTranscript } = call;

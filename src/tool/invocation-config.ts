@@ -27,9 +27,12 @@ interface AgentInvocationParams {
   isolation?: unknown;
 }
 
+export const FORCED_BACKGROUND = Symbol("pi-subagents:forced-background");
+
 interface ResolveOptions {
   worktreeAllowed?: boolean;
   defaultRunInBackground?: boolean;
+  forceBackground?: boolean;
 }
 
 export function resolveAgentInvocationConfig(
@@ -55,7 +58,9 @@ export function resolveAgentInvocationConfig(
   const overriddenThinking = displaced(agentConfig?.thinking as ThinkingLevel | undefined, params.thinking as ThinkingLevel | undefined);
   const overriddenModel = displaced(agentConfig?.model, params.model);
   const overriddenMaxTurns = displaced(agentConfig?.maxTurns, params.max_turns);
-  const overriddenRunInBackground = displaced(agentConfig?.runInBackground, params.run_in_background);
+  const overriddenRunInBackground = opts?.forceBackground
+    ? undefined
+    : displaced(agentConfig?.runInBackground, params.run_in_background);
   const hasOverride = overriddenThinking !== undefined || overriddenModel !== undefined
     || overriddenMaxTurns !== undefined || overriddenRunInBackground !== undefined;
 
@@ -65,7 +70,7 @@ export function resolveAgentInvocationConfig(
     thinking: (params.thinking ?? agentConfig?.thinking) as ThinkingLevel | undefined,
     maxTurns: params.max_turns ?? agentConfig?.maxTurns,
     inheritContext: agentConfig?.inheritContext ?? params.inherit_context ?? false,
-    runInBackground: params.run_in_background ?? agentConfig?.runInBackground ?? opts?.defaultRunInBackground ?? false,
+    runInBackground: opts?.forceBackground || (params.run_in_background ?? agentConfig?.runInBackground ?? opts?.defaultRunInBackground ?? false),
     isolated: agentConfig?.isolated ?? params.isolated ?? false,
     isolation,
     overridden: hasOverride

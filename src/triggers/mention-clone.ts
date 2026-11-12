@@ -7,6 +7,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { runInChildSessionContext } from "../session/child-context.js";
+import { FORCED_BACKGROUND } from "../tool/invocation-config.js";
 import type { SubagentType, ThinkingLevel } from "../types.js";
 import { agentMentionReminder } from "./mention.js";
 
@@ -20,12 +21,22 @@ export interface MentionCloneOptions {
 export interface MentionCloneResult {
   spawned: boolean;
   error?: string;
+  refusal?: string;
+}
+
+const REFUSED_PARAMS = ["max_turns", "run_in_background", "resume", "schedule"] as const;
+
+function refusalFor(params: Record<string, unknown>): string | undefined {
+  const present = REFUSED_PARAMS.filter(name => params[name] !== undefined);
+  if (present.length === 0) return undefined;
+  return `Refused: an @mention run cannot set ${present.join(", ")}. Only model and thinking may be overridden here; call the agent tool again without ${present.length === 1 ? "it" : "them"}.`;
 }
 
 export async function runMentionClone(opts: MentionCloneOptions): Promise<MentionCloneResult> {
   const { ctx, type, message, agentTool } = opts;
 
   let spawned = false;
+  let refusal: string | undefined;
   const cloneAgentTool: ToolDefinition = {
     ...agentTool,
     execute: (_cloneToolCallId, params, signal, onUpdate, _cloneCtx) => {
@@ -36,10 +47,19 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
           isError: true,
         });
       }
+      const refused = refusalFor(params as Record<string, unknown>);
+      if (refused) {
+        refusal = refused;
+        return Promise.resolve({
+          content: [{ type: "text" as const, text: refused }],
+          details: undefined,
+          isError: true,
+        });
+      }
       spawned = true;
       return agentTool.execute(
         undefined as never,
-        { ...(params as Record<string, unknown>), run_in_background: true } as typeof params,
+        { ...(params as Record<string, unknown>), [FORCED_BACKGROUND]: true } as typeof params,
         signal,
         onUpdate,
         ctx,
@@ -81,7 +101,7 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
     session?.dispose?.();
   }
 
-  return spawned
-    ? { spawned: true }
-    : { spawned: false, error: "the conversation clone did not start it" };
+  if (spawned) return { spawned: true };
+  if (refusal) return { spawned: false, refusal };
+  return { spawned: false, error: "the conversation clone did not start it" };
 }

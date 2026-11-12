@@ -111,6 +111,10 @@ function startViaClone(
   void runMentionClone({ ctx, type, message: mention.message, agentTool: deps.agentTool })
     .then(async (result) => {
       if (result.spawned) return;
+      if (result.refusal) {
+        ctx.ui.notify(`Could not start ${label}: ${result.refusal}`, "warning");
+        return;
+      }
       try {
         const id = deps.spawnTopLevel(pi, ctx, type, mention.message, {
           description: describeMention(mention.message),
