@@ -47,7 +47,7 @@ afterAll(() => {
 const globalRedirect = hermeticDir();
 hermetics.push(globalRedirect);
 
-describe("loadCustomAgents (runs on every Agent call)", () => {
+describe("loadCustomAgents (runs on every agent call)", () => {
   for (const n of [5, 50, 200]) {
     const cwd = projectDirWith(n);
     bench(`${n} agent files`, () => {
