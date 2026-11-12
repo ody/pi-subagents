@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
 import { detailBaseFor, resolveAgentCall } from "../src/tool/agent-call-resolution.js";
 import type { AgentRecord } from "../src/types.js";
+import { testAgents } from "./helpers/test-agents.js";
 
 const base = {
   displayName: "Explore",
@@ -47,7 +48,7 @@ describe("detailBaseFor", () => {
 
 describe("resolveAgentCall", () => {
   beforeEach(() => {
-    registerAgents(new Map());
+    registerAgents(testAgents("Explore"));
   });
   afterEach(() => {
     registerAgents(new Map());

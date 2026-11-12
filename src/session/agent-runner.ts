@@ -17,7 +17,6 @@ import {
   type Skill,
 } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES, getAgentConfig } from "../agents/agent-types.js";
-import { DEFAULT_AGENTS } from "../agents/default-agents.js";
 import type { EffectiveCapabilities, GrantedCapability } from "../config/capability-policy.js";
 import { getGraceTurns, getRememberAgents, resolveEffectiveMaxTurns, turnLimitAction } from "../config/runner-defaults.js";
 import { detectEnv } from "../platform/env.js";
@@ -192,20 +191,6 @@ function skillsOverrideFor(capabilities: EffectiveCapabilities) {
   });
 }
 
-function buildRunSystemPrompt(
-  type: SubagentType,
-  agentConfig: AgentConfig | undefined,
-  cwd: string,
-  env: Awaited<ReturnType<typeof detectEnv>>,
-  parentSystemPrompt: string,
-  extras: PromptExtras,
-): string {
-  if (agentConfig) return buildAgentPrompt(agentConfig, cwd, env, parentSystemPrompt, extras);
-  const fallback = DEFAULT_AGENTS.get("general-purpose");
-  if (!fallback) throw new Error(`No fallback config available for unknown type "${type}"`);
-  return buildAgentPrompt({ ...fallback, name: type }, cwd, env, parentSystemPrompt, extras);
-}
-
 function resolveNestedTools(options: RunOptions, capabilities: EffectiveCapabilities, configCwd: string) {
   const effectiveMaxDepth = options.nestedRuntime?.maxSubagentDepth ?? getMaxSubagentDepth();
   const nestedRuntime = options.nestedRuntime && options.nestedRuntime.depth < effectiveMaxDepth
@@ -249,6 +234,7 @@ export async function runAgent(
 ): Promise<RunResult> {
   const inline = options.agentConfig;
   const agentConfig = inline ?? getAgentConfig(type);
+  if (!agentConfig) throw new Error(`Unknown agent type "${type}" and no inline agent definition given`);
   const capabilities = options.capability.capabilities;
 
   const effectiveCwd = options.cwd ?? ctx.cwd;
@@ -272,7 +258,7 @@ export async function runAgent(
 
   const toolNames = capabilities.builtinToolNames;
 
-  const systemPrompt = buildRunSystemPrompt(type, agentConfig, effectiveCwd, env, parentSystemPrompt, extras);
+  const systemPrompt = buildAgentPrompt(agentConfig, effectiveCwd, env, parentSystemPrompt, extras);
 
   const noSkills = skills === false || Array.isArray(skills);
 

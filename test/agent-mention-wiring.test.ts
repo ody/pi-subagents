@@ -64,7 +64,13 @@ function finishedRun(session: any) {
 }
 
 function boot(settings: Record<string, unknown> = {}) {
-  hermetic = hermeticDir({ settings: { outputTranscript: false, ...settings } });
+  hermetic = hermeticDir({
+    settings: { outputTranscript: false, ...settings },
+    agentFiles: {
+      Explore: "---\ndescription: explores\n---\nbody",
+      Plan: "---\ndescription: plans\n---\nbody",
+    },
+  });
   const b = makePi();
   subagentsExtension(b.pi);
   booted = b.lifecycle;

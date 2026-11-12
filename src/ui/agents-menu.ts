@@ -28,18 +28,11 @@ export interface AgentsCommandDeps {
 }
 
 export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] {
-  const isDefault = cfg.isDefault === true;
   const disabled = cfg.enabled === false;
   if (cfg.source === "skill") {
     return disabled ? ["Eject (export as .md)", "Back"] : ["Eject (export as .md)", "Disable", "Back"];
   }
-  if (disabled && hasFile) {
-    return isDefault
-      ? ["Enable", "Edit", "Reset to default", "Delete", "Back"]
-      : ["Enable", "Edit", "Delete", "Back"];
-  }
-  if (isDefault && !hasFile) return ["Eject (export as .md)", "Disable", "Back"];
-  if (isDefault && hasFile) return ["Edit", "Disable", "Reset to default", "Delete", "Back"];
+  if (disabled && hasFile) return ["Enable", "Edit", "Delete", "Back"];
   return ["Edit", "Disable", "Delete", "Back"];
 }
 
@@ -138,7 +131,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       };
     });
 
-    const hasCustom = allNames.some(n => { const c = getAgentConfig(n); return c && !c.isDefault && c.enabled !== false; });
+    const hasCustom = allNames.some(n => { const c = getAgentConfig(n); return c && c.enabled !== false; });
     const hasDisabled = allNames.some(n => getAgentConfig(n)?.enabled === false);
     const legendParts: string[] = [];
     if (hasCustom) legendParts.push("• = project  ◦ = global  ▹ = skill");
@@ -236,8 +229,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       await editAgentFile(ctx, name, file);
     } else if (choice === "Delete") {
       if (file) await deleteAgentFile(ctx, name, file);
-    } else if (choice === "Reset to default" && file) {
-      await resetAgentToDefault(ctx, name, file);
     } else if (choice.startsWith("Eject")) {
       await ejectAgent(ctx, name, cfg);
     } else if (choice === "Disable") {
@@ -267,15 +258,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       unlinkSync(file.path);
       reloadCustomAgents();
       ctx.ui.notify(`Deleted ${file.path}`, "info");
-    }
-  }
-
-  async function resetAgentToDefault(ctx: ExtensionCommandContext, name: string, file: UserAgentFile) {
-    const confirmed = await ctx.ui.confirm("Reset to default", `Delete override ${file.path} and restore embedded default?`);
-    if (confirmed) {
-      unlinkSync(file.path);
-      reloadCustomAgents();
-      ctx.ui.notify(`Restored default ${name}`, "info");
     }
   }
 

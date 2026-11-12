@@ -22,7 +22,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context. The session keeps its model and thinking level; `run_in_background` and `max_turns` come from the resuming call, else from the run's original values. Pass `run_in_background: false` to block and get the result inline
 - **Graceful turn limits** — agents get a "wrap up" warning before hard abort, producing clean partial results instead of cut-off output
-- **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — is refused with an error that lists the enabled types
+- **Case-insensitive agent types** — `"reviewer"`, `"Reviewer"`, `"REVIEWER"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — is refused with an error that lists the enabled types
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
 - **Git worktree isolation** — run agents in isolated repo copies; changes auto-committed to branches on completion
@@ -73,7 +73,7 @@ The parent agent spawns sub-agents using the `agent` tool:
 
 ```js
 agent({
-  subagent_type: "Explore",
+  subagent_type: "reviewer",
   prompt: "Find all files that handle authentication",
   description: "Find auth files",
   run_in_background: true,
@@ -88,7 +88,7 @@ Add a `schedule` field to register the agent to fire later instead of running no
 
 ```js
 agent({
-  subagent_type: "Explore",
+  subagent_type: "reviewer",
   prompt: "Look at recent commits and summarize what changed since last week",
   description: "Weekly commit review",
   schedule: "0 0 9 * * 1",   // 9am every Monday (6-field cron)
@@ -125,7 +125,7 @@ The extension renders a persistent widget above the editor showing active agents
 ● Agents
 ├─ ⠹ Agent  Refactor auth module · ↻5≤30 · 5 tool uses · 33.8k token (62%) · 12.3s
 │    ⎿  editing 2 files…
-├─ ⠹ Explore  Find auth files · ↻3 · 3 tool uses · 12.4k token (8%) · 4.1s
+├─ ⠹ reviewer  Find auth files · ↻3 · 3 tool uses · 12.4k token (8%) · 4.1s
 │    ⎿  searching…
 ├─ ⠹ Agent  Long-running task · ↻42 · 38 tool uses · 91.0k token (84% · ⇊2) · 2m17s
 │    ⎿  reading…
@@ -145,9 +145,9 @@ While subagents are running, a Claude Code-style navigable list renders **below*
   ↑↓ select · ←→ collapse · enter view · esc back
 
    ● main
-  ▾○ general-purpose  Sleep then report 1                               11s · ↓ 13.1k tokens
-     ○ Explore        Find the route table                               4s · ↓ 2.1k tokens
-   ○ general-purpose  Sleep then report 2                               11s · ↓ 13.1k tokens
+  ▾○ worker           Sleep then report 1                               11s · ↓ 13.1k tokens
+     ○ reviewer       Find the route table                               4s · ↓ 2.1k tokens
+   ○ worker           Sleep then report 2                               11s · ↓ 13.1k tokens
                                                                                    ↓ 3 more
 ```
 
@@ -182,7 +182,7 @@ Subagents are addressable. Every agent has a typeable handle — the agent type,
 
 ```text
 ❯ @
-  @auth-audit     send message · Explore · running · audit the auth flow
+  @auth-audit     send message · reviewer · running · audit the auth flow
   @explore-2      send message · running · find flaky tests
   @code-review    resume · code-review · check the diff
   @plan           start agent · Software architect agent for designing implementation plans.
@@ -222,7 +222,7 @@ The clone gets one tool and one job; it cannot read, write or run anything, beca
 
 The agent it starts is attributed to the *real* session, so its transcript and `rootSessionId` land where they would have anyway, and it carries no `tool-use-id` — the main conversation never issued one.
 
-| Mode | `@plan sketch the migration`, with no Plan agent running |
+| Mode | `@planner sketch the migration`, with no planner agent running |
 | --- | --- |
 | `model` (default) | a clone of this conversation takes the turn off-screen and calls `agent`, so the agent starts with a prompt **written from the conversation**. Nothing reaches the chat but a `Prompting @plan…` toast — the wording marks the wait for that turn, where `direct`'s `Started @plan` means it is already running |
 | `direct` | the agent starts here, immediately, with your message verbatim as its prompt. No model call at all, so no latency before it begins |
@@ -256,7 +256,7 @@ Because subagent sessions are persisted by default ([`rememberAgents`](#persiste
 
 - Only the *definition* is re-resolved, so a continuation runs under the agent type's current frontmatter, not the one the first run used.
 - If the type has since been deleted or disabled, the resume is refused rather than falling back to another agent. Re-enable it and the handle works again.
-- Names from an evicted agent stay reserved, so a later Explore becomes `explore-2` rather than shadowing something you can still reach. The 100 most recent are kept, and all of them are forgotten on `/new` and session switch. A resumed agent takes those names back, so `@explore` keeps meaning the same conversation.
+- Names from an evicted agent stay reserved, so a later reviewer becomes `reviewer-2` rather than shadowing something you can still reach. The 100 most recent are kept, and all of them are forgotten on `/new` and session switch. A resumed agent takes those names back, so `@reviewer` keeps meaning the same conversation.
 - An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead.
 - If the session file has since been deleted, the mention says so and frees the handle rather than silently sending your message to a new agent.
 
@@ -272,7 +272,7 @@ The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets sw
 | `@src/index.ts summarize this` | the main model, with pi's normal file attachment |
 | `@nosuchagent hello` | the main model, verbatim — no agent, no type, no interception |
 
-While an agent is live its handle addresses *it*, so `@explore` never starts a second Explore alongside a running one — use the `agent` tool for deliberate parallelism. `@<agent-id>` works too.
+While an agent is live its handle addresses *it*, so `@reviewer` never starts a second reviewer alongside a running one — use the `agent` tool for deliberate parallelism. `@<agent-id>` works too.
 
 Four rules decide what a handle can name:
 
@@ -320,23 +320,11 @@ Background agent completion notifications render as styled boxes:
 
 Group completions render each agent as a separate block. The LLM receives structured `<task-notification>` XML for parsing, while the user sees the themed visual.
 
-## Default Agent Types
-
-| Type | Tools | Model | Prompt Mode | Description |
-| --- | --- | --- | --- | --- |
-| `general-purpose` | all 7 | inherit | `append` (parent twin) | Inherits the parent's full system prompt — same rules, CLAUDE.md, project conventions |
-| `Explore` | read, bash, grep, find, ls | haiku (falls back to inherit) | `replace` (standalone) | Fast codebase exploration (read-only) |
-| `Plan` | read, bash, grep, find, ls | inherit | `replace` (standalone) | Software architect for implementation planning (read-only) |
-
-The `general-purpose` agent is a **parent twin** — it receives the parent's entire system prompt plus a sub-agent context bridge, so it follows the same rules the parent does. Explore and Plan use standalone prompts tailored to their read-only roles.
-
-Default agents can be **ejected** (`/agents` → select agent → Eject) to export them as `.md` files for customization, **overridden** by creating a `.md` file with the same name (e.g. `.pi/agents/general-purpose.md`), or **disabled** per-project with `enabled: false` frontmatter.
-
 ## Custom Agents
 
-Define custom agent types by creating `.md` files. The frontmatter `name:` is the `subagent_type` and dispatch identity, falling back to the filename when absent; `display_name` only changes the UI label. Claiming a default agent's name overrides it.
+Define custom agent types by creating `.md` files. The frontmatter `name:` is the `subagent_type` and dispatch identity, falling back to the filename when absent; `display_name` only changes the UI label.
 
-Agents are discovered from four locations (higher priority wins). Built-in defaults sit below all of them:
+Agents are discovered from four locations (higher priority wins):
 
 | Priority | Location | Scope |
 | --- | --- | --- |
@@ -380,7 +368,7 @@ You are a security auditor. Review code for vulnerabilities including:
 Report findings with file paths, line numbers, severity, and remediation advice.
 ```
 
-Then spawn it like any built-in type:
+Then spawn it by its name:
 
 ```js
 agent({ subagent_type: "auditor", prompt: "Review the auth module", description: "Security audit" })
@@ -413,7 +401,7 @@ All fields are optional — sensible defaults for everything.
 | `inherit_context` | `false` | Fork parent conversation into agent |
 | `run_in_background` | — | Default this agent to background (`true`) or foreground (`false`); a caller value overrides it. Omit to follow `backgroundByDefault` |
 | `isolated` | `false` | Hermetic specialist mode: forces `extensions: false` + `skills: false` + drops `ext:` selectors. Only built-in tools. Distinct from `isolation: worktree` (filesystem) |
-| `enabled` | `true` | Set to `false` to disable an agent (useful for hiding a default agent per-project) |
+| `enabled` | `true` | Set to `false` to disable an agent (useful for hiding a skill agent per-project) |
 
 #### Name and color rules
 
@@ -642,7 +630,7 @@ The `/agents` command opens an interactive menu:
 
 ```text
 Agents (4) — 2 running, 2 done              ← the whole tree, nested included
-Agent types (6)                             ← unified list: defaults + custom
+Agent types (6)                             ← unified list of registered agents
 Settings                                    ← max concurrency (background + foreground), max turns, grace turns, join mode
 ```
 
@@ -651,11 +639,10 @@ Settings                                    ← max concurrency (background + fo
   - `x` (then `x` again to confirm) stops or aborts it, **background** agents included — a global Esc can't unambiguously target those, and still stops a blocking foreground `agent` call instead. A stopped agent reports its partial output flagged as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot and fires its completion notification within a few seconds, rather than holding both forever.
   - `m` cycles how much of the transcript renders as Markdown — see [Viewer markdown](#persistent-settings).
 - **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model, and the highlighted agent's full description appears below the list. The model column flags `(unavailable, fallback: inherit)` when a configured model can't be resolved (it would silently inherit the parent model), and shows `(→ provider/id)` when it resolves to a different provider or version than configured. Select an agent to manage it:
-  - **Default agents** (no override): Eject (export as `.md`), Disable
-  - **Default agents** (ejected/overridden): Edit, Disable, Reset to default, Delete
+  - **Skill agents**: Eject (export as `.md`), Disable
   - **Custom agents**: Edit, Disable, Delete
   - **Disabled agents**: Enable, Edit, Delete
-- **Eject** — writes the embedded default config as a `.md` file to project or personal location, so you can customize it
+- **Eject** — copies a skill agent's `.md` file to a project or personal location, so you can customize it
 - **Disable/Enable** — toggle agent availability. Disabled agents stay visible in the list (marked `✕`) and can be re-enabled
 - **Settings** — configure max concurrency (background and foreground), default max turns, grace turns, and join mode at runtime
 
@@ -867,8 +854,8 @@ Agents that finish in the background have no tool result of their own to ride on
 `showCost`, default `false`: whether the subagent surfaces print an estimated cost beside their token counts — the widget (running *and* finished lines), [FleetView](#fleetview), the conversation viewer, foreground results, `get_subagent_result`, and completion notifications:
 
 ```text
-├─ ⠹ Explore  inspect code · ↻3 · 8.2k token · ~$0.0042 · 4.1s
-✓ Explore  inspect code · ↻8 · 5 tool uses · ~$0.0181 · 12.3s
+├─ ⠹ reviewer  inspect code · ↻3 · 8.2k token · ~$0.0042 · 4.1s
+✓ reviewer  inspect code · ↻8 · 5 tool uses · ~$0.0181 · 12.3s
 ```
 
 When several background agents finish together, their notification is topped with the batch total (`3 agents · 45.1k token · ~$0.042`) so the figures don't have to be added up by hand.
@@ -884,7 +871,7 @@ Independent of `reportUsage`: this one is what you read, that one is what your s
 `showModel`, default `false`: whether the widget's running rows name the model driving each agent and the thinking level it is running at:
 
 ```text
-├─ ⠹ Explore  inspect code · sonnet 4.6 · thinking: high · ↻3 · 8.2k token · 4.1s
+├─ ⠹ reviewer  inspect code · sonnet 4.6 · thinking: high · ↻3 · 8.2k token · 4.1s
 ```
 
 Off by default because the row already carries the description, turns, tool uses, tokens and elapsed time, and every character it gains is one the description loses on a narrow terminal. The other surfaces show the pair either way: the `agent` tool result names the model beside its tags, and the conversation viewer's `↳` row spells out the canonical `provider/model-id`.
@@ -931,7 +918,7 @@ Applied live. Also settable from `/agents → Settings → Viewer markdown`.
 
 ### Tool description
 
-`toolDescriptionMode`, default `"full"`: which agent tool description the LLM sees. `"full"` is the rich Claude Code-style prompt (~1,400 tokens with the default agents); `"compact"` is ~75% smaller — one-line agent type list, terse usage notes — for small/local models where tool-spec tokens are expensive. Per-option details stay in the parameter descriptions in every mode (the parameter schema is never customizable). Applies on the next pi session.
+`toolDescriptionMode`, default `"full"`: which agent tool description the LLM sees. `"full"` is the rich Claude Code-style prompt; `"compact"` is ~75% smaller — one-line agent type list, terse usage notes — for small/local models where tool-spec tokens are expensive. Per-option details stay in the parameter descriptions in every mode (the parameter schema is never customizable). Applies on the next pi session.
 
 `"custom"` registers your own description from `<cwd>/.pi/agent-tool-description.md` (project) or `<agentDir>/agent-tool-description.md` (global; project wins). The file is read once at tool registration, so edits also apply on the next pi session. Dynamic parts stay live via placeholders — a static agent list would go stale the moment you add a custom agent:
 
@@ -1047,7 +1034,7 @@ const unsub = pi.events.on(`subagents:rpc:spawn:reply:${requestId}`, (reply) => 
 });
 pi.events.emit("subagents:rpc:spawn", {
   requestId,
-  type: "general-purpose",
+  type: "worker",
   prompt: "Do something useful",
   options: { description: "My task", isBackground: true },
 });
@@ -1208,9 +1195,8 @@ src/
   usage.ts            # Token usage shapes, accumulators, session-stats readers, withUsageReporting
 
   agents/             # What an agent is: definitions, registry, per-agent file edits
-    default-agents.ts # Embedded default agent configs (general-purpose, Explore, Plan)
     custom-agents.ts  # Load user-defined agents from .pi/agents/, .agents/agents/, global agents, and skill-embedded agents
-    agent-types.ts    # Unified agent registry (defaults + user), tool name resolution
+    agent-types.ts    # Unified agent registry (user and skill agents), tool name resolution
     ephemeral-agent.ts # Build the one-off agent an `agent` call with no subagent_type runs
     agent-file-toggle.ts # Locate/edit an agent's .md: enabled: toggle, eject to frontmatter
 

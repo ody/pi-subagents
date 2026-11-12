@@ -88,6 +88,7 @@ describe("agent tool — background resume wiring", () => {
     mkdirSync(join(cwd, ".pi"), { recursive: true });
     writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false }));
     mkdirSync(join(agentDir, "agents"), { recursive: true });
+    writeFileSync(join(agentDir, "agents", "general-purpose.md"), "---\ndescription: General purpose\n---\n\nYou are general-purpose.");
     process.chdir(cwd);
 
     session = {

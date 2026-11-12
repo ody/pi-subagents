@@ -18,6 +18,14 @@ vi.setConfig({ testTimeout: 30_000 });
 
 const LIVE = /^(1|true|yes)$/i.test(process.env.PI_E2E_LIVE ?? "");
 
+function installGeneralPurpose(): void {
+  mkdirSync(join(process.cwd(), ".pi", "agents"), { recursive: true });
+  writeFileSync(
+    join(process.cwd(), ".pi", "agents", "general-purpose.md"),
+    "---\ndescription: general-purpose\n---\n\nYou are general-purpose.\n",
+  );
+}
+
 describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", () => {
   let run: PrintModeRun | undefined;
   const tmpDirs: string[] = [];
@@ -31,6 +39,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
   it("records the model and thinking level the child session actually resolved", async () => {
     run = await runPrintMode({
       prompt: "Delegate the greeting to a subagent.",
+      beforeRun: installGeneralPurpose,
       respond: routeBySession({
         parentInitial: agentCall({
           subagent_type: "general-purpose",
@@ -58,6 +67,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
   it("spawns a FOREGROUND subagent and routes its real output back to the parent", async () => {
     run = await runPrintMode({
       prompt: "Delegate the greeting to a subagent.",
+      beforeRun: installGeneralPurpose,
       respond: routeBySession({
         parentInitial: agentCall({
           subagent_type: "general-purpose",
@@ -102,12 +112,12 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
         : agentCall({ description: "bg work", prompt: "Do background work.", run_in_background: true });
     };
 
-    const noHold = await runPrintMode({ prompt: "go", hold: false, respond });
+    const noHold = await runPrintMode({ prompt: "go", hold: false, respond, beforeRun: installGeneralPurpose });
     const abandonedCalls = noHold.modelCalls;
     await noHold.manager?.waitForAll();
     await noHold.dispose();
 
-    run = await runPrintMode({ prompt: "go", hold: true, respond });
+    run = await runPrintMode({ prompt: "go", hold: true, respond, beforeRun: installGeneralPurpose });
 
     expect(agentToolResults(run.parentSession)[0]).toMatch(/background/i);
     expect(abandonedCalls).toBe(2);

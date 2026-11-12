@@ -75,6 +75,8 @@ describe("FleetView wiring (real extension lifecycle)", () => {
     prevCwd = process.cwd();
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
     writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, defaultJoinMode: "async" }));
+    mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
+    writeFileSync(join(tmpDir, ".pi", "agents", "general-purpose.md"), "---\ndescription: General purpose\n---\n\nYou are general-purpose.");
     process.chdir(tmpDir);
   });
 

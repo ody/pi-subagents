@@ -22,20 +22,8 @@ describe("detailMenuOptions", () => {
     expect(detailMenuOptions(cfg({ source: "skill", enabled: false }), false)).toEqual(["Eject (export as .md)", "Back"]);
   });
 
-  it("disabled default with file offers reset", () => {
-    expect(detailMenuOptions(cfg({ isDefault: true, enabled: false }), true)).toEqual(["Enable", "Edit", "Reset to default", "Delete", "Back"]);
-  });
-
-  it("disabled custom with file has no reset", () => {
+  it("disabled agent with file offers enable, edit and delete", () => {
     expect(detailMenuOptions(cfg({ enabled: false }), true)).toEqual(["Enable", "Edit", "Delete", "Back"]);
-  });
-
-  it("default without file offers eject", () => {
-    expect(detailMenuOptions(cfg({ isDefault: true }), false)).toEqual(["Eject (export as .md)", "Disable", "Back"]);
-  });
-
-  it("default with file offers edit and reset", () => {
-    expect(detailMenuOptions(cfg({ isDefault: true }), true)).toEqual(["Edit", "Disable", "Reset to default", "Delete", "Back"]);
   });
 
   it("custom agent", () => {

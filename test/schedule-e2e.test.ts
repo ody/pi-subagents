@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
 import { SubagentScheduler } from "../src/triggers/schedule.js";
 import { ScheduleStore } from "../src/triggers/schedule-store.js";
+import { testAgents } from "./helpers/test-agents.js";
 
 type FakeRecord = { status: string; promise: Promise<string>; resolve: () => void };
 
@@ -56,7 +57,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
   let scheduler: SubagentScheduler;
 
   beforeEach(() => {
-    registerAgents(new Map());
+    registerAgents(testAgents("general-purpose"));
     tmp = mkdtempSync(join(tmpdir(), "schedule-e2e-"));
     store = new ScheduleStore(join(tmp, "schedules.json"));
     scheduler = new SubagentScheduler();

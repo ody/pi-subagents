@@ -11,6 +11,7 @@ import type { ScheduledSubagent } from "../src/types.js";
 import { ctx, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 
 const SESSION_ID = "sched-wiring-session";
+const AGENT_FILES = { "general-purpose": "---\ndescription: general-purpose\n---\n\nYou are general-purpose." };
 
 function bootedCtx() {
   return ctx({
@@ -21,7 +22,7 @@ function bootedCtx() {
 async function scheduleAndReadBack(
   params: Record<string, unknown>,
 ): Promise<{ job: ScheduledSubagent; reply: string; restore: () => void }> {
-  const hermetic = hermeticDir();
+  const hermetic = hermeticDir({ agentFiles: AGENT_FILES });
   const { pi, tools, lifecycle } = makePi();
   subagentsExtension(pi);
 
@@ -116,7 +117,7 @@ describe("agent tool → schedule restrictions", () => {
     params: Record<string, unknown>,
     settings?: Record<string, unknown>,
   ): Promise<{ reply: string; jobCount: number; restore: () => void }> {
-    const hermetic = hermeticDir(settings ? { settings } : {});
+    const hermetic = hermeticDir(settings ? { settings, agentFiles: AGENT_FILES } : { agentFiles: AGENT_FILES });
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
 

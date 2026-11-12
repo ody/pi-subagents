@@ -79,6 +79,11 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
     prevCwd = process.cwd();
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
     writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false }));
+    mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
+    writeFileSync(
+      join(tmpDir, ".pi", "agents", "general-purpose.md"),
+      "---\ndescription: general-purpose\n---\n\nYou are general-purpose.",
+    );
     process.chdir(tmpDir);
   });
 

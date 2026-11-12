@@ -8,6 +8,7 @@ import { setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { encodeCwd } from "../src/platform/output-file.js";
 import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/tool/nested-tools.js";
 import { grant } from "./helpers/capability.js";
+import { testAgents } from "./helpers/test-agents.js";
 
 let cwd: string;
 let manager: NestedAgentManager;
@@ -703,7 +704,7 @@ describe("resolveNestedModel", () => {
 });
 
 describe("resolveNestedType", () => {
-  const registry = buildAgentRegistry(new Map());
+  const registry = buildAgentRegistry(testAgents("general-purpose", "Explore"));
 
   it("rejects unknown types with the allowed list", () => {
     const r = resolveNestedType(registry, "nope", undefined);

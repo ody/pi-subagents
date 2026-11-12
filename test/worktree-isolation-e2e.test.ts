@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Context } from "@earendil-works/pi-ai";
 import { fauxToolCall } from "@earendil-works/pi-ai";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
 import { agentCall, type FauxReply, type PrintModeRun, runPrintMode } from "./helpers/print-mode-runner.js";
@@ -28,6 +29,12 @@ function initGitRepo(): string {
   git(dir, "add", "README.md");
   git(dir, "commit", "-m", "initial");
   return dir;
+}
+
+function installGeneralPurpose(): void {
+  const dir = join(getAgentDir(), "agents");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "general-purpose.md"), "---\ndescription: general-purpose\n---\n\nYou are general-purpose.\n");
 }
 
 function firstUserText(context: Context): string {
@@ -91,6 +98,7 @@ describe("worktree isolation e2e (real git, real pi-mono, faux model)", () => {
     run = await runPrintMode({
       prompt: "Delegate the work.",
       cwd: repo,
+      beforeRun: installGeneralPurpose,
       respond: respondSpawning("worktree"),
       live: false,
     });
@@ -119,6 +127,7 @@ describe("worktree isolation e2e (real git, real pi-mono, faux model)", () => {
     run = await runPrintMode({
       prompt: "Delegate the work.",
       cwd: repo,
+      beforeRun: installGeneralPurpose,
       respond: respondSpawning("worktree"),
       live: false,
     });
