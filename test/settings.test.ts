@@ -12,6 +12,8 @@ import {
   saveSettings,
 } from "../src/config/settings.js";
 
+const NO_POLICY = { global: {}, project: {}, ephemeralNesting: true };
+
 describe("settings persistence", () => {
   let globalDir: string;
   let projectDir: string;
@@ -775,6 +777,7 @@ describe("settings persistence", () => {
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", {
         settings: { maxConcurrent: 16, graceTurns: 7 },
+        policy: NO_POLICY,
       });
       expect(result).toEqual({ maxConcurrent: 16, graceTurns: 7 });
     });
@@ -784,7 +787,7 @@ describe("settings persistence", () => {
 
       const result = applyAndEmitLoaded(appliers, emit, projectDir);
 
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: {} });
+      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: {}, policy: NO_POLICY });
       expect(result).toEqual({});
       expect(appliers.setMaxConcurrent).not.toHaveBeenCalled();
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
@@ -804,6 +807,7 @@ describe("settings persistence", () => {
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
         settings: snapshot,
         persisted: true,
+        policy: NO_POLICY,
       });
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
       expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual(snapshot);
@@ -823,6 +827,7 @@ describe("settings persistence", () => {
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
           settings: { maxConcurrent: 5 },
           persisted: false,
+          policy: NO_POLICY,
         });
         expect(toast).toEqual({
           message: "Max concurrency set to 5 (session only; failed to persist)",
