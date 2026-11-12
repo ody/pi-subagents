@@ -81,7 +81,7 @@ When using the agent tool, specify a subagent_type parameter to select which age
 
 ## When not to use
 
-If the target is already known, use a direct tool — \`read\` for a known path, \`grep\`/\`find\` for a specific symbol or string. Reserve this tool for open-ended questions that span the codebase, or tasks that match an available agent type.
+If the target is already known, handle it yourself. Reserve this tool for open-ended questions that span the codebase, or tasks that match an available agent type.
 
 ## Usage notes
 
