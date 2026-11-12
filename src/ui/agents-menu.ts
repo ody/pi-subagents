@@ -8,19 +8,16 @@ import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
 import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
-import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentConfig, AgentRecord, ViewerMarkdownMode } from "../types.js";
 import { formatDuration, getDisplayName } from "./agent-format.js";
 import { buildAgentTree } from "./agent-tree.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
-import { showSchedulesMenu } from "./schedule-menu.js";
 import { selectItem } from "./select-item.js";
 
 type UserAgentFile = NonNullable<ReturnType<typeof locateAgentFile>>;
 
 export interface AgentsCommandDeps {
   manager: Pick<AgentManager, "listAgents" | "getActivity" | "abort" | "steer">;
-  scheduler: SubagentScheduler;
   reloadCustomAgents: (strict?: boolean) => void;
   settings: Readonly<Pick<RuntimeSettings, "showCost" | "viewerMarkdown">>;
   chooseViewerMarkdown: (mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext) => void;
@@ -37,7 +34,7 @@ export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] 
 }
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
-  const { manager, scheduler, reloadCustomAgents, settings, chooseViewerMarkdown, showSettings } = deps;
+  const { manager, reloadCustomAgents, settings, chooseViewerMarkdown, showSettings } = deps;
 
   function getModelLabel(type: string, registry?: ModelRegistry): string {
     const cfg = getAgentConfig(type);
@@ -69,11 +66,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       options.push(`Agent types (${allNames.length})`);
     }
 
-    if (scheduler.isActive()) {
-      const jobCount = scheduler.list().length;
-      options.push(`Scheduled jobs (${jobCount})`);
-    }
-
     options.push("Settings");
 
     const noAgentsMsg = allNames.length === 0 && agents.length === 0
@@ -92,9 +84,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       await showAgentsMenu(ctx);
     } else if (choice.startsWith("Agent types (")) {
       await showAllAgentsList(ctx);
-      await showAgentsMenu(ctx);
-    } else if (choice.startsWith("Scheduled jobs (")) {
-      await showSchedulesMenu(ctx, scheduler);
       await showAgentsMenu(ctx);
     } else if (choice === "Settings") {
       await showSettings(ctx);

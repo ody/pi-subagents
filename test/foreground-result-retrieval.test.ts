@@ -87,7 +87,7 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     process.env.HOME = agentDir;
     prevCwd = process.cwd();
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
-    writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false }));
+    writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({}));
     mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
     writeFileSync(join(tmpDir, ".pi", "agents", "Explore.md"), "---\ndescription: Explore\n---\n\nYou are Explore.");
     process.chdir(tmpDir);

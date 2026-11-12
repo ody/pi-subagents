@@ -16,7 +16,6 @@ function runtimeSettings(over: Partial<RuntimeSettings> = {}): RuntimeSettings {
     agentMentionMode: "model",
     defaultJoinMode: "smart",
     backgroundByDefault: true,
-    schedulingEnabled: true,
     toolDescriptionMode: "full",
     strictAgentFiles: false,
     ...over,

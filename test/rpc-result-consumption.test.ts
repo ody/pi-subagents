@@ -76,7 +76,7 @@ describe("subagents:rpc:consume", () => {
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
     writeFileSync(
       join(tmpDir, ".pi", "subagents.json"),
-      JSON.stringify({ schedulingEnabled: false, outputTranscript: false }),
+      JSON.stringify({ outputTranscript: false }),
     );
     mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
     writeFileSync(

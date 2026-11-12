@@ -153,33 +153,3 @@ export interface EnvInfo {
   platform: string;
 }
 
-export interface ScheduledSubagent {
-  version?: 2;
-  id: string;
-  name: string;
-  description: string;
-  schedule: string;
-  scheduleType: "cron" | "once" | "interval";
-  intervalMs?: number;
-
-  subagent_type: SubagentType;
-  prompt: string;
-  model?: string;
-  thinking?: ThinkingLevel;
-  max_turns?: number;
-  run_in_background?: boolean;
-  isolated?: boolean;
-  isolation?: IsolationMode;
-
-  enabled: boolean;
-  createdAt: string;
-  lastRun?: string;
-  lastStatus?: "success" | "error" | "running";
-  nextRun?: string;
-  runCount: number;
-}
-
-export interface ScheduleStoreData {
-  version: 2;
-  jobs: ScheduledSubagent[];
-}

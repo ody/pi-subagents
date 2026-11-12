@@ -9,14 +9,12 @@ function topLevelAgentTool() {
   const pi = { events: { emit: vi.fn(), on: vi.fn() } } as any;
   const deps = {
     manager: {} as any,
-    scheduler: {} as any,
     widget: {} as any,
     fleet: {} as any,
     notifier: {} as any,
     startBackgroundResume: vi.fn(),
     reloadCustomAgents: vi.fn(),
     settings: {
-      schedulingEnabled: false,
       toolDescriptionMode: "compact",
       backgroundByDefault: true,
       defaultJoinMode: "smart",

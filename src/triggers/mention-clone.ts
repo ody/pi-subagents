@@ -24,7 +24,7 @@ export interface MentionCloneResult {
   refusal?: string;
 }
 
-const REFUSED_PARAMS = ["max_turns", "run_in_background", "resume", "schedule"] as const;
+const REFUSED_PARAMS = ["max_turns", "run_in_background", "resume"] as const;
 
 function refusalFor(params: Record<string, unknown>): string | undefined {
   const present = REFUSED_PARAMS.filter(name => params[name] !== undefined);

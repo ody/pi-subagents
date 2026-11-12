@@ -178,23 +178,6 @@ describe("toolDescriptionMode", () => {
     expect(desc).toContain("- Explore: Fast read-only search agent for locating code. (Tools:");
   });
 
-  it("{{scheduleGuideline}} expands to the schedule bullet when scheduling is on (default)", () => {
-    const tools = setup({ toolDescriptionMode: "custom" }, () => {
-      writeFileSync(join(tmpDir, ".pi", "agent-tool-description.md"), "RULES:{{scheduleGuideline}}\nEND");
-    });
-    const desc: string = tools.get("agent").description;
-    expect(desc).toContain("RULES:\n- Use `schedule` only when");
-  });
-
-  it("{{scheduleGuideline}} expands to the empty string when scheduling is disabled", () => {
-    const tools = setup({ toolDescriptionMode: "custom", schedulingEnabled: false }, () => {
-      writeFileSync(join(tmpDir, ".pi", "agent-tool-description.md"), "RULES:{{scheduleGuideline}}\nEND");
-    });
-    const desc: string = tools.get("agent").description;
-    expect(desc).toContain("RULES:\nEND");
-    expect(desc).not.toContain("schedule");
-  });
-
   it("{{isolationGuideline}} expands to the isolation bullet when worktrees are on (default)", () => {
     const tools = setup({ toolDescriptionMode: "custom" }, () => {
       writeFileSync(join(tmpDir, ".pi", "agent-tool-description.md"), "RULES:{{isolationGuideline}}\nEND");
@@ -216,7 +199,7 @@ describe("toolDescriptionMode", () => {
     const tools = setup({ toolDescriptionMode: "custom" }, () => {
       writeFileSync(
         join(tmpDir, ".pi", "agent-tool-description.md"),
-        "A {{typeList}} B {{compactTypeList}} C {{agentDir}} D {{scheduleGuideline}} E {{isolationGuideline}} F",
+        "A {{typeList}} B {{compactTypeList}} C {{agentDir}} D {{isolationGuideline}} E",
       );
     });
     const desc: string = tools.get("agent").description;
@@ -236,21 +219,6 @@ describe("toolDescriptionMode", () => {
     }
   });
 
-  describe("schedulingEnabled gates the schedule parameter", () => {
-    const props = (tools: Map<string, any>) =>
-      Object.keys(tools.get("agent").parameters?.properties ?? {});
-
-    it("advertises `schedule` by default", () => {
-      expect(props(setup())).toContain("schedule");
-    });
-
-    it("removes `schedule` from the tool schema when scheduling is disabled", () => {
-      const names = props(setup({ schedulingEnabled: false }));
-      expect(names).not.toContain("schedule");
-      expect(names).toEqual(expect.arrayContaining(["prompt", "description", "subagent_type"]));
-    });
-  });
-
   describe("worktreeIsolation gates the isolation parameter and its prose", () => {
     const props = (tools: Map<string, any>) =>
       Object.keys(tools.get("agent").parameters?.properties ?? {});
@@ -266,7 +234,7 @@ describe("toolDescriptionMode", () => {
       const names = props(tools);
       expect(names).not.toContain("isolation");
       expect(tools.get("agent").description).not.toContain("isolation");
-      expect(names).toEqual(expect.arrayContaining(["prompt", "description", "subagent_type", "schedule"]));
+      expect(names).toEqual(expect.arrayContaining(["prompt", "description", "subagent_type"]));
     });
 
     it("drops the compact description's bullet too", () => {

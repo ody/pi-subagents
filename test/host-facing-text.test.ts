@@ -28,14 +28,12 @@ function topLevelTools(over: Partial<AgentToolDeps["settings"]>): ToolLike[] {
   const pi = { registerTool: (tool: ToolLike) => registered.push(tool), events: { emit: vi.fn(), on: vi.fn() } } as any;
   const deps: AgentToolDeps = {
     manager: {} as any,
-    scheduler: {} as any,
     widget: {} as any,
     fleet: {} as any,
     notifier: {} as any,
     startBackgroundResume: vi.fn(),
     reloadCustomAgents: vi.fn(),
     settings: {
-      schedulingEnabled: true,
       toolDescriptionMode: "full",
       backgroundByDefault: true,
       defaultJoinMode: "smart",
@@ -69,7 +67,6 @@ describe("host-facing text", () => {
   const cases: [string, ToolLike[]][] = [
     ["top-level full description", topLevelTools({ toolDescriptionMode: "full" })],
     ["top-level compact description", topLevelTools({ toolDescriptionMode: "compact" })],
-    ["top-level without scheduling", topLevelTools({ schedulingEnabled: false })],
     ["nested", nestedTools()],
   ];
 

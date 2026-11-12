@@ -86,7 +86,7 @@ describe("agent tool — background resume wiring", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     process.env.HOME = agentDir;
     mkdirSync(join(cwd, ".pi"), { recursive: true });
-    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false }));
+    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({}));
     mkdirSync(join(agentDir, "agents"), { recursive: true });
     writeFileSync(join(agentDir, "agents", "general-purpose.md"), "---\ndescription: General purpose\n---\n\nYou are general-purpose.");
     process.chdir(cwd);

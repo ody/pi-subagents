@@ -37,10 +37,10 @@ Identity and lifecycle:
 - The handle base is `name` if given, else a slug of `description`, else `agent`, capped at the handle length limit. Handles normally read like `@find-auth-files`. No alias is set.
 - The spawn stores `promptMode` and `displayName: "Agent"` on the `AgentRecord`, and every surface that looks up `getConfig(record.type)` reads the record first. The name badge shows `Agent`, and the description shows beside it as for registered agents.
 - An ephemeral agent is non-persistent: `persistSession` is `false`. It is steerable and resumable while its record is in memory, and a resume follows the resume rule of ADR 0014. It cannot be reopened once evicted.
-- A scheduled call with no `subagent_type` is an error. Lifecycle events and `subagents:record` carry the minted type.
+- Lifecycle events and `subagents:record` carry the minted type.
 - Every value is checked against the capability policy, and a nested ephemeral agent also against the delegation ceiling.
 
-Done check: `npx vitest run test/ephemeral-agent.test.ts` passes. It covers an omitted type, each default, each parameter and the named-agent error, the handle rules, the registry gaining no entry, no tombstone after eviction, the prompt-mode label, a nested ephemeral spawn, and the schedule error.
+Done check: `npx vitest run test/ephemeral-agent.test.ts` passes. It covers an omitted type, each default, each parameter and the named-agent error, the handle rules, the registry gaining no entry, no tombstone after eviction, the prompt-mode label and a nested ephemeral spawn.
 
 ## Consequences
 

@@ -83,20 +83,13 @@ describe("settings persistence", () => {
       defaultMaxTurns: 30,
       graceTurns: 3,
       defaultJoinMode: "smart" as const,
-      schedulingEnabled: false,
       toolDescriptionMode: "compact" as const,
     };
     saveSettings(settings, projectDir);
     expect(loadSettings(projectDir)).toEqual(settings);
   });
 
-  it("round-trips schedulingEnabled (true and false), and absence stays absent", () => {
-    saveSettings({ schedulingEnabled: false }, projectDir);
-    expect(loadSettings(projectDir)).toEqual({ schedulingEnabled: false });
-
-    saveSettings({ schedulingEnabled: true }, projectDir);
-    expect(loadSettings(projectDir)).toEqual({ schedulingEnabled: true });
-
+  it("round-trips showModel, and absence stays absent", () => {
     saveSettings({}, projectDir);
     expect(loadSettings(projectDir)).toEqual({});
   });
@@ -204,13 +197,6 @@ describe("settings persistence", () => {
     saveSettings({ showModel: false }, projectDir);
     expect(loadSettings(projectDir)).toEqual({ showModel: false });
     writeProject({ showModel: "on" } as any);
-    expect(loadSettings(projectDir)).toEqual({});
-  });
-
-  it("sanitize drops non-boolean schedulingEnabled silently", async () => {
-    writeProject({ schedulingEnabled: "yes" } as any);
-    expect(loadSettings(projectDir)).toEqual({});
-    writeProject({ schedulingEnabled: 1 } as any);
     expect(loadSettings(projectDir)).toEqual({});
   });
 
@@ -466,7 +452,6 @@ describe("settings persistence", () => {
         setGraceTurns: vi.fn(),
         setDefaultJoinMode: vi.fn(),
         setBackgroundByDefault: vi.fn(),
-        setSchedulingEnabled: vi.fn(),
         setScopeModels: vi.fn(),
         setStrictAgentFiles: vi.fn(),
         setToolDescriptionMode: vi.fn(),
@@ -522,7 +507,6 @@ describe("settings persistence", () => {
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
       expect(appliers.setGraceTurns).not.toHaveBeenCalled();
       expect(appliers.setDefaultJoinMode).not.toHaveBeenCalled();
-      expect(appliers.setSchedulingEnabled).not.toHaveBeenCalled();
       expect(appliers.setScopeModels).not.toHaveBeenCalled();
       expect(appliers.setToolDescriptionMode).not.toHaveBeenCalled();
     });
@@ -534,7 +518,6 @@ describe("settings persistence", () => {
       expect(appliers.setMaxSubagentDepth).toHaveBeenCalledWith(1);
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
       expect(appliers.setDefaultJoinMode).not.toHaveBeenCalled();
-      expect(appliers.setSchedulingEnabled).not.toHaveBeenCalled();
       expect(appliers.setScopeModels).not.toHaveBeenCalled();
     });
 
@@ -545,7 +528,6 @@ describe("settings persistence", () => {
           defaultMaxTurns: 50,
           graceTurns: 7,
           defaultJoinMode: "group",
-          schedulingEnabled: false,
           scopeModels: true,
           toolDescriptionMode: "compact",
           fleetView: false,
@@ -557,7 +539,6 @@ describe("settings persistence", () => {
       expect(appliers.setDefaultMaxTurns).toHaveBeenCalledWith(50);
       expect(appliers.setGraceTurns).toHaveBeenCalledWith(7);
       expect(appliers.setDefaultJoinMode).toHaveBeenCalledWith("group");
-      expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(false);
       expect(appliers.setScopeModels).toHaveBeenCalledWith(true);
       expect(appliers.setStrictAgentFiles).not.toHaveBeenCalled();
       expect(appliers.setToolDescriptionMode).toHaveBeenCalledWith("compact");
@@ -648,20 +629,6 @@ describe("settings persistence", () => {
       expect(appliers.setBackgroundByDefault).not.toHaveBeenCalled();
     });
 
-    it("calls setSchedulingEnabled(true) when schedulingEnabled is true", () => {
-      applySettings({ schedulingEnabled: true }, appliers);
-      expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(true);
-    });
-
-    it("calls setSchedulingEnabled(false) when schedulingEnabled is false", () => {
-      applySettings({ schedulingEnabled: false }, appliers);
-      expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(false);
-    });
-
-    it("does not call setSchedulingEnabled when the field is absent", () => {
-      applySettings({ maxConcurrent: 4 }, appliers);
-      expect(appliers.setSchedulingEnabled).not.toHaveBeenCalled();
-    });
   });
 
   describe("persistToastFor", () => {
@@ -691,7 +658,6 @@ describe("settings persistence", () => {
         setGraceTurns: vi.fn(),
         setDefaultJoinMode: vi.fn(),
         setBackgroundByDefault: vi.fn(),
-        setSchedulingEnabled: vi.fn(),
         setScopeModels: vi.fn(),
         setStrictAgentFiles: vi.fn(),
         setToolDescriptionMode: vi.fn(),

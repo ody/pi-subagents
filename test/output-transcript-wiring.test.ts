@@ -75,7 +75,7 @@ describe("output_transcript agent wiring", () => {
     process.env.PI_CODING_AGENT_DIR = agentDir;
     process.env.HOME = agentDir;
     mkdirSync(join(cwd, ".pi"), { recursive: true });
-    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false }));
+    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({}));
     mkdirSync(join(agentDir, "agents"), { recursive: true });
     writeFileSync(join(agentDir, "agents", "general-purpose.md"), "---\ndescription: General purpose\n---\n\nYou are general-purpose.");
     process.chdir(cwd);
@@ -156,7 +156,7 @@ describe("output_transcript agent wiring", () => {
   });
 
   it("suppresses the transcript project-wide when subagents.json sets outputTranscript false", async () => {
-    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false }));
+    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false }));
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
 
@@ -175,7 +175,7 @@ describe("output_transcript agent wiring", () => {
   });
 
   it("lets agent frontmatter output_transcript true override a project outputTranscript false", async () => {
-    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false }));
+    writeFileSync(join(cwd, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false }));
     writeFileSync(join(agentDir, "agents", "audited.md"), `---\ndescription: Always keeps a transcript\noutput_transcript: true\n---\n\nWrite a transcript regardless of the project default.`);
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);

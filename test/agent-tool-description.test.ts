@@ -52,14 +52,12 @@ describe("getModelLabelFromConfig", () => {
 });
 
 describe("buildAgentToolDescription", () => {
-  const base = { mode: "full", schedulingEnabled: true, worktreeEnabled: true } as const;
+  const base = { mode: "full", worktreeEnabled: true } as const;
 
-  it("gates the schedule and isolation guidelines", () => {
+  it("gates the isolation guideline", () => {
     const on = buildAgentToolDescription(base);
-    expect(on).toContain("Use `schedule` only");
     expect(on).toContain('Use isolation: "worktree"');
-    const off = buildAgentToolDescription({ ...base, schedulingEnabled: false, worktreeEnabled: false });
-    expect(off).not.toContain("Use `schedule` only");
+    const off = buildAgentToolDescription({ ...base, worktreeEnabled: false });
     expect(off).not.toContain("isolation:");
   });
 

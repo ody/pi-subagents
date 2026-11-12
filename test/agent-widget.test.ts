@@ -419,7 +419,7 @@ describe("AgentWidget cost display", () => {
 
   it("shows stats for an agent nobody is tracking live", () => {
     const running = {
-      id: "sched", type: "general-purpose", description: "scheduled agent", status: "running",
+      id: "untracked", type: "general-purpose", description: "untracked agent", status: "running",
       toolUses: 1, startedAt: Date.now(),
       lifetimeUsage: { input: 1000, output: 200, cacheWrite: 0, cost: 0.0042 },
       compactionCount: 0,

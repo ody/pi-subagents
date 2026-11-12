@@ -23,7 +23,6 @@ export interface RuntimeSettings {
   agentMentionMode: AgentMentionMode;
   defaultJoinMode: JoinMode;
   backgroundByDefault: boolean;
-  schedulingEnabled: boolean;
   toolDescriptionMode: ToolDescriptionMode;
   strictAgentFiles: boolean;
 }
@@ -40,7 +39,6 @@ export function snapshotSettings(settings: Readonly<RuntimeSettings>, src: Snaps
     graceTurns: getGraceTurns(),
     defaultJoinMode: settings.defaultJoinMode,
     backgroundByDefault: settings.backgroundByDefault,
-    schedulingEnabled: settings.schedulingEnabled,
     scopeModels: isScopeModelsEnabled(),
     strictAgentFiles: settings.strictAgentFiles,
     toolDescriptionMode: settings.toolDescriptionMode,

@@ -19,7 +19,7 @@ let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;
 
 function boot(settings: Record<string, unknown> = {}, agentFiles: Record<string, string> = {}) {
-  hermetic = hermeticDir({ settings: { outputTranscript: false, schedulingEnabled: false, ...settings }, agentFiles });
+  hermetic = hermeticDir({ settings: { outputTranscript: false, ...settings }, agentFiles });
   const b = makePi();
   subagentsExtension(b.pi);
   booted = b.lifecycle;
@@ -302,16 +302,6 @@ describe("a nested ephemeral spawn", () => {
     expect(calls[1][3].capability.capabilities.builtinToolNames).toEqual(["read"]);
     expect(calls[1][3].maxTurns).toBe(0);
     expect(calls[1][3].thinkingLevel).toBe("high");
-  });
-});
-
-describe("scheduling", () => {
-  it("is an error without a subagent_type", async () => {
-    const { tool, lifecycle } = boot({ schedulingEnabled: true });
-    await lifecycle.get("session_start")({}, ctx());
-    const result = await run(tool, { schedule: "+1h" });
-    expect(textOf(result)).toContain("A scheduled call needs a subagent_type");
-    expect(runAgent).not.toHaveBeenCalled();
   });
 });
 
