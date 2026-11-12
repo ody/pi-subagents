@@ -7,8 +7,6 @@ export type { ThinkingLevel };
 
 export type SubagentType = string;
 
-export const DEFAULT_AGENT_NAMES = ["general-purpose", "Explore", "Plan"] as const;
-
 export type IsolationMode = "worktree" | "off";
 
 export interface AgentConfig {
@@ -35,9 +33,8 @@ export interface AgentConfig {
   runInBackground?: boolean;
   isolated?: boolean;
   isolation?: IsolationMode;
-  isDefault?: boolean;
   enabled?: boolean;
-  source?: "default" | "project" | "global" | "skill";
+  source?: "project" | "global" | "skill";
   sourcePath?: string;
 }
 

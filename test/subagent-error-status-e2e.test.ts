@@ -1,5 +1,8 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fauxAssistantMessage, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   agentCall,
@@ -17,6 +20,12 @@ function agentToolResult(session: AgentSession): string {
 
 vi.setConfig({ testTimeout: 30_000 });
 
+function installGeneralPurpose(): void {
+  const dir = join(getAgentDir(), "agents");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "general-purpose.md"), "---\ndescription: general-purpose\n---\n\nYou are general-purpose.\n");
+}
+
 const FATAL = "invalid request: provider rejected the prompt";
 
 describe("issue #144 — empty-error final turns must not be 'completed'", () => {
@@ -29,6 +38,7 @@ describe("issue #144 — empty-error final turns must not be 'completed'", () =>
   it("a run whose ONLY turn errors with no output is a failure, not an empty success", async () => {
     run = await runPrintMode({
       prompt: "Delegate.",
+      beforeRun: installGeneralPurpose,
       respond: routeBySession({
         parentInitial: agentCall({ run_in_background: false, description: "doomed", prompt: "Do work." }),
         parentFinal: "parent done",
@@ -45,6 +55,7 @@ describe("issue #144 — empty-error final turns must not be 'completed'", () =>
   it("an earlier turn's text must not mask a failed final turn as a fresh success", async () => {
     run = await runPrintMode({
       prompt: "Delegate.",
+      beforeRun: installGeneralPurpose,
       respond: routeBySession({
         parentInitial: agentCall({ run_in_background: false, description: "masked", prompt: "Do work." }),
         parentFinal: "parent done",
@@ -71,6 +82,7 @@ describe("issue #144 — empty-error final turns must not be 'completed'", () =>
   it("a pure empty-error run shows no 'partial output' section", async () => {
     run = await runPrintMode({
       prompt: "Delegate.",
+      beforeRun: installGeneralPurpose,
       respond: routeBySession({
         parentInitial: agentCall({ run_in_background: false, description: "empty", prompt: "Do work." }),
         parentFinal: "parent done",

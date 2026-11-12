@@ -78,6 +78,11 @@ describe("subagents:rpc:consume", () => {
       join(tmpDir, ".pi", "subagents.json"),
       JSON.stringify({ schedulingEnabled: false, outputTranscript: false }),
     );
+    mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
+    writeFileSync(
+      join(tmpDir, ".pi", "agents", "general-purpose.md"),
+      "---\ndescription: general-purpose\n---\n\nYou are general-purpose.",
+    );
     process.chdir(tmpDir);
   });
 

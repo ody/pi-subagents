@@ -29,7 +29,8 @@ describe.skipIf(LIVE)("maxConcurrentForeground e2e (real pi agent loop)", () => 
   function projectDir(settings: Record<string, unknown>): string {
     const dir = mkdtempSync(join(tmpdir(), "pi-fgconc-e2e-"));
     tmpDirs.push(dir);
-    mkdirSync(join(dir, ".pi"), { recursive: true });
+    mkdirSync(join(dir, ".pi", "agents"), { recursive: true });
+    writeFileSync(join(dir, ".pi", "agents", "general-purpose.md"), "---\ndescription: General purpose\n---\n\nYou are general-purpose.");
     writeFileSync(
       join(dir, ".pi", "subagents.json"),
       JSON.stringify({ outputTranscript: false, ...settings }),

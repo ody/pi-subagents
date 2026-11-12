@@ -27,6 +27,7 @@ afterEach(async () => {
 function boot(settings: Record<string, unknown> = {}) {
   hermetic = hermeticDir({
     settings: { outputTranscript: false, maxConcurrentForeground: 1, ...settings },
+    agentFiles: { "general-purpose": "---\ndescription: General purpose\n---\n\nYou are general-purpose." },
   });
   const b = makePi();
   subagentsExtension(b.pi);

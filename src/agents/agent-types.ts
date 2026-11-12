@@ -1,6 +1,5 @@
 import { createCodingTools, createReadOnlyTools } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig } from "../types.js";
-import { DEFAULT_AGENTS } from "./default-agents.js";
 
 export const BUILTIN_TOOL_NAMES: string[] = [
   ...new Set([...createCodingTools("."), ...createReadOnlyTools(".")].map((t) => t.name)),
@@ -9,10 +8,7 @@ export const BUILTIN_TOOL_NAMES: string[] = [
 const agents = new Map<string, AgentConfig>();
 
 export function buildAgentRegistry(userAgents: Map<string, AgentConfig>): Map<string, AgentConfig> {
-  const registry = new Map<string, AgentConfig>();
-  for (const [name, config] of DEFAULT_AGENTS) registry.set(name, config);
-  for (const [name, config] of userAgents) registry.set(name, config);
-  return registry;
+  return new Map(userAgents);
 }
 
 export function registerAgents(userAgents: Map<string, AgentConfig>): void {
@@ -112,18 +108,6 @@ export function getAllTypes(): string[] {
   return [...agents.keys()];
 }
 
-export function getDefaultAgentNames(): string[] {
-  return [...agents.entries()]
-    .filter(([_, config]) => config.isDefault === true)
-    .map(([name]) => name);
-}
-
-export function getUserAgentNames(): string[] {
-  return [...agents.entries()]
-    .filter(([_, config]) => config.isDefault !== true)
-    .map(([name]) => name);
-}
-
 export function isValidType(type: string): boolean {
   return isValidTypeIn(agents, type);
 }
@@ -143,7 +127,7 @@ export function getConfig(type: string): {
   extensions: true | string[] | false;
   excludeExtensions?: string[];
   skills: true | string[] | false;
-  promptMode: "replace" | "append";
+  promptMode?: "replace" | "append";
 } {
   const key = resolveKey(type);
   const config = key ? agents.get(key) : undefined;
@@ -160,27 +144,12 @@ export function getConfig(type: string): {
     };
   }
 
-  const gp = agents.get("general-purpose");
-  if (gp && gp.enabled !== false) {
-    return {
-      displayName: gp.displayName ?? gp.name,
-      color: gp.color,
-      description: gp.description,
-      builtinToolNames: gp.builtinToolNames ?? BUILTIN_TOOL_NAMES,
-      extensions: gp.extensions,
-      excludeExtensions: gp.excludeExtensions,
-      skills: gp.skills,
-      promptMode: gp.promptMode,
-    };
-  }
-
   return {
     displayName: "Agent",
-    description: "General-purpose agent for complex, multi-step tasks",
+    description: "Agent",
     builtinToolNames: BUILTIN_TOOL_NAMES,
     extensions: true,
     skills: true,
-    promptMode: "append",
   };
 }
 

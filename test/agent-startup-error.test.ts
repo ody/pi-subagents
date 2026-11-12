@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +54,8 @@ describe("Agent startup failures fail the tool call (#179)", () => {
     originalHome = process.env.HOME;
     process.env.PI_CODING_AGENT_DIR = join(cwd, "agent-dir");
     process.env.HOME = cwd;
+    mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
+    writeFileSync(join(cwd, ".pi", "agents", "general-purpose.md"), "---\ndescription: general\n---\nbody");
   });
 
   afterEach(() => {

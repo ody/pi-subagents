@@ -36,7 +36,10 @@ describe("reporting subagent usage back to the parent session", () => {
   let hermetic: Hermetic;
 
   function boot(settings: Record<string, unknown>) {
-    hermetic = hermeticDir({ settings });
+    hermetic = hermeticDir({
+      settings,
+      agentFiles: { "general-purpose": "---\ndescription: general-purpose\n---\n\nYou are general-purpose." },
+    });
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
     return { pi, tools, lifecycle };

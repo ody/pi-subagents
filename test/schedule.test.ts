@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
 import { SubagentScheduler } from "../src/triggers/schedule.js";
 import { ScheduleStore } from "../src/triggers/schedule-store.js";
+import { testAgents } from "./helpers/test-agents.js";
 
 function makeMockManager() {
   const spawnFn = vi.fn(() => "agent-" + Math.random().toString(36).slice(2, 10));
@@ -89,6 +90,7 @@ describe("SubagentScheduler — lifecycle", () => {
   let ctx: any;
 
   beforeEach(() => {
+    registerAgents(testAgents("general-purpose"));
     tmp = mkdtempSync(join(tmpdir(), "scheduler-test-"));
     store = new ScheduleStore(join(tmp, "s.json"));
     scheduler = new SubagentScheduler();
@@ -210,7 +212,7 @@ describe("SubagentScheduler — fire path", () => {
   let ctx: any;
 
   beforeEach(() => {
-    registerAgents(new Map());
+    registerAgents(testAgents("general-purpose"));
     vi.useFakeTimers();
     tmp = mkdtempSync(join(tmpdir(), "scheduler-fire-"));
     store = new ScheduleStore(join(tmp, "s.json"));
@@ -403,7 +405,7 @@ describe("SubagentScheduler — fire path", () => {
     });
 
     it("resolves a version 1 job's thinking and max_turns from the fallbacks when the file is silent", () => {
-      registerAgents(new Map());
+      registerAgents(testAgents("general-purpose"));
       fire({ subagent_type: "general-purpose", thinking: "high", max_turns: 5 });
 
       const opts = manager.spawn.mock.calls[0][4];

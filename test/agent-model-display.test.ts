@@ -89,6 +89,8 @@ beforeEach(() => {
   originalHome = process.env.HOME;
   process.env.PI_CODING_AGENT_DIR = join(cwd, "agent-dir");
   process.env.HOME = cwd;
+  mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
+  writeFileSync(join(cwd, ".pi", "agents", "general-purpose.md"), "---\ndescription: general\nprompt_mode: append\n---\n\nbody\n");
 });
 
 afterEach(() => {

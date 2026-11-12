@@ -54,6 +54,15 @@ describe("toolDescriptionMode", () => {
     if (settings) {
       writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify(settings));
     }
+    mkdirSync(join(hermeticAgentDir, "agents"), { recursive: true });
+    writeFileSync(
+      join(hermeticAgentDir, "agents", "general-purpose.md"),
+      "---\ndescription: General-purpose agent for multi-step tasks.\n---\n\nYou are general-purpose.\n",
+    );
+    writeFileSync(
+      join(hermeticAgentDir, "agents", "Explore.md"),
+      "---\ndescription: \"Fast read-only search agent for locating code. Specify search breadth: quick, medium, or very thorough.\"\ntools: read, grep, find, ls\n---\n\nYou are Explore.\n",
+    );
     beforeInstantiate?.();
     process.chdir(tmpDir);
 
