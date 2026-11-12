@@ -96,6 +96,33 @@ describe("agent tool resume", () => {
     expect(text(await run({ resume: "a1", run_in_background: false }))).toBe("done");
   });
 
+  it("resumes in the foreground when the original run was foreground and the call is silent", async () => {
+    const { run, text, manager, startBackgroundResume } = setup({
+      records: { a1: { id: "a1", type: "general-purpose", status: "completed", session: {}, invocation: { runInBackground: false } } },
+    });
+    manager.resume.mockResolvedValue({ id: "a1", type: "general-purpose", status: "completed", result: "done" });
+    expect(text(await run({ resume: "a1" }))).toBe("done");
+    expect(startBackgroundResume).not.toHaveBeenCalled();
+  });
+
+  it("lets the resuming call's run_in_background and max_turns win over the original run's", async () => {
+    const { run, startBackgroundResume } = setup({
+      records: { a1: { id: "a1", type: "general-purpose", status: "completed", session: {}, invocation: { runInBackground: false, maxTurns: 9 } } },
+    });
+    startBackgroundResume.mockResolvedValue({ id: "a1", status: "running", toolUses: 0 });
+    await run({ resume: "a1", run_in_background: true, max_turns: 3 });
+    expect(startBackgroundResume.mock.calls[0][3]).toMatchObject({ maxTurns: 3 });
+  });
+
+  it("carries the original run's max_turns when the resuming call omits it", async () => {
+    const { run, startBackgroundResume } = setup({
+      records: { a1: { id: "a1", type: "general-purpose", status: "completed", session: {}, invocation: { runInBackground: true, maxTurns: 9 } } },
+    });
+    startBackgroundResume.mockResolvedValue({ id: "a1", status: "running", toolUses: 0 });
+    await run({ resume: "a1" });
+    expect(startBackgroundResume.mock.calls[0][3]).toMatchObject({ maxTurns: 9 });
+  });
+
   it("refuses a background resume of a running agent", async () => {
     const { run, text, startBackgroundResume } = setup({
       records: { a1: { id: "a1", type: "general-purpose", status: "running", session: {} } },

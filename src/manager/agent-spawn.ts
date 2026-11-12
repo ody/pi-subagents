@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
 import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
@@ -105,7 +106,7 @@ export function spawnAgent(
     activeTools: new Map(),
     toolUses: 0,
     turnCount: 1,
-    maxTurns: options.maxTurns,
+    maxTurns: normalizeMaxTurns(options.maxTurns),
     responseText: "",
     session: undefined,
   });

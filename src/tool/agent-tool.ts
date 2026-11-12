@@ -97,13 +97,13 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       ),
       thinking: Type.Optional(
         Type.String({
-          description: `Thinking level: ${THINKING_LEVELS.join(", ")}. Overrides agent default.`,
+          description: `Thinking level: ${THINKING_LEVELS.join(", ")}. Overrides the agent's default.`,
         }),
       ),
       max_turns: Type.Optional(
         Type.Number({
-          description: "Maximum number of agentic turns before stopping. Omit for unlimited (default).",
-          minimum: 1,
+          description: "Maximum number of agentic turns before stopping. 0 means unlimited. Overrides the agent's default.",
+          minimum: 0,
         }),
       ),
       run_in_background: Type.Optional(
@@ -140,7 +140,17 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
 
       reloadCustomAgents();
 
-      const call = resolveAgentCall(params, ctx, {
+      const resumed = params.resume ? manager.getRecord(params.resume)?.invocation : undefined;
+      const callParams = params.resume
+        ? {
+          ...params,
+          model: undefined,
+          thinking: undefined,
+          run_in_background: params.run_in_background ?? resumed?.runInBackground,
+          max_turns: params.max_turns ?? resumed?.maxTurns,
+        }
+        : params;
+      const call = resolveAgentCall(callParams, ctx, {
         worktreeAllowed: isWorktreeIsolationEnabled(),
         defaultRunInBackground: settings.backgroundByDefault,
       });
