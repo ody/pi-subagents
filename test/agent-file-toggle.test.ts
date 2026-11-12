@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  buildNewAgentFile,
   disableInContent,
   enableInContent,
   findAgentFile,
@@ -307,53 +306,5 @@ describe("findAgentFile", () => {
     it("finds nothing when neither the source path nor the probe resolves", () => {
       expect(locateAgentFile("nope", join(tmpDir, ".pi", "agents", "gone.md"), tmpDir)).toBeUndefined();
     });
-  });
-});
-
-describe("buildNewAgentFile", () => {
-  const base = { tools: "read, grep", systemPrompt: "Do the thing.", description: "Scout" };
-
-  const parse = (content: string) => parseFrontmatter<Record<string, unknown>>(content).frontmatter;
-
-  it("round-trips an ordinary description", () => {
-    expect(parse(buildNewAgentFile(base)).description).toBe("Scout");
-  });
-
-  it("survives a description containing a colon", () => {
-    const content = buildNewAgentFile({ ...base, description: "Scout: find things" });
-    expect(() => parse(content)).not.toThrow();
-    expect(parse(content).description).toBe("Scout: find things");
-  });
-
-  it("keeps a description containing a # instead of truncating it", () => {
-    const content = buildNewAgentFile({ ...base, description: "audit #security" });
-    expect(parse(content).description).toBe("audit #security");
-  });
-
-  it("leaves a `provider/model:thinking` suffix intact", () => {
-    const content = buildNewAgentFile({ ...base, model: "anthropic/claude-sonnet-4-6:high" });
-    expect(parse(content).model).toBe("anthropic/claude-sonnet-4-6:high");
-  });
-
-  it("survives a custom model containing a colon-space or a #", () => {
-    for (const model of ["anthropic/foo: bar", "anthropic/x #c"]) {
-      const content = buildNewAgentFile({ ...base, model });
-      expect(() => parse(content), model).not.toThrow();
-      expect(parse(content).model, model).toBe(model);
-    }
-  });
-
-  it("emits the fields the wizard collects, and omits the ones left on inherit", () => {
-    const full = parse(buildNewAgentFile({ ...base, model: "anthropic/x", thinking: "high" }));
-    expect(full).toMatchObject({ tools: "read, grep", model: "anthropic/x", thinking: "high", prompt_mode: "replace" });
-
-    const minimal = parse(buildNewAgentFile(base));
-    expect(minimal.model).toBeUndefined();
-    expect(minimal.thinking).toBeUndefined();
-  });
-
-  it("keeps the system prompt as the body", () => {
-    const content = buildNewAgentFile({ ...base, systemPrompt: "Line 1.\n\nLine 2." });
-    expect(parseFrontmatter<Record<string, unknown>>(content).body).toBe("Line 1.\n\nLine 2.");
   });
 });

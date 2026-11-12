@@ -89,27 +89,6 @@ export function isEmptyStub(content: string): boolean {
   return content.replace(/\r\n/g, "\n").trim() === "---\n---";
 }
 
-export interface NewAgentInput {
-  description: string;
-  tools: string;
-  model?: string;
-  thinking?: string;
-  systemPrompt: string;
-}
-
-export function buildNewAgentFile(input: NewAgentInput): string {
-  const modelLine = input.model ? `\nmodel: ${JSON.stringify(input.model)}` : "";
-  const thinkingLine = input.thinking ? `\nthinking: ${input.thinking}` : "";
-  return `---
-description: ${JSON.stringify(input.description)}
-tools: ${input.tools}${modelLine}${thinkingLine}
-prompt_mode: replace
----
-
-${input.systemPrompt}
-`;
-}
-
 function formatToolsField(tools: string[] | undefined): string {
   if (tools === undefined) return "all";
   if (tools.length === 0) return "none";

@@ -27,7 +27,6 @@ import { type AgentMentionMode, type JoinMode, type ViewerMarkdownMode, type Wid
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { registerAgentsCommand } from "./ui/agents-menu.js";
-import { showCreateWizard } from "./ui/create-agent-wizard.js";
 import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
@@ -355,7 +354,6 @@ export default function (pi: ExtensionAPI) {
     reloadCustomAgents,
     settings,
     chooseViewerMarkdown,
-    showCreateWizard: (ctx) => showCreateWizard(ctx, { pi, manager, reloadCustomAgents }),
     showSettings: (ctx) => showSettings(ctx, {
       settings,
       appliers,

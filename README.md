@@ -104,7 +104,7 @@ Schedule formats:
 
 When a schedule fires, the spawn runs in background and its completion notification arrives in the conversation through the same `subagent-notification` followUp path as a manually-spawned background agent — your parent agent reasons about the result the same way.
 
-Schedules are **session-scoped**: they reset on `/new` and restore on `/resume`. List and cancel via `/agents → Scheduled jobs` (creation is the `agent` tool's job — there is no parallel manual-create wizard). Storage at `<cwd>/.pi/subagent-schedules/<sessionId>.json` with PID-based file locking for cross-instance safety.
+Schedules are **session-scoped**: they reset on `/new` and restore on `/resume`. List and cancel via `/agents → Scheduled jobs` (creation is the `agent` tool's job). Storage at `<cwd>/.pi/subagent-schedules/<sessionId>.json` with PID-based file locking for cross-instance safety.
 
 **Disable the feature entirely**: `/agents → Settings → Scheduling → disabled` removes `schedule` from the `agent` tool spec (no LLM-context cost), hides the menu entry, and stops any active scheduler. The schema-level removal takes effect on the next pi session; the runtime kill is immediate. Re-enable from the same menu.
 
@@ -602,7 +602,6 @@ The `/agents` command opens an interactive menu:
 ```text
 Agents (4) — 2 running, 2 done              ← the whole tree, nested included
 Agent types (6)                             ← unified list: defaults + custom
-Create new agent                            ← manual wizard or AI-generated
 Settings                                    ← max concurrency (background + foreground), max turns, grace turns, join mode
 ```
 
@@ -617,7 +616,6 @@ Settings                                    ← max concurrency (background + fo
   - **Disabled agents**: Enable, Edit, Delete
 - **Eject** — writes the embedded default config as a `.md` file to project or personal location, so you can customize it
 - **Disable/Enable** — toggle agent availability. Disabled agents stay visible in the list (marked `✕`) and can be re-enabled
-- **Create new agent** — choose project/personal location, then manual wizard (step-by-step prompts for name, tools, model, thinking, system prompt) or AI-generated (describe what the agent should do and a sub-agent writes the `.md` file). Any name is allowed, including default agent names (overrides them)
 - **Settings** — configure max concurrency (background and foreground), default max turns, grace turns, and join mode at runtime
 
 ## Graceful Max Turns
@@ -1071,7 +1069,6 @@ Three levers, from narrowest to broadest:
 - **Per project** — `"worktreeIsolation": false` in `subagents.json`. Use it on a repo large enough that a copy costs real time and disk.
   - The `agent` tool's `isolation` parameter disappears from the schema entirely, along with the usage-note bullet that describes it (so it costs the model no context and cannot be passed).
   - Worktree creation is refused on every other path too: agent files, scheduled jobs, and cross-extension RPC.
-  - The `/agents` generator also stops offering `isolation:` when writing a new agent file.
   - The schema and the description are both built at tool registration, so they appear or disappear in the next pi session; the refusal itself takes effect immediately.
 
   Schema and prose are gated together on purpose. Leaving the bullet in would teach the model to pass a field that is no longer declared — accepted silently, then dropped — and since a refused worktree carries no note on the result, the model would have every reason to go on reporting a `pi-agent-*` branch that was never created. A custom tool description should use the `{{isolationGuideline}}` placeholder rather than hardcoding the bullet, for the same reason.
@@ -1193,7 +1190,7 @@ src/
     model-resolver.ts # Model resolution: exact provider/modelId with fuzzy fallback
     enabled-models.ts # Read pi's enabledModels settings (project over global)
     model-scope.ts    # scopeModels allowlist policy, shared by top-level and nested tools
-    thinking-levels.ts # Advertised thinking levels, shared by the agent tool and the create wizard
+    thinking-levels.ts # Advertised thinking levels, used by the agent tool
 
   platform/           # Process and filesystem facades
     env.ts            # Environment detection (git, platform)
@@ -1216,7 +1213,6 @@ src/
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
     settings-menu.ts      # /agents → Settings menu
     agents-menu.ts        # /agents command: menu, agent lists and detail, eject/disable/enable
-    create-agent-wizard.ts # /agents → Create new agent (generate or manual)
 ```
 
 ## License
