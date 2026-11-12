@@ -68,7 +68,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
         parentFinal: (ctx: Context) => {
           const childOut = [...ctx.messages]
             .reverse()
-            .find((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent");
+            .find((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent");
           const text = ((childOut?.content ?? []) as Array<{ text?: string }>)
             .map((b) => b.text ?? "")
             .join("");
@@ -89,13 +89,13 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
   it("the hold condition is load-bearing: it keeps a BACKGROUND child alive (vs abandoned without it)", async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const respond = async (ctx: Context) => {
-      const isParent = (ctx.tools ?? []).some((t) => t.name === "Agent");
+      const isParent = (ctx.tools ?? []).some((t) => t.name === "agent");
       if (!isParent) {
         await sleep(80);
         return "CHILD_BG_RAN";
       }
       const spawned = ctx.messages.some(
-        (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
+        (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
       );
       return spawned
         ? "summarized"
@@ -243,12 +243,12 @@ describe.runIf(LIVE)("subagents print-mode e2e (live LLM, opt-in)", () => {
     async () => {
       run = await runPrintMode({
         prompt:
-          "Use the Agent tool to spawn a general-purpose subagent (run_in_background: false) " +
+          "Use the agent tool to spawn a general-purpose subagent (run_in_background: false) " +
           "whose only task is to reply with the exact word PONG, then tell me what it replied.",
         timeoutMs: LIVE_TIMEOUT,
       });
       expect(run.modelCalls).toBe(0);
-      expect(invokedToolNames(run.parentSession)).toContain("Agent");
+      expect(invokedToolNames(run.parentSession)).toContain("agent");
       expect(agentToolResults(run.parentSession).join("\n")).toMatch(/PONG/i);
       expect(run.responseText).toMatch(/PONG/i);
     },
@@ -278,7 +278,7 @@ describe.runIf(LIVE)("subagents print-mode e2e (live LLM, opt-in)", () => {
     async () => {
       run = await runPrintMode({
         prompt:
-          "Use the Agent tool with subagent_type 'Explore' to look at the current working " +
+          "Use the agent tool with subagent_type 'Explore' to look at the current working " +
           "directory and report a one-line summary of what's there.",
         timeoutMs: LIVE_TIMEOUT,
       });
@@ -292,11 +292,11 @@ describe.runIf(LIVE)("subagents print-mode e2e (live LLM, opt-in)", () => {
   );
 
   it(
-    "SELF-SMOKE — the agent drives a multi-feature smoke of its own Agent toolset",
+    "SELF-SMOKE — the agent drives a multi-feature smoke of its own agent toolset",
     async () => {
       run = await runPrintMode({
         prompt: [
-          "You are smoke-testing your own Agent toolset. Do these steps IN ORDER, then print a",
+          "You are smoke-testing your own agent toolset. Do these steps IN ORDER, then print a",
           "final report with one PASS/FAIL line per step:",
           "1) FOREGROUND: spawn a general-purpose subagent (run_in_background: false) whose only",
           "   task is to reply with the exact token FG_OK. Confirm you got FG_OK back.",

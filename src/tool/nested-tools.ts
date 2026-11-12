@@ -41,7 +41,7 @@ let maxSubagentDepth = 2;
 export function getMaxSubagentDepth(): number { return maxSubagentDepth; }
 export function setMaxSubagentDepth(n: number): void { maxSubagentDepth = Math.max(0, Math.floor(n)); }
 
-const NESTED_TOOL_NAMES = ["Agent", "get_subagent_result", "steer_subagent", "stop_subagent"] as const;
+export const NESTED_TOOL_NAMES = ["agent", "get_subagent_result", "steer_subagent", "stop_subagent"] as const;
 
 interface NestedSpawnOptions {
   description: string;

@@ -49,7 +49,7 @@ function mainCtx(overrides: Record<string, unknown> = {}) {
 
 function agentTool() {
   return {
-    name: "Agent",
+    name: "agent",
     execute: vi.fn(async () => ({ content: [{ type: "text", text: "Agent ID: a1" }], details: {} })),
   } as any;
 }
@@ -167,15 +167,15 @@ describe("cloning the conversation", () => {
     expect(built.modelRuntime).toEqual({ kind: "runtime" });
   });
 
-  it("gives the clone the Agent tool and nothing else", async () => {
+  it("gives the clone the agent tool and nothing else", async () => {
     cloneSession(callsAgent());
 
     await runMentionClone(opts());
 
     const built = createAgentSession.mock.calls[0][0];
     expect(built.customTools).toHaveLength(1);
-    expect(built.customTools[0].name).toBe("Agent");
-    expect(visibleTools(built).map((tool: any) => tool.name)).toEqual(["Agent"]);
+    expect(built.customTools[0].name).toBe("agent");
+    expect(visibleTools(built).map((tool: any) => tool.name)).toEqual(["agent"]);
   });
 
   it("names its own tool in the allowlist, or Pi hands it nothing", async () => {
@@ -184,7 +184,7 @@ describe("cloning the conversation", () => {
     const result = await runMentionClone(opts());
 
     const built = createAgentSession.mock.calls[0][0];
-    expect(built.tools).toEqual(["Agent"]);
+    expect(built.tools).toEqual(["agent"]);
     expect(built.noTools).toBeUndefined();
     expect(result).toEqual({ spawned: true });
   });

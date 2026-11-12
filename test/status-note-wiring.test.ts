@@ -69,7 +69,7 @@ describe("status note reaches the parent through the real handlers", () => {
     const { pi, tools } = makePi();
     subagentsExtension(pi);
 
-    const res = await tools.get("Agent").execute(
+    const res = await tools.get("agent").execute(
       "tc1",
       { prompt: "go", description: "d", subagent_type: "general-purpose", run_in_background: false },
       undefined, undefined, ctx(),
@@ -94,7 +94,7 @@ describe("status note reaches the parent through the real handlers", () => {
     subagentsExtension(pi);
 
     const parent = new AbortController();
-    const call = tools.get("Agent").execute(
+    const call = tools.get("agent").execute(
       "tc-stop",
       { prompt: "go", description: "d", subagent_type: "general-purpose", run_in_background: false },
       parent.signal, undefined, ctx(),
@@ -154,7 +154,7 @@ describe("status note reaches the parent through the real handlers", () => {
     for (const [name, params] of [
       ["get_subagent_result", { agent_id: id }],
       ["steer_subagent", { agent_id: id, message: "stop" }],
-      ["Agent", { resume: id, prompt: "continue", description: "resume", subagent_type: "general-purpose" }],
+      ["agent", { resume: id, prompt: "continue", description: "resume", subagent_type: "general-purpose" }],
     ] as const) {
       const result = await tools.get(name).execute("tc-nested", params, undefined, undefined, ctx());
       expect(textOf(result)).toContain("Agent not found");
@@ -172,7 +172,7 @@ describe("status note reaches the parent through the real handlers", () => {
     subagentsExtension(pi);
     await bind(lifecycle);
 
-    const spawn = await tools.get("Agent").execute(
+    const spawn = await tools.get("agent").execute(
       "tc2",
       { prompt: "go", description: "d", subagent_type: "general-purpose", run_in_background: true },
       undefined, undefined, ctx(),
@@ -208,7 +208,7 @@ describe("subagents:compacted", () => {
     const { pi, tools } = makePi();
     subagentsExtension(pi);
 
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "tc-compact",
       { prompt: "go", description: "compacting agent", subagent_type: "general-purpose" },
       undefined, undefined, ctx(),
@@ -233,7 +233,7 @@ describe("subagents:compacted", () => {
     const { pi, tools } = makePi();
     subagentsExtension(pi);
 
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "tc-compact2",
       { prompt: "go", description: "twice", subagent_type: "general-purpose" },
       undefined, undefined, ctx(),
@@ -250,7 +250,7 @@ describe("subagents:compacted", () => {
     const { pi, tools } = makePi();
     subagentsExtension(pi);
 
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "tc-parent",
       { prompt: "go", description: "parent", subagent_type: "general-purpose" },
       undefined, undefined, ctx(),

@@ -166,8 +166,8 @@ describe("applySettingValue enum and toggle settings", () => {
   });
 
   it.each([
-    ["on", "Agent calls run in the background unless they pass run_in_background: false"],
-    ["off", "Agent calls block and return inline unless they pass run_in_background: true"],
+    ["on", "agent calls run in the background unless they pass run_in_background: false"],
+    ["off", "agent calls block and return inline unless they pass run_in_background: true"],
   ])("backgroundByDefault %s", (value, message) => {
     apply("backgroundByDefault", value);
     expect(appliers.setBackgroundByDefault).toHaveBeenCalledWith(value === "on");

@@ -35,7 +35,7 @@ async function spawnBackground(
   tools: Map<string, any>,
   params: Record<string, unknown> = {},
 ): Promise<string> {
-  const r = await tools.get("Agent").execute(
+  const r = await tools.get("agent").execute(
     "tc-spawn",
     { prompt: "go", description: "stop wiring agent", subagent_type: "Explore", run_in_background: true, ...params },
     undefined,

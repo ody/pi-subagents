@@ -69,7 +69,7 @@ function agentIdOf(result: any): string {
   return id;
 }
 
-describe("Agent tool — background resume wiring", () => {
+describe("agent tool — background resume wiring", () => {
   let cwd: string;
   let agentDir: string;
   let previousCwd: string;
@@ -120,7 +120,7 @@ describe("Agent tool — background resume wiring", () => {
   });
 
   async function spawnSettled(tools: Map<string, any>, ctx: any, type = "general-purpose") {
-    const res = await tools.get("Agent").execute(
+    const res = await tools.get("agent").execute(
       "spawn-call",
       { prompt: "first task", description: "First task", subagent_type: type, run_in_background: true },
       undefined,
@@ -145,7 +145,7 @@ describe("Agent tool — background resume wiring", () => {
     });
 
     const toolAbort = new AbortController();
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "resume-call",
       { prompt: "keep going", description: "Keep going", subagent_type: "general-purpose", resume: id, run_in_background: true },
       toolAbort.signal,
@@ -172,7 +172,7 @@ describe("Agent tool — background resume wiring", () => {
     vi.mocked(writeInitialEntry).mockClear();
     vi.mocked(streamToOutputFile).mockClear();
 
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "resume-call",
       { prompt: "keep going", description: "Keep going", subagent_type: "general-purpose", resume: id, run_in_background: true },
       undefined,
@@ -197,7 +197,7 @@ describe("Agent tool — background resume wiring", () => {
     const id = await spawnSettled(tools, ctx, "general-purpose");
 
     emitted.length = 0;
-    const res = await tools.get("Agent").execute(
+    const res = await tools.get("agent").execute(
       "resume-call",
       { prompt: "keep going", description: "Different description", subagent_type: "explorer", resume: id, run_in_background: true },
       undefined,
@@ -224,8 +224,8 @@ describe("Agent tool — background resume wiring", () => {
     vi.mocked(resumeAgent).mockClear();
 
     const params = { prompt: "keep going", description: "Keep going", subagent_type: "general-purpose", resume: id, run_in_background: true };
-    await tools.get("Agent").execute("resume-1", params, undefined, undefined, ctx);
-    const second = await tools.get("Agent").execute("resume-2", params, undefined, undefined, ctx);
+    await tools.get("agent").execute("resume-1", params, undefined, undefined, ctx);
+    const second = await tools.get("agent").execute("resume-2", params, undefined, undefined, ctx);
 
     expect(resumeAgent).toHaveBeenCalledTimes(1);
     const text = resultText(second);
@@ -242,7 +242,7 @@ describe("Agent tool — background resume wiring", () => {
     const id = await spawnSettled(tools, ctx);
 
     vi.mocked(resumeAgent).mockResolvedValue({ text: "inline answer" } as any);
-    const res = await tools.get("Agent").execute(
+    const res = await tools.get("agent").execute(
       "resume-call",
       { prompt: "keep going", description: "Keep going", subagent_type: "general-purpose", resume: id, run_in_background: false },
       undefined,

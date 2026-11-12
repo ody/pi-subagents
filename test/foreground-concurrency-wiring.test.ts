@@ -60,7 +60,7 @@ function callForeground(tools: Map<string, any>, prompt: string, opts: {
   signal?: AbortSignal;
   onUpdate?: (u: any) => void;
 } = {}) {
-  return tools.get("Agent").execute(
+  return tools.get("agent").execute(
     `tc-${prompt}`,
     { prompt, description: prompt, subagent_type: "general-purpose", run_in_background: false },
     opts.signal,
@@ -69,7 +69,7 @@ function callForeground(tools: Map<string, any>, prompt: string, opts: {
   );
 }
 
-describe("maxConcurrentForeground, through the Agent tool", () => {
+describe("maxConcurrentForeground, through the agent tool", () => {
   it("runs blocking calls one at a time and returns each its own result", async () => {
     const { tools } = boot();
     const resolvers = controllableRuns();

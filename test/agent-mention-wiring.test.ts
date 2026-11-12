@@ -76,7 +76,7 @@ function bootDirect(settings: Record<string, unknown> = {}) {
 }
 
 async function spawnBackground(tools: Map<string, any>, subagent_type = "Explore"): Promise<string> {
-  const r = await tools.get("Agent").execute(
+  const r = await tools.get("agent").execute(
     "tc-spawn",
     { prompt: "go", description: "find flaky tests", subagent_type, run_in_background: true },
     undefined,
@@ -535,7 +535,7 @@ describe("letting a clone of the conversation start the agent", () => {
     expect(runAgent).not.toHaveBeenCalled();
   });
 
-  it("hands the clone the resolved type, the message and the real Agent tool", async () => {
+  it("hands the clone the resolved type, the message and the real agent tool", async () => {
     const { tools, lifecycle } = boot();
     cloneReturns({ spawned: true });
 
@@ -546,7 +546,7 @@ describe("letting a clone of the conversation start the agent", () => {
       expect.objectContaining({
         type: "Plan",
         message: "sketch the migration",
-        agentTool: tools.get("Agent"),
+        agentTool: tools.get("agent"),
       }),
     );
   });
@@ -910,7 +910,7 @@ describe("@agent-<type> — Claude Code's manual spelling", () => {
       .mockImplementationOnce((_c: any, _t: any, _p: any, o: any) => new Promise(() => o.onSessionCreated?.(literal)) as any);
 
     await spawnBackground(tools);
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "tc-named",
       { prompt: "go", description: "named", subagent_type: "Plan", name: "agent-explore", run_in_background: true },
       undefined, undefined, ctx(),
@@ -1013,7 +1013,7 @@ describe("resuming an evicted agent by name", () => {
   it("gives a named agent its alias back too", async () => {
     const { lifecycle, tools } = boot();
     finishedRun(fakeSession());
-    const spawned = await tools.get("Agent").execute(
+    const spawned = await tools.get("agent").execute(
       "tc-named",
       { prompt: "audit", description: "audit the auth flow", subagent_type: "Explore", name: "auth-audit", run_in_background: true },
       undefined, undefined, ctx(),
@@ -1217,7 +1217,7 @@ describe("handles as tool arguments", () => {
     const { tools } = boot();
     const session = fakeSession();
     heldRun(session);
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "tc-named",
       { prompt: "go", description: "audit", subagent_type: "Explore", name: "auth-audit", run_in_background: true },
       undefined, undefined, ctx(),

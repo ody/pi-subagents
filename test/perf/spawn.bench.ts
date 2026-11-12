@@ -67,7 +67,7 @@ describe("Agent tool — background spawn", () => {
   function bootAgentTool() {
     const { pi, tools } = makePi();
     subagentsExtension(pi);
-    return tools.get("Agent");
+    return tools.get("agent");
   }
 
   const c = ctx();

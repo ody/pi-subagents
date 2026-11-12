@@ -2,7 +2,7 @@
 
 ## Context
 
-Every agent run is one `AgentRecord` in `AgentManager`, but the records are not peers. A run started by the session's own `Agent` tool, an `@handle` mention, or another extension's RPC belongs to the session. A run started by another agent (nested) belongs to that agent, whether the owner awaits it inline or leaves it running in the background. `isTopLevelAgent` in `src/manager/agent-manager-rules.ts` draws the line: `parentAgentId === undefined`.
+Every agent run is one `AgentRecord` in `AgentManager`, but the records are not peers. A run started by the session's own `agent` tool, an `@handle` mention, or another extension's RPC belongs to the session. A run started by another agent (nested) belongs to that agent, whether the owner awaits it inline or leaves it running in the background. `isTopLevelAgent` in `src/manager/agent-manager-rules.ts` draws the line: `parentAgentId === undefined`.
 
 Without that line, three failures follow:
 

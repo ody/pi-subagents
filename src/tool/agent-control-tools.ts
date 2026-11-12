@@ -79,7 +79,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
     name: SUBAGENT_TOOL_NAMES.GET_RESULT,
     label: "Get Agent Result",
     description:
-      "Check status and retrieve a background agent's full result — its completion notification carries only a preview. Use the agent ID returned by Agent.",
+      "Check status and retrieve a background agent's full result — its completion notification carries only a preview. Use the agent ID returned by agent.",
     promptSnippet: "Check status and retrieve results from a background agent",
     parameters: Type.Object({
       agent_id: Type.String({

@@ -110,14 +110,14 @@ afterEach(() => {
 });
 
 describe("custom agent color runtime surfaces", () => {
-  it("renders the registered Agent tool call header with the display name and color", async () => {
+  it("renders the registered agent tool call header with the display name and color", async () => {
     const { pi, tools, handlers } = makePi();
     subagentsExtension(pi);
     registerColoredReviewer();
 
     try {
-      const tool = tools.get("Agent");
-      if (!tool) throw new Error("Agent tool was not registered");
+      const tool = tools.get("agent");
+      if (!tool) throw new Error("agent tool was not registered");
       const render = (context: { isPartial: boolean; isError: boolean }) => tool.renderCall(
         { subagent_type: TYPE, description: "Review this change" },
         theme,

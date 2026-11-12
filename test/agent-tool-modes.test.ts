@@ -61,7 +61,7 @@ function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: 
   return { run, text, manager, scheduler, notifier, startBackgroundResume, pi };
 }
 
-describe("Agent tool resume", () => {
+describe("agent tool resume", () => {
   it("reports an unknown agent", async () => {
     const { run, text } = setup();
     expect(text(await run({ resume: "nope" }))).toBe('Agent not found: "nope". It may have been cleaned up.');
@@ -123,7 +123,7 @@ describe("Agent tool resume", () => {
   });
 });
 
-describe("Agent tool schedule", () => {
+describe("agent tool schedule", () => {
   it("refuses when scheduling is disabled", async () => {
     const { run, text } = setup({ settings: { schedulingEnabled: false } });
     expect(text(await run({ schedule: "5m" }))).toContain("Scheduling is disabled");
@@ -152,7 +152,7 @@ describe("Agent tool schedule", () => {
   });
 });
 
-describe("Agent tool background spawn", () => {
+describe("agent tool background spawn", () => {
   it("joins the batch and tells the model not to duplicate", async () => {
     const { run, text, notifier, manager, pi } = setup();
     const out = text(await run({}));

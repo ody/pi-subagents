@@ -87,12 +87,12 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
       if (text.includes("Delegate this downward")) {
         toolsSeen.set("orchestrator", names);
         const alreadySpawned = context.messages.some(
-          (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
+          (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
         );
         if (alreadySpawned) {
           const result = [...context.messages]
             .reverse()
-            .find((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent");
+            .find((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent");
           const inner = ((result?.content ?? []) as Array<{ text?: string }>)
             .map((b) => b.text ?? "")
             .join("");
@@ -107,12 +107,12 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
 
       toolsSeen.set("parent", names);
       const spawned = context.messages.some(
-        (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
+        (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
       );
       if (spawned) {
         const result = [...context.messages]
           .reverse()
-          .find((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent");
+          .find((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent");
         const inner = ((result?.content ?? []) as Array<{ text?: string }>)
           .map((b) => b.text ?? "")
           .join("");
@@ -134,13 +134,13 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
       beforeRun: () => { registerAgents(loadCustomAgents(cwd)); },
     });
 
-    expect(toolsSeen.get("orchestrator")).toContain("Agent");
+    expect(toolsSeen.get("orchestrator")).toContain("agent");
     expect(toolsSeen.get("orchestrator")).toContain("get_subagent_result");
     expect(toolsSeen.get("orchestrator")).toContain("steer_subagent");
     expect(toolsSeen.get("orchestrator")).toContain("stop_subagent");
 
     expect(toolsSeen.get("worker")).toBeDefined();
-    expect(toolsSeen.get("worker")).not.toContain("Agent");
+    expect(toolsSeen.get("worker")).not.toContain("agent");
 
     expect(run.responseText).toContain(WORKER_MARKER);
   });
@@ -159,7 +159,7 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
 
       if (text.includes("Delegate this downward")) {
         const results = toolResultTexts(context);
-        const spawned = results.find((r) => r.name === "Agent")?.text ?? "";
+        const spawned = results.find((r) => r.name === "agent")?.text ?? "";
         const polled = results.find((r) => r.name === "get_subagent_result")?.text;
         if (polled !== undefined) return `orchestrator polled: ${polled}`;
         if (spawned) {
@@ -175,7 +175,7 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
         });
       }
 
-      if (toolResultTexts(context).some((r) => r.name === "Agent")) return "parent done";
+      if (toolResultTexts(context).some((r) => r.name === "agent")) return "parent done";
       return agentCall({
         subagent_type: "orchestrator",
         description: "delegate",

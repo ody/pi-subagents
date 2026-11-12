@@ -20,7 +20,7 @@ function runSpending(cost: number) {
 }
 
 const spawn = (tools: Map<string, any>) =>
-  tools.get("Agent").execute(
+  tools.get("agent").execute(
     "tc-1",
     { prompt: "go", description: "spend", subagent_type: "general-purpose", run_in_background: false },
     undefined, undefined, ctx(),
@@ -111,7 +111,7 @@ describe("cost display", () => {
     }
 
     const spawnBackground = (tools: Map<string, any>) =>
-      tools.get("Agent").execute(
+      tools.get("agent").execute(
         "tc-1",
         { prompt: "go", description: "spend", subagent_type: "general-purpose", run_in_background: true },
         undefined, undefined, ctx(),

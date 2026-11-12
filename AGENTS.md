@@ -1,6 +1,6 @@
 # AGENTS.md
 
-pi extension providing sub-agents (`Agent` tool, `/agents` menu), packaged as `@ody/pi-subagents`. TypeScript, vitest, biome.
+pi extension providing sub-agents (`agent` tool, `/agents` menu), packaged as `@ody/pi-subagents`. TypeScript, vitest, biome.
 
 ## Decision records and backlog
 

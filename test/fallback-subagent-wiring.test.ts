@@ -56,7 +56,7 @@ function ctx() {
 
 const textOf = (r: any): string => r.content[0].text;
 
-describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
+describe("fallbackSubagent gates dispatch through the real agent tool", () => {
   beforeEach(() => {
     originalCwd = process.cwd();
     cwd = mkdtempSync(join(tmpdir(), "fallback-wiring-"));
@@ -92,7 +92,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
       const { tools } = boot();
       setFallbackSubagent(NO_FALLBACK);
 
-      const result = await tools.get("Agent").execute(
+      const result = await tools.get("agent").execute(
         "tc-1",
         {
           prompt: "do it",
@@ -115,7 +115,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
       responseText: "done", session: { dispose: vi.fn() } as any, aborted: false, steered: false,
     });
 
-    const result = await tools.get("Agent").execute(
+    const result = await tools.get("agent").execute(
       "tc-2",
       { prompt: "do it", description: "typo dispatch", subagent_type: "definitely-missing" },
       undefined, undefined, ctx(),
@@ -131,7 +131,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
     const { tools } = boot();
     vi.mocked(runAgent).mockReturnValue(new Promise(() => {}) as any);
 
-    const result = await tools.get("Agent").execute(
+    const result = await tools.get("agent").execute(
       "tc-3",
       {
         prompt: "do it",
@@ -152,7 +152,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
     expect(getAllTypes()).toContain("retired");
     expect(getAvailableTypes()).not.toContain("retired");
 
-    const result = await tools.get("Agent").execute(
+    const result = await tools.get("agent").execute(
       "tc-4",
       { prompt: "do it", description: "disabled dispatch", subagent_type: "retired" },
       undefined, undefined, ctx(),
@@ -166,7 +166,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
     const { tools, lifecycle } = boot();
     await lifecycle.get("session_start")({}, ctx());
 
-    const result = await tools.get("Agent").execute(
+    const result = await tools.get("agent").execute(
       "tc-5",
       { prompt: "later", description: "blank type", subagent_type: "   ", schedule: "+1h" },
       undefined, undefined, ctx(),
@@ -186,7 +186,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "first", session: { dispose: vi.fn(), messages: [] } as any, aborted: false, steered: false,
     });
-    const spawned = await tools.get("Agent").execute(
+    const spawned = await tools.get("agent").execute(
       "tc-6",
       { prompt: "start", description: "live agent", subagent_type: "scout", run_in_background: false },
       undefined, undefined, ctx(),
@@ -196,7 +196,7 @@ describe("fallbackSubagent gates dispatch through the real Agent tool", () => {
     expect(id).toBeTruthy();
 
     setFallbackSubagent(NO_FALLBACK);
-    const resumed = await tools.get("Agent").execute(
+    const resumed = await tools.get("agent").execute(
       "tc-7",
       { resume: id, prompt: "keep going", description: "resume", subagent_type: "deleted-since" },
       undefined, undefined, ctx(),
