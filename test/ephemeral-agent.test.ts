@@ -287,7 +287,7 @@ describe("a nested ephemeral spawn", () => {
           allowedSubagents: "all",
           configCwd: process.cwd(),
         }) as any[];
-        nested = await nestedAgent.execute("n1", { description: "inner helper", prompt: "inner", run_in_background: false }, undefined, undefined, ctx());
+        nested = await nestedAgent.execute("n1", { description: "inner helper", prompt: "inner", run_in_background: false, max_turns: 0, thinking: "high" }, undefined, undefined, ctx());
       }
       return finished;
     }) as any);
@@ -300,6 +300,8 @@ describe("a nested ephemeral spawn", () => {
     expect(calls[1][1]).toMatch(/^ephemeral-[0-9a-f]{8}$/);
     expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Agent", persistSession: false, systemPrompt: "" });
     expect(calls[1][3].capability.capabilities.builtinToolNames).toEqual(["read"]);
+    expect(calls[1][3].maxTurns).toBe(0);
+    expect(calls[1][3].thinkingLevel).toBe("high");
   });
 });
 
