@@ -726,6 +726,29 @@ Project overrides global on any field present in both. Missing fields fall back 
 - A fallback agent that is itself unknown or disabled is a misconfiguration and is reported rather than quietly replaced.
 - The default stays permissive by design: with `disableDefaultAgents` and no `general-purpose` of your own, an unresolvable type still resolves to a built-in config carrying *all* tools. Set `none` (or name one of your own agents) to close that.
 
+### Capability policy
+
+An optional `policy` object in `subagents.json` bounds the tools, extensions, and skills of new agents. It is not a `/agents` setting, and `/agents` never edits it.
+
+```json
+{
+  "policy": {
+    "tools": { "allow": ["read", "ext:web"], "deny": ["bash"] },
+    "extensions": { "deny": ["risky"] },
+    "skills": { "allow": ["review"] },
+    "ephemeralNesting": false
+  }
+}
+```
+
+- Each of `tools`, `extensions`, and `skills` takes optional `allow` and `deny` string lists. An omitted list, or no `policy`, allows everything. `ephemeralNesting` defaults to `true`.
+- The global and project files are evaluated separately. A value must pass both, deny entries from either apply, and `ephemeralNesting: false` in either file turns it off. A project can only narrow.
+- `*` is valid only in an allow list.
+- The policy is read at each spawn, so an edit applies without a restart.
+- A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. Every spawn is denied and a warning names the file and entry. A well-formed entry that names nothing known only warns.
+- Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
+- `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
+
 ### Strict agent files
 
 `strictAgentFiles`, default `false`: when on, an unreadable or unparseable [agent file](#custom-agents) aborts extension load at startup and names the file, instead of being skipped with a warning — so a checked-in `.pi/agents/` can't silently fall through to a same-named agent from another location. Startup only: the mid-session reload that runs on each `Agent` call keeps warning either way, since a bad edit shouldn't kill a session on an unrelated spawn. Also settable from `/agents → Settings → Strict agent files`.
@@ -914,8 +937,8 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagents:scheduled` | Schedule lifecycle change | `{ type: "added" \| "removed" \| "updated" \| "fired" \| "error", … }` (job/agentId/error fields per type) |
 | `subagents:scheduler_ready` | Scheduler bound to session, enabled jobs armed | `sessionId`, `jobCount` |
 | `subagents:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
-| `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project) |
-| `subagents:settings_changed` | `/agents` → Settings mutation was applied | `settings`, `persisted` (`boolean` — `false` on write failure) |
+| `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project), `policy` (`{ global, project, ephemeralNesting }`) |
+| `subagents:settings_changed` | `/agents` → Settings mutation was applied | `settings`, `persisted` (`boolean` — `false` on write failure), `policy` (`{ global, project, ephemeralNesting }`) |
 
 The four agent-lifecycle events — `subagents:started`, `:completed`, `:failed`, `:compacted` — are emitted for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
 
@@ -951,7 +974,7 @@ Check if the subagents extension is loaded and get the protocol version:
 const requestId = crypto.randomUUID();
 const unsub = pi.events.on(`subagents:rpc:ping:reply:${requestId}`, (reply) => {
   unsub();
-  if (reply.success) console.log("Protocol version:", reply.data.version);
+  if (reply.success) console.log("Protocol version:", reply.data.version, reply.data.policy);
 });
 pi.events.emit("subagents:rpc:ping", { requestId });
 ```
@@ -1189,6 +1212,8 @@ src/
   config/             # How a run is configured: settings, defaults, model choice
     settings.ts       # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
     runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
+    settings-paths.ts # Paths of the global and project subagents.json
+    capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json
     runner-defaults.ts # Process-wide run defaults: max turns, grace turns, rememberAgents
     model-resolver.ts # Model resolution: exact provider/modelId with fuzzy fallback
     enabled-models.ts # Read pi's enabledModels settings (project over global)

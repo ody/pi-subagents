@@ -1,3 +1,4 @@
+import { policyEventPayload } from "../config/capability-policy-config.js";
 import { type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
@@ -77,7 +78,8 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
   const { events, pi, getCtx, manager } = deps;
 
   const unsubPing = handleRpc(events, "subagents:rpc:ping", () => {
-    return { version: PROTOCOL_VERSION };
+    const cwd = (getCtx() as { cwd?: string } | undefined)?.cwd ?? process.cwd();
+    return { version: PROTOCOL_VERSION, policy: policyEventPayload(cwd) };
   });
 
   const unsubSpawn = handleRpc<{ requestId: string; type: string; prompt: string; options?: any }>(

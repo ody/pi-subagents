@@ -194,7 +194,9 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 ## Protocol versions
 
-`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION }`, currently `2` (`src/triggers/cross-extension-rpc.ts:33`). The constant was introduced already equal to `2` in 0.5.0; "v1" is a retroactive name for the pre-envelope contract, where spawn replied with a bare `{ id }` or `{ error }`, stop replied `{ success: boolean }` with no message, and each handler caught its own errors.
+`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION, policy }`, currently `2` (`src/triggers/cross-extension-rpc.ts:33`). The constant was introduced already equal to `2` in 0.5.0; "v1" is a retroactive name for the pre-envelope contract, where spawn replied with a bare `{ id }` or `{ error }`, stop replied `{ success: boolean }` with no message, and each handler caught its own errors.
+
+`policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. It is read from disk on every ping, so it is the only copy that is always current, and it carries a `malformed` list of problems when the policy is malformed and every spawn is denied. `subagents:settings_loaded` and `subagents:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 
 Everything added since shipped **without a bump**, because all of it is additive: stop's ownership refusal, string-`model` resolution, `scopeModels` enforcement, and the whole `consume` channel.
 
