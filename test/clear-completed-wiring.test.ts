@@ -90,7 +90,7 @@ describe("issue #108: unread completed background agents survive session events"
     process.env.HOME = agentDir;
     prevCwd = process.cwd();
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
-    writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false }));
+    writeFileSync(join(tmpDir, ".pi", "subagents.json"), JSON.stringify({}));
     mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
     writeFileSync(join(tmpDir, ".pi", "agents", "general-purpose.md"), "---\ndescription: General purpose\n---\n\nYou are general-purpose.");
     process.chdir(tmpDir);

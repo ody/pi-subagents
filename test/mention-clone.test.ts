@@ -269,7 +269,6 @@ describe("attributing the spawn to the real session", () => {
     ["max_turns", 5],
     ["run_in_background", false],
     ["resume", "a1"],
-    ["schedule", "5m"],
   ])("refuses %s, tells the clone, and reports it", async (name, value) => {
     const tool = agentTool();
     const captured: any[] = [];

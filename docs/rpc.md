@@ -49,7 +49,7 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 Three things that are not obvious from the tables:
 
 - **Nothing is required at runtime.** `description` is non-optional in TypeScript and never validated. A spawn with no `options` at all is legal and is what `test/cross-extension-rpc.test.ts:81-94` pins.
-- **`bypassQueue` is not stripped.** Its own doc comment scopes it to the scheduler and the `/agents` generator, but a bus caller can set it and skip the `maxConcurrent` check.
+- **`bypassQueue` is not stripped.** A bus caller can set it and skip the `maxConcurrent` check.
 - **`signal` and the `on*` callbacks are function values.** They work only because the bus is in-process. A caller that genuinely serializes its payload cannot use them, and they arrive as `undefined` rather than failing.
 
 ### Inline agent definitions

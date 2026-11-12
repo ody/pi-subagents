@@ -14,7 +14,7 @@ Other extensions depend on the `subagents:rpc:*` channels and lifecycle events. 
 
 ## Decision
 
-pi-subagents provides sub-agents only: the `agent` tool, `/agents`, scheduling, and the `subagents:rpc:*` channels and lifecycle events. It does not provide workflow orchestration.
+pi-subagents provides sub-agents only: the `agent` tool, `/agents`, and the `subagents:rpc:*` channels and lifecycle events. It does not provide workflow orchestration.
 
 - Never add workflow orchestration to this repo. A workflow extension, ported or new, is a separate package that drives sub-agents through `subagents:rpc:*`.
 - Code whose only caller was the workflow host is removed, not kept as a hook for a future workflow extension.

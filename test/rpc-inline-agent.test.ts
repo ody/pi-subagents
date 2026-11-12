@@ -73,7 +73,7 @@ describe("subagents:rpc:spawn with an inline agentConfig", () => {
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
     writeFileSync(
       join(tmpDir, ".pi", "subagents.json"),
-      JSON.stringify({ schedulingEnabled: false }),
+      JSON.stringify({}),
     );
     process.chdir(tmpDir);
   });

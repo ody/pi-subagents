@@ -29,7 +29,6 @@ export type AgentCallParams = Parameters<typeof resolveAgentInvocationConfig>[1]
   name?: string;
   description: string;
   resume?: string;
-  schedule?: unknown;
 };
 
 export type AgentCallResolution =
@@ -75,7 +74,7 @@ function mintCapability(
   isolated: boolean,
   built: BuiltEphemeralAgent | undefined,
 ): { ok: true; capability: GrantedCapability | undefined } | { ok: false; message: string } {
-  if (params.resume || params.schedule) return { ok: true, capability: undefined };
+  if (params.resume) return { ok: true, capability: undefined };
   try {
     const capability = resolveCapability({
       type,
@@ -99,7 +98,6 @@ function omitsType(params: AgentCallParams): boolean {
 
 function typeParamConflict(params: AgentCallParams): string | undefined {
   if (omitsType(params)) {
-    if (params.schedule) return "A scheduled call needs a subagent_type. An ephemeral agent cannot be scheduled.";
     return ephemeralIsolationConflict({ ...params, description: params.description });
   }
   if (params.resume) return undefined;

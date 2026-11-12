@@ -21,17 +21,16 @@ The user is told about every override:
 - The tool-result header and the viewer show each field where the caller displaced a frontmatter value that resolves differently: `opus 4.6 (over pinned anthropic/claude-haiku-4-5)` for `model`, `high (over low)` for `thinking`, `5 turns (over 20)` for `max_turns`, and `background (over foreground)` for `run_in_background`. The thinking clamp note is independent, so a clamped override reads `high (asked xhigh, over low)`.
 - The widget shows model and thinking only, and nested spawns disclose in the widget and viewer.
 - A caller `model` that does not resolve refuses the spawn and never falls back to the file's pin.
-- A scheduled job stores the caller's raw override values and resolves them when it fires, and the fire path discloses overrides like the `agent` tool. A model that no longer resolves fails that firing without spawning. Jobs written after this change are stored with `version: 2`. In a version 1 job, `thinking` and `max_turns` are ignored at fire time and resolve from the file, then from the fallbacks.
 
 Mentions:
 
 - A direct-mode `@handle` run sends its message unchanged and carries no overrides.
-- A model-mode `@handle` run goes through the mention clone, a model call that reads the user's words. `@handle with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run. The clone's `agent` tool refuses `max_turns`, `run_in_background`, `resume`, and `schedule`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool. Its forced `run_in_background: true` is not disclosed as an override.
+- A model-mode `@handle` run goes through the mention clone, a model call that reads the user's words. `@handle with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run. The clone's `agent` tool refuses `max_turns`, `run_in_background`, and `resume`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool. Its forced `run_in_background: true` is not disclosed as an override.
 - A clone call that is refused is reported to the user with the refusal message and does not fall back to a direct start.
 - A message that does not start with the mention goes to the main model, which may use all four overrides.
 - `subagents:rpc:spawn` option semantics are unchanged.
 
-Done check: `npx vitest run test/invocation-config.test.ts test/agent-model-display.test.ts test/nested-tools.test.ts test/mention-clone.test.ts test/schedule.test.ts` passes. It covers each of the four fields, the disclosure text, the nested path, the clone subset and refusal report, the zero `max_turns` case, and the fire-time model failure.
+Done check: `npx vitest run test/invocation-config.test.ts test/agent-model-display.test.ts test/nested-tools.test.ts test/mention-clone.test.ts` passes. It covers each of the four fields, the disclosure text, the nested path, the clone subset and refusal report, and the zero `max_turns` case.
 
 ## Consequences
 

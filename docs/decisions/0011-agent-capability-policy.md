@@ -4,9 +4,9 @@
 
 Nothing bounds which tools, extensions, or skills a new agent gets. Agent files are written by users or shipped by skills, so a file is not trusted. An RPC or registry inline definition can already choose any of them.
 
-`scopeModels` bounds models only. `checkModelScope` runs when the `agent` tool, the nested `agent` tool, or `subagents:rpc:spawn` resolve a caller `model`, and when a job is scheduled. It does not run when a job fires, on `@handle` direct starts and tombstone reopens, or on the registry `spawn`.
+`scopeModels` bounds models only. `checkModelScope` runs when the `agent` tool, the nested `agent` tool, or `subagents:rpc:spawn` resolve a caller `model`. It does not run on `@handle` direct starts and tombstone reopens, or on the registry `spawn`.
 
-No single funnel exists. The `agent` tool, the nested tool, the scheduler, and the creation wizard call `AgentManager.spawn` or `spawnAndWait` directly. RPC, the registry entry, and mentions go through `spawnResolved`. Every new session ends in `spawnAgent`, and `runAgent` re-reads the agent's config by type when it launches.
+No single funnel exists. The `agent` tool, the nested tool, and the creation wizard call `AgentManager.spawn` or `spawnAndWait` directly. RPC, the registry entry, and mentions go through `spawnResolved`. Every new session ends in `spawnAgent`, and `runAgent` re-reads the agent's config by type when it launches.
 
 Today the `agent` tools take no tools, extensions, or skills parameters, so a call from them carries no caller-supplied capability values until ADR 0015 (ephemeral agents) adds them. This is accepted together with ADR 0013 (delegation ceiling) and ADR 0015, and ADR 0017 (no shipped default agents) removes the wizard spawn site.
 
@@ -34,7 +34,7 @@ Provenance decides refuse or filter:
 
 Enforcement:
 
-- One pure `checkCapabilityPolicy`, modeled on `checkModelScope`, runs at every resolution site: the `agent` tool, the nested tool, the scheduler when a job fires, mentions, `subagents:rpc:spawn`, and the `spawn` of the `Symbol.for("pi-subagents:manager")` registry entry.
+- One pure `checkCapabilityPolicy`, modeled on `checkModelScope`, runs at every resolution site: the `agent` tool, the nested tool, mentions, `subagents:rpc:spawn`, and the `spawn` of the `Symbol.for("pi-subagents:manager")` registry entry.
 - `spawnTopLevel` serves RPC, the registry entry, and direct mentions, so for those callers the check runs inside the funnel after it strips a supplied verdict. The RPC handler passes the raw `agentConfig` alongside the normalized one. The registry path never normalizes.
 - Its verdict carries the effective tools, extensions, and skills. `runAgent` builds the session from the verdict and never re-reads the agent file for those fields.
 - Only `checkCapabilityPolicy` mints a verdict. `spawnTopLevel` strips one a caller supplies, and `spawnAgent` throws when it is absent.

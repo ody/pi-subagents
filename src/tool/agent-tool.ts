@@ -9,7 +9,6 @@ import type { CompletionNotifier } from "../manager/completion-notifier.js";
 import { createOutputFilePath, writeInitialEntry } from "../platform/output-file.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { SUBAGENT_TOOL_NAMES } from "../session/extension-scope.js";
-import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentRecord } from "../types.js";
 import type { AgentWidget, UICtx } from "../ui/agent-widget.js";
 import type { FleetList } from "../ui/fleet-list.js";
@@ -19,7 +18,6 @@ import { buildAgentToolDescription } from "./agent-tool-description.js";
 import { runForegroundAgent } from "./agent-tool-foreground.js";
 import { renderAgentCall, renderAgentResult } from "./agent-tool-render.js";
 import { resumeAgentCall } from "./agent-tool-resume.js";
-import { scheduleAgentCall } from "./agent-tool-schedule.js";
 import { ephemeralParamShape } from "./ephemeral-params.js";
 import { FORCED_BACKGROUND, isolationParam } from "./invocation-config.js";
 import { textResult } from "./tool-result.js";
@@ -29,7 +27,6 @@ export interface AgentToolDeps {
     AgentManager,
     "getRecord" | "getMaxConcurrent" | "resume" | "spawn" | "awaitStartup" | "getActivity" | "listAgents" | "spawnAndWait"
   >;
-  scheduler: Pick<SubagentScheduler, "isActive" | "addJob" | "getNextRun">;
   widget: Pick<AgentWidget, "setUICtx" | "ensureTimer" | "update" | "markFinished">;
   fleet: Pick<FleetList, "ensureTimer" | "update" | "onAgentFinished">;
   notifier: Pick<CompletionNotifier, "addToBatch">;
@@ -37,29 +34,15 @@ export interface AgentToolDeps {
   reloadCustomAgents: () => void;
   settings: Readonly<Pick<
     RuntimeSettings,
-    "schedulingEnabled" | "toolDescriptionMode" | "backgroundByDefault" | "defaultJoinMode" | "showCost"
+    "toolDescriptionMode" | "backgroundByDefault" | "defaultJoinMode" | "showCost"
   >>;
 }
 
 export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
-  const { manager, scheduler, widget, fleet, notifier, startBackgroundResume, reloadCustomAgents, settings } = deps;
-
-  const scheduleParamShape = {
-    schedule: Type.Optional(
-      Type.String({
-        description:
-          'Opt-in only — fire later instead of now. Omit to run immediately (the default, almost always correct). ' +
-          'Formats: 6-field cron ("0 0 9 * * 1" = 9am Mon), interval ("5m"/"1h"), one-shot ("+10m" or ISO). ' +
-          'Forces run_in_background; incompatible with inherit_context and resume. Returns job ID.',
-      }),
-    ),
-  };
-  const scheduleParam: Partial<typeof scheduleParamShape> =
-    settings.schedulingEnabled ? scheduleParamShape : {};
+  const { manager, widget, fleet, notifier, startBackgroundResume, reloadCustomAgents, settings } = deps;
 
   const agentToolDescription = buildAgentToolDescription({
     mode: settings.toolDescriptionMode,
-    schedulingEnabled: settings.schedulingEnabled,
     worktreeEnabled: isWorktreeIsolationEnabled(),
   });
 
@@ -131,7 +114,6 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
         }),
       ),
       ...isolationParam(isWorktreeIsolationEnabled()),
-      ...scheduleParam,
     }),
 
     renderCall: renderAgentCall,
@@ -167,8 +149,6 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
         rec.outputFile = createOutputFilePath(ctx.cwd, agentId, ctx.sessionManager.getSessionId());
         writeInitialEntry(rec.outputFile, agentId, params.prompt, ctx.cwd);
       };
-
-      if (params.schedule) return scheduleAgentCall({ scheduler, settings }, { params, call });
 
       if (params.resume) {
         return resumeAgentCall(

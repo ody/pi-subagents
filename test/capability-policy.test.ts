@@ -21,8 +21,6 @@ import { AgentManager } from "../src/manager/agent-manager.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
-import { SubagentScheduler } from "../src/triggers/schedule.js";
-import { ScheduleStore } from "../src/triggers/schedule-store.js";
 import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 import { grant } from "./helpers/capability.js";
@@ -271,11 +269,11 @@ describe("capability policy at every spawn path", () => {
   let booted: Map<string, any> | undefined;
 
   const writePolicy = (policy: unknown) =>
-    writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, policy }));
+    writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false, policy }));
 
   beforeEach(() => {
     hermetic = hermeticDir({
-      settings: { schedulingEnabled: false, outputTranscript: false },
+      settings: { outputTranscript: false },
       agentFiles: { scout: "---\ndescription: scouts\ntools: read, bash\n---\nbody" },
     });
     vi.mocked(runAgent).mockReset();
@@ -360,32 +358,9 @@ describe("capability policy at every spawn path", () => {
     expect(reply?.data).toEqual({ success: true, data: { id: expect.any(String), filtered: ["tool bash"] } });
   });
 
-  it("filters an agent file's value when a scheduled job fires", () => {
-    writePolicy({ tools: { deny: ["bash"] } });
-    registerAgents(new Map([["scout", { name: "scout", description: "s", builtinToolNames: ["read", "bash"], extensions: false, skills: false, systemPrompt: "p", promptMode: "replace" }]]));
-    vi.useFakeTimers();
-    const scheduler = new SubagentScheduler();
-    const spawn = vi.fn(() => "agent-1");
-    const manager: any = { spawn, awaitStartup: vi.fn(async () => {}), getRecord: vi.fn(() => ({ promise: Promise.resolve("done") })) };
-    const notify = vi.fn();
-    const firing = { ...ctx(), ui: { notify } };
-    try {
-      scheduler.start({ events: { emit: vi.fn() } } as any, firing, manager, new ScheduleStore(join(hermetic.dir, "jobs.json")));
-      scheduler.addJob({ name: "tick", description: "tick", schedule: "+1s", subagent_type: "scout", prompt: "go" });
-      vi.advanceTimersByTime(2_000);
-    } finally {
-      scheduler.stop();
-      vi.useRealTimers();
-    }
-    const options = (spawn.mock.calls as any[][])[0][4];
-    expect(options.capability.capabilities.builtinToolNames).toEqual(["read"]);
-    expect(options.capability.filtered).toEqual(["tool bash"]);
-    expect(notify).toHaveBeenCalledWith(expect.stringContaining("tool bash"), "warning");
-  });
-
   it("filters an agent file's value on a direct mention", async () => {
     writePolicy({ tools: { deny: ["bash"] } });
-    writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
+    writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false, agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
     const { pi, lifecycle } = makePi();
     subagentsExtension(pi);
     booted = lifecycle;
@@ -402,7 +377,7 @@ describe("capability policy at every spawn path", () => {
     afterEach(() => vi.useRealTimers());
 
     it("checks the policy again instead of reusing the first verdict", async () => {
-      writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, agentMentions: "direct" }));
+      writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false, agentMentions: "direct" }));
       const { pi, lifecycle } = makePi();
       subagentsExtension(pi);
       booted = lifecycle;
@@ -420,7 +395,7 @@ describe("capability policy at every spawn path", () => {
       await vi.advanceTimersByTimeAsync(60_000);
       expect(manager.getRecord(first.agentId)).toBeUndefined();
 
-      writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
+      writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false, agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
       vi.mocked(runAgent).mockClear();
       const uiCtx = ctx();
       await lifecycle.get("input")({ type: "input", text: "@scout again", source: "interactive" }, uiCtx);

@@ -43,13 +43,8 @@ const buildCompactTypeListText = () =>
 
 export function buildAgentToolDescription(o: {
   mode: ToolDescriptionMode;
-  schedulingEnabled: boolean;
   worktreeEnabled: boolean;
 }): string {
-  const scheduleGuideline = o.schedulingEnabled
-    ? `\n- Use \`schedule\` only when the user explicitly asked for scheduled / recurring / delayed execution (e.g. "every Monday", "in an hour"). Don't auto-schedule from vague intent like "monitor X" — run once now or ask.`
-    : "";
-
   const isolationGuideline = o.worktreeEnabled
     ? `\n- Use isolation: "worktree" to give the agent its own git worktree (safe parallel file modifications); leave it unset, or pass "off", for none. The worktree is removed when the agent finishes; if it made changes, they are committed to a branch and the branch is named in the result.`
     : "";
@@ -98,7 +93,7 @@ If the target is already known, handle it yourself. Reserve this tool for open-e
 - If an agent's description says it should be used proactively, try to use it without the user having to ask for it first.
 - Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").
 - Use thinking to control extended thinking level.
-- Use inherit_context if the agent needs the parent conversation history.${isolationGuideline}${scheduleGuideline}
+- Use inherit_context if the agent needs the parent conversation history.${isolationGuideline}
 
 ## Writing the prompt
 
@@ -119,7 +114,6 @@ Terse command-style prompts produce shallow, generic work.
       compactTypeList: buildCompactTypeListText,
       agentDir: getAgentDir,
       isolationGuideline: () => isolationGuideline,
-      scheduleGuideline: () => scheduleGuideline,
     };
     return template.replace(/\{\{(\w+)\}\}/g, (raw, name: string) => {
       if (vars[name]) return vars[name]();

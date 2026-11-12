@@ -3,7 +3,7 @@ import { registerAgents } from "../src/agents/agent-types.js";
 import { type AgentToolDeps, createAgentTool } from "../src/tool/agent-tool.js";
 import { testAgents } from "./helpers/test-agents.js";
 
-function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: Record<string, any>; scheduler?: any } = {}) {
+function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: Record<string, any> } = {}) {
   const records: Record<string, any> = over.records ?? {};
   const manager = {
     getRecord: vi.fn((id: string) => records[id]),
@@ -18,24 +18,17 @@ function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: 
     listAgents: vi.fn(() => []),
     spawnAndWait: vi.fn(),
   };
-  const scheduler = over.scheduler ?? {
-    isActive: vi.fn(() => true),
-    addJob: vi.fn(() => ({ id: "job1", name: "d", scheduleType: "interval" })),
-    getNextRun: vi.fn(() => "soon"),
-  };
   const notifier = { addToBatch: vi.fn() };
   const startBackgroundResume = vi.fn();
   const pi = { events: { emit: vi.fn(), on: vi.fn() } } as any;
   const deps: AgentToolDeps = {
     manager: manager as any,
-    scheduler,
     widget: { setUICtx: vi.fn(), ensureTimer: vi.fn(), update: vi.fn(), markFinished: vi.fn() } as any,
     fleet: { ensureTimer: vi.fn(), update: vi.fn(), onAgentFinished: vi.fn() } as any,
     notifier,
     startBackgroundResume,
     reloadCustomAgents: vi.fn(),
     settings: {
-      schedulingEnabled: true,
       toolDescriptionMode: "compact",
       backgroundByDefault: true,
       defaultJoinMode: "smart",
@@ -61,7 +54,7 @@ function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: 
       ctx,
     );
   const text = (r: any) => r.content[0].text as string;
-  return { run, text, manager, scheduler, notifier, startBackgroundResume, pi };
+  return { run, text, manager, notifier, startBackgroundResume, pi };
 }
 
 describe("agent tool resume", () => {
@@ -150,35 +143,6 @@ describe("agent tool resume", () => {
     const out = text(await run({ resume: "a1" }));
     expect(out).toContain("Agent queued in background.");
     expect(out).toContain("Position: queued (max 4 concurrent)");
-  });
-});
-
-describe("agent tool schedule", () => {
-  it("refuses when scheduling is disabled", async () => {
-    const { run, text } = setup({ settings: { schedulingEnabled: false } });
-    expect(text(await run({ schedule: "5m" }))).toContain("Scheduling is disabled");
-  });
-
-  it("refuses an inactive scheduler", async () => {
-    const { run, text } = setup({
-      scheduler: { isActive: () => false, addJob: vi.fn(), getNextRun: vi.fn() },
-    });
-    expect(text(await run({ schedule: "5m" }))).toContain("Scheduler is not active");
-  });
-
-  it("registers a job", async () => {
-    const { run, text, scheduler } = setup();
-    const out = text(await run({ schedule: "5m" }));
-    expect(out).toContain('Scheduled "d" (id: job1, type: interval). Next run: soon.');
-    expect(scheduler.addJob).toHaveBeenCalledWith(expect.objectContaining({ schedule: "5m", prompt: "p" }));
-  });
-
-  it("returns an addJob error as text", async () => {
-    const { run, text, scheduler } = setup();
-    scheduler.addJob.mockImplementation(() => {
-      throw new Error("bad cron");
-    });
-    expect(text(await run({ schedule: "x" }))).toBe("bad cron");
   });
 });
 

@@ -29,7 +29,6 @@
     "typebox": "*"
   },
   "dependencies": {
-    "croner": "^10.0.1",
     "nanoid": "^5.1.16"
   },
   "scripts": {

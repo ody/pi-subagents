@@ -41,7 +41,6 @@ function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; l
 
   registerAgentsCommand(pi, {
     manager: { listAgents: () => [], getActivity: () => undefined },
-    scheduler: { isActive: () => false, list: () => [] },
     reloadCustomAgents: (strict?: boolean) => registerAgents(loadCustomAgents(cwd, strict)),
     settings: { showCost: false, viewerMarkdown: "all" },
     chooseViewerMarkdown: () => {},

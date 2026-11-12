@@ -10,7 +10,6 @@ import type { AgentManager } from "../manager/agent-manager.js";
 import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../platform/output-file.js";
 import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { getMaxSubagentDepth, setMaxSubagentDepth } from "../tool/nested-tools.js";
-import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
 
 export interface SettingsMenuDeps {
@@ -19,7 +18,6 @@ export interface SettingsMenuDeps {
     SettingsAppliers,
     | "setDefaultJoinMode"
     | "setBackgroundByDefault"
-    | "setSchedulingEnabled"
     | "setStrictAgentFiles"
     | "setToolDescriptionMode"
     | "setFleetView"
@@ -31,7 +29,6 @@ export interface SettingsMenuDeps {
     | "setViewerMarkdown"
   >;
   manager: Pick<AgentManager, "getMaxConcurrent" | "getMaxConcurrentForeground" | "setMaxConcurrent" | "setMaxConcurrentForeground">;
-  scheduler: Pick<SubagentScheduler, "stop">;
   settingsPersist: Pick<SettingsPersistence, "notifyApplied">;
   isStrictAgentFiles: () => boolean;
 }
@@ -63,13 +60,13 @@ function readNumericSetting(id: NumericSettingId, manager: SettingsMenuDeps["man
 
 type SettingId =
   | "maxConcurrent" | "maxConcurrentForeground" | "defaultMaxTurns" | "graceTurns" | "maxSubagentDepth"
-  | "joinMode" | "backgroundByDefault" | "schedulingEnabled" | "scopeModels" | "strictAgentFiles"
+  | "joinMode" | "backgroundByDefault" | "scopeModels" | "strictAgentFiles"
   | "outputTranscript" | "worktreeIsolation"
   | "toolDescriptionMode" | "reportUsage" | "showCost" | "showModel" | "viewerMarkdown"
   | "fleetView" | "agentMentions" | "rememberAgents" | "widgetMode";
 
 function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Map<string, (value: string) => void> {
-  const { settings, appliers, manager, scheduler, settingsPersist } = deps;
+  const { settings, appliers, manager, settingsPersist } = deps;
   const handlers: Record<SettingId, (value: string) => void> = {
     maxConcurrent: (value) => {
       const n = parseInt(value, 10);
@@ -129,19 +126,6 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
           ? "agent calls run in the background unless they pass run_in_background: false"
           : "agent calls block and return inline unless they pass run_in_background: true",
       );
-    },
-    schedulingEnabled: (value) => {
-      const enabled = value === "on";
-      if (enabled === settings.schedulingEnabled) {
-        ctx.ui.notify(`Scheduling already ${enabled ? "enabled" : "disabled"}.`, "info");
-      } else {
-        appliers.setSchedulingEnabled(enabled);
-        if (!enabled) scheduler.stop();
-        settingsPersist.notifyApplied(
-          ctx,
-          `Scheduling ${enabled ? "enabled" : "disabled"}. Tool spec change takes effect on next pi session.`,
-        );
-      }
     },
     scopeModels: (value) => {
       const enabled = value === "on";
@@ -286,13 +270,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         label: "Background by default",
         description: "An agent call that doesn't say runs detached (off = blocks the turn and returns inline)",
         currentValue: settings.backgroundByDefault ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "schedulingEnabled",
-        label: "Scheduling",
-        description: "Schedule subagent feature (off removes `schedule` param from agent tool spec on next pi session)",
-        currentValue: settings.schedulingEnabled ? "on" : "off",
         values: ["on", "off"],
       },
       {

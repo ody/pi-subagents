@@ -30,7 +30,6 @@ afterEach(() => {
 const appliers = {
   setDefaultJoinMode: vi.fn(),
   setBackgroundByDefault: vi.fn(),
-  setSchedulingEnabled: vi.fn(),
   setStrictAgentFiles: vi.fn(),
   setToolDescriptionMode: vi.fn(),
   setFleetView: vi.fn(),
@@ -47,17 +46,14 @@ const manager = {
   setMaxConcurrent: vi.fn(),
   setMaxConcurrentForeground: vi.fn(),
 };
-const scheduler = { stop: vi.fn() };
 const notifyApplied = vi.fn();
 const notify = vi.fn();
-let schedulingEnabled = false;
 
 const ctx = { ui: { notify } } as unknown as ExtensionCommandContext;
 const deps = {
-  get settings() { return { schedulingEnabled } as SettingsMenuDeps["settings"]; },
+  get settings() { return {} as SettingsMenuDeps["settings"]; },
   appliers,
   manager,
-  scheduler,
   settingsPersist: { notifyApplied },
   isStrictAgentFiles: () => false,
 } as SettingsMenuDeps;
@@ -74,7 +70,6 @@ function lastMessage(): string {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  schedulingEnabled = false;
 });
 
 describe("applySettingValue numeric settings", () => {
@@ -168,33 +163,6 @@ describe("applySettingValue enum and toggle settings", () => {
     apply("backgroundByDefault", value);
     expect(appliers.setBackgroundByDefault).toHaveBeenCalledWith(value === "on");
     expect(lastMessage()).toBe(message);
-  });
-
-  it("schedulingEnabled on", () => {
-    apply("schedulingEnabled", "on");
-    expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(true);
-    expect(scheduler.stop).not.toHaveBeenCalled();
-    expect(lastMessage()).toBe("Scheduling enabled. Tool spec change takes effect on next pi session.");
-  });
-
-  it("schedulingEnabled off stops the scheduler", () => {
-    schedulingEnabled = true;
-    apply("schedulingEnabled", "off");
-    expect(appliers.setSchedulingEnabled).toHaveBeenCalledWith(false);
-    expect(scheduler.stop).toHaveBeenCalledTimes(1);
-    expect(lastMessage()).toBe("Scheduling disabled. Tool spec change takes effect on next pi session.");
-  });
-
-  it.each([
-    [false, "off", "Scheduling already disabled."],
-    [true, "on", "Scheduling already enabled."],
-  ])("schedulingEnabled unchanged (%s -> %s) notifies via ui", (current, value, message) => {
-    schedulingEnabled = current;
-    apply("schedulingEnabled", value);
-    expect(notify).toHaveBeenCalledWith(message, "info");
-    expect(appliers.setSchedulingEnabled).not.toHaveBeenCalled();
-    expect(scheduler.stop).not.toHaveBeenCalled();
-    expect(notifyApplied).not.toHaveBeenCalled();
   });
 
   it("scopeModels", () => {

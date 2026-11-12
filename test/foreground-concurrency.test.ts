@@ -157,8 +157,8 @@ describe("maxConcurrentForeground", () => {
     manager.setMaxConcurrentForeground(1);
 
     void fg(manager, "holder");
-    void fg(manager, "scheduled", { bypassQueue: true });
-    expect(recordFor(manager, "scheduled").status).toBe("running");
+    void fg(manager, "bypass", { bypassQueue: true });
+    expect(recordFor(manager, "bypass").status).toBe("running");
 
     void fg(manager, "next");
     expect(recordFor(manager, "next").status).toBe("queued");

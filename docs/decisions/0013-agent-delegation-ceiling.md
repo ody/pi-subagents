@@ -10,7 +10,7 @@ This builds on ADR 0011 (capability policy) and ADR 0015 (ephemeral agents), and
 
 ## Decision
 
-A nested spawn is bounded by its parent. In this rule the spawner is the owner as ADR 0007 defines it. Top-level, `@handle`, RPC, and scheduler spawns have no parent and are bounded by the capability policy alone.
+A nested spawn is bounded by its parent. In this rule the spawner is the owner as ADR 0007 defines it. Top-level, `@handle`, and RPC spawns have no parent and are bounded by the capability policy alone.
 
 - The parent's set is its tools, extensions, and skills after the capability policy and its own ceiling, so the bound is transitive. It is recorded on the parent's `AgentRecord` when its session is built.
 - A child's values are compared with the parent's using the capability policy's expansion rules: wildcards, `true`, and whole-extension selectors expand first and are narrowed, never refused. The parent's `disallowed_tools` and `exclude_extensions` apply to the child, and `skills: true` under a parent list narrows to that list.

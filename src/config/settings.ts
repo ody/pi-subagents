@@ -13,7 +13,6 @@ export interface SubagentsSettings {
   graceTurns?: number;
   defaultJoinMode?: JoinMode;
   backgroundByDefault?: boolean;
-  schedulingEnabled?: boolean;
   scopeModels?: boolean;
   strictAgentFiles?: boolean;
   toolDescriptionMode?: ToolDescriptionMode;
@@ -40,7 +39,6 @@ export interface SettingsAppliers {
   setGraceTurns: (n: number) => void;
   setDefaultJoinMode: (mode: JoinMode) => void;
   setBackgroundByDefault: (b: boolean) => void;
-  setSchedulingEnabled: (b: boolean) => void;
   setScopeModels: (enabled: boolean) => void;
   setStrictAgentFiles: (b: boolean) => void;
   setToolDescriptionMode: (mode: ToolDescriptionMode) => void;
@@ -115,9 +113,6 @@ function sanitize(raw: unknown): SubagentsSettings {
   }
   if (typeof r.backgroundByDefault === "boolean") {
     out.backgroundByDefault = r.backgroundByDefault;
-  }
-  if (typeof r.schedulingEnabled === "boolean") {
-    out.schedulingEnabled = r.schedulingEnabled;
   }
   if (typeof r.scopeModels === "boolean") {
     out.scopeModels = r.scopeModels;
@@ -205,7 +200,6 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (typeof s.maxSubagentDepth === "number") appliers.setMaxSubagentDepth(s.maxSubagentDepth);
   if (s.defaultJoinMode) appliers.setDefaultJoinMode(s.defaultJoinMode);
   if (typeof s.backgroundByDefault === "boolean") appliers.setBackgroundByDefault(s.backgroundByDefault);
-  if (typeof s.schedulingEnabled === "boolean") appliers.setSchedulingEnabled(s.schedulingEnabled);
   if (typeof s.scopeModels === "boolean") appliers.setScopeModels(s.scopeModels);
   if (typeof s.strictAgentFiles === "boolean") appliers.setStrictAgentFiles(s.strictAgentFiles);
   if (s.toolDescriptionMode) appliers.setToolDescriptionMode(s.toolDescriptionMode);

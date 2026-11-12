@@ -20,8 +20,6 @@ import { createAgentTool } from "./tool/agent-tool.js";
 import { setMaxSubagentDepth } from "./tool/nested-tools.js";
 import { type RpcHandle, registerRpcHandlers } from "./triggers/cross-extension-rpc.js";
 import { registerMentionInput } from "./triggers/mention-input.js";
-import { SubagentScheduler } from "./triggers/schedule.js";
-import { resolveStorePath, ScheduleStore } from "./triggers/schedule-store.js";
 import { createSpawnFunnel } from "./triggers/spawn-funnel.js";
 import { type AgentMentionMode, type JoinMode, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
@@ -132,21 +130,6 @@ export default function (pi: ExtensionAPI) {
   let rpcHandle: RpcHandle | undefined;
   let mentionProviderRegistered = false;
 
-  const scheduler = new SubagentScheduler();
-
-  function startScheduler(ctx: ExtensionContext) {
-    try {
-      const sessionId = ctx.sessionManager?.getSessionId?.();
-      if (!sessionId) return;
-      const path = resolveStorePath(ctx.cwd, sessionId);
-      const store = new ScheduleStore(path);
-      scheduler.start(pi, ctx, manager, store);
-      pi.events.emit("subagents:scheduler_ready", { sessionId, jobCount: store.list().length });
-    } catch (err) {
-      console.warn("[pi-subagents] Failed to start scheduler:", err);
-    }
-  }
-
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
     if (ctx.hasUI) {
@@ -176,7 +159,6 @@ export default function (pi: ExtensionAPI) {
       });
       pi.events.emit("subagents:ready", {});
     }
-    if (isSchedulingEnabled() && !scheduler.isActive()) startScheduler(ctx);
     if (ctx.mode === "tui" && !mentionProviderRegistered) {
       mentionProviderRegistered = true;
       ctx.ui.addAutocompleteProvider(current =>
@@ -194,7 +176,6 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_before_switch", () => {
     manager.clearCompleted(true);
-    scheduler.stop();
   });
 
   pi.on("session_shutdown", async () => {
@@ -207,7 +188,6 @@ export default function (pi: ExtensionAPI) {
     if (ownsManagerRegistry && (globalThis as any)[MANAGER_KEY] === registryEntry) {
       delete (globalThis as any)[MANAGER_KEY];
     }
-    scheduler.stop();
     manager.abortAll();
     notifier.dispose();
     fleet.dispose();
@@ -218,12 +198,12 @@ export default function (pi: ExtensionAPI) {
     reportUsage: boolean; showCost: boolean; showModel: boolean;
     viewerMarkdown: ViewerMarkdownMode; widgetMode: WidgetMode; fleetView: boolean;
     agentMentionMode: AgentMentionMode; defaultJoinMode: JoinMode; backgroundByDefault: boolean;
-    schedulingEnabled: boolean; toolDescriptionMode: ToolDescriptionMode; strictAgentFiles: boolean;
+    toolDescriptionMode: ToolDescriptionMode; strictAgentFiles: boolean;
     setReportUsageFlag(b: boolean): void; setShowCostFlag(b: boolean): void;
     setShowModelFlag(b: boolean): void; setViewerMarkdownMode(m: ViewerMarkdownMode): void;
     setWidgetModeFlag(m: WidgetMode): void; setFleetView(b: boolean): void;
     setAgentMentionMode(m: AgentMentionMode): void; setJoinMode(m: JoinMode): void;
-    setBgDefault(b: boolean): void; setScheduling(b: boolean): void;
+    setBgDefault(b: boolean): void;
     setToolDescMode(m: ToolDescriptionMode): void; setStrictAgentFiles(b: boolean): void;
   } {
     return {
@@ -236,7 +216,6 @@ export default function (pi: ExtensionAPI) {
       agentMentionMode: "model",
       defaultJoinMode: "smart",
       backgroundByDefault: true,
-      schedulingEnabled: true,
       toolDescriptionMode: "full",
       strictAgentFiles,
       setReportUsageFlag(b) {
@@ -251,7 +230,6 @@ export default function (pi: ExtensionAPI) {
       setAgentMentionMode(m) { this.agentMentionMode = m; },
       setJoinMode(m) { this.defaultJoinMode = m; },
       setBgDefault(b) { this.backgroundByDefault = b; },
-      setScheduling(b) { this.schedulingEnabled = b; },
       setToolDescMode(m) { this.toolDescriptionMode = m; },
       setStrictAgentFiles(b) { this.strictAgentFiles = b; },
     };
@@ -274,9 +252,6 @@ export default function (pi: ExtensionAPI) {
 
   function setBackgroundByDefault(b: boolean) { settings.setBgDefault(b); }
 
-  function isSchedulingEnabled(): boolean { return settings.schedulingEnabled; }
-  function setSchedulingEnabled(b: boolean) { settings.setScheduling(b); }
-
   function setToolDescriptionMode(mode: ToolDescriptionMode): void { settings.setToolDescMode(mode); }
 
   const startBackgroundResume = createBackgroundResume({ pi, manager, notifier, widget, fleet, settings });
@@ -294,7 +269,6 @@ export default function (pi: ExtensionAPI) {
     setGraceTurns,
     setDefaultJoinMode,
     setBackgroundByDefault,
-    setSchedulingEnabled,
     setScopeModels: setScopeModelsEnabled,
     setStrictAgentFiles: (b) => { strictAgentFiles = b; },
     setToolDescriptionMode: setToolDescriptionMode,
@@ -314,7 +288,6 @@ export default function (pi: ExtensionAPI) {
 
   const agentTool = createAgentTool(pi, {
     manager,
-    scheduler,
     widget,
     fleet,
     notifier,
@@ -343,7 +316,6 @@ export default function (pi: ExtensionAPI) {
 
   registerAgentsCommand(pi, {
     manager,
-    scheduler,
     reloadCustomAgents,
     settings,
     chooseViewerMarkdown,
@@ -351,7 +323,6 @@ export default function (pi: ExtensionAPI) {
       settings,
       appliers,
       manager,
-      scheduler,
       settingsPersist,
       isStrictAgentFiles: () => strictAgentFiles,
     }),
