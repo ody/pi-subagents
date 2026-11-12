@@ -185,7 +185,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       const indent = "  ".repeat(n.depth);
       if (n.kind === "main") return `${indent}main`;
       const a = n.record;
-      const dn = getDisplayName(a.type);
+      const dn = getDisplayName(a);
       const dur = formatDuration(a.startedAt, a.completedAt);
       const detached = n.orphan ? " · detached" : "";
       return `${indent}${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}${detached}`;

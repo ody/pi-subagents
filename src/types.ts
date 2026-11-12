@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import type { EffectiveCapabilities } from "./config/capability-policy.js";
 import type { LifetimeUsage, SessionLike } from "./usage.js";
 
 export type { ThinkingLevel };
@@ -109,6 +110,10 @@ export interface AgentRecord {
   parentAgentId?: string;
   maxSubagentDepth?: number;
   rootSessionId?: string;
+  filtered?: string[];
+  displayName?: string;
+  promptMode?: "replace" | "append";
+  capabilities?: EffectiveCapabilities;
 }
 
 export type EffectiveThinkingLevel = ThinkingLevel | "off";

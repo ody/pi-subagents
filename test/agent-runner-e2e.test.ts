@@ -7,6 +7,7 @@ import { registerAgents } from "../src/agents/agent-types.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { extensionCanonicalName } from "../src/session/extension-scope.js";
 import type { AgentConfig } from "../src/types.js";
+import { registeredCapability } from "./helpers/capability.js";
 import { registerFauxProvider } from "./helpers/pi-ai.js";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -69,6 +70,7 @@ describe("agent-runner end-to-end (real pi-mono session + real extension)", () =
     try {
       await runAgent(ctx, "e2e", "go", {
         pi: makePi(),
+        capability: registeredCapability("e2e"),
         model,
         onSessionCreated: (s) => {
           active = s.getActiveToolNames();

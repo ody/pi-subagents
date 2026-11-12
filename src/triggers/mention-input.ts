@@ -76,7 +76,7 @@ async function resumeTombstone(
 
   deps.reloadCustomAgents();
   const dispatch = resolveSpawnType(entry.type);
-  if (!dispatch.ok || dispatch.fellBackFrom !== undefined) {
+  if (!dispatch.ok) {
     ctx.ui.notify(`Could not resume ${target} — the ${entry.type} agent is no longer available.`, "warning");
     return handled;
   }

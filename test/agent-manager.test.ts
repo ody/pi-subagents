@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AgentManager } from "../src/manager/agent-manager.js";
 import type { AgentRecord } from "../src/types.js";
+import { GrantingAgentManager as AgentManager } from "./helpers/capability.js";
 
 vi.mock("../src/session/agent-runner.js", () => ({
   runAgent: vi.fn(),

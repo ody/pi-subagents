@@ -3,20 +3,17 @@ import {
   BUILTIN_TOOL_NAMES,
   getAgentConfig,
   getAvailableTypes,
+  getAvailableTypesIn,
   getConfig,
   getDefaultAgentNames,
   getToolNamesForType,
   getUserAgentNames,
-  isDefaultsDisabled,
   isValidType,
-  NO_FALLBACK,
   registerAgents,
   resolveEnabledTypeIn,
   resolveSpawnType,
   resolveSpawnTypeIn,
   resolveType,
-  setDefaultsDisabled,
-  setFallbackSubagent,
 } from "../src/agents/agent-types.js";
 import { DEFAULT_AGENTS } from "../src/agents/default-agents.js";
 import type { AgentConfig } from "../src/types.js";
@@ -129,58 +126,6 @@ describe("agent type registry", () => {
       expect(BUILTIN_TOOL_NAMES).toContain("find");
       expect(BUILTIN_TOOL_NAMES).toContain("ls");
       expect(BUILTIN_TOOL_NAMES.length).toBeGreaterThanOrEqual(7);
-    });
-  });
-
-  describe("disable defaults", () => {
-    afterEach(() => {
-      setDefaultsDisabled(false);
-      registerAgents(new Map());
-    });
-
-    it("defaults to enabled", () => {
-      expect(isDefaultsDisabled()).toBe(false);
-    });
-
-    it("registerAgents skips DEFAULT_AGENTS when disabled", () => {
-      setDefaultsDisabled(true);
-      registerAgents(new Map());
-
-      expect(getAvailableTypes()).toEqual([]);
-      expect(isValidType("general-purpose")).toBe(false);
-      expect(isValidType("Explore")).toBe(false);
-      expect(isValidType("Plan")).toBe(false);
-    });
-
-    it("user agents are unaffected when defaults are disabled", () => {
-      setDefaultsDisabled(true);
-      registerAgents(new Map([["auditor", makeAgentConfig({ name: "auditor" })]]));
-
-      expect(getAvailableTypes()).toEqual(["auditor"]);
-      expect(isValidType("auditor")).toBe(true);
-      expect(getDefaultAgentNames()).toEqual([]);
-    });
-
-    it("re-enabling restores defaults on next registerAgents", () => {
-      setDefaultsDisabled(true);
-      registerAgents(new Map());
-      expect(isValidType("general-purpose")).toBe(false);
-
-      setDefaultsDisabled(false);
-      registerAgents(new Map());
-      expect(isValidType("general-purpose")).toBe(true);
-      expect(isValidType("Explore")).toBe(true);
-      expect(isValidType("Plan")).toBe(true);
-    });
-
-    it("getConfig falls back to the hardcoded config when defaults are disabled and no user agents exist", () => {
-      setDefaultsDisabled(true);
-      registerAgents(new Map());
-
-      const config = getConfig("general-purpose");
-      expect(config.displayName).toBe("Agent");
-      expect(config.builtinToolNames).toEqual(BUILTIN_TOOL_NAMES);
-      expect(config.promptMode).toBe("append");
     });
   });
 
@@ -335,10 +280,8 @@ describe("agent type registry", () => {
   });
 });
 
-describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
+describe("resolveSpawnType — an unresolved type is an error", () => {
   afterEach(() => {
-    setFallbackSubagent(undefined);
-    setDefaultsDisabled(false);
     registerAgents(new Map());
   });
 
@@ -353,16 +296,8 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
     expect(resolveSpawnType("SCOUT")).toEqual({ ok: true, type: "scout" });
   });
 
-  it("falls back to general-purpose when unset, reporting what was asked for", () => {
+  it("rejects unknown types and lists the enabled ones", () => {
     registerAgents(roster());
-    expect(resolveSpawnType("typoo")).toEqual({
-      ok: true, type: "general-purpose", fellBackFrom: "typoo",
-    });
-  });
-
-  it("rejects unknown types under `none` and names what is available", () => {
-    registerAgents(roster());
-    setFallbackSubagent(NO_FALLBACK);
     const r = resolveSpawnType("typoo");
     expect(r.ok).toBe(false);
     if (r.ok) throw new Error("expected rejection");
@@ -373,10 +308,6 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
 
   it("treats a disabled type as unresolvable, not as a valid name", () => {
     registerAgents(roster());
-    expect(resolveSpawnType("retired")).toEqual({
-      ok: true, type: "general-purpose", fellBackFrom: "retired",
-    });
-    setFallbackSubagent(NO_FALLBACK);
     expect(resolveSpawnType("retired").ok).toBe(false);
   });
 
@@ -386,36 +317,11 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
       ["scout", makeAgentConfig({ name: "scout" })],
     ]));
     expect(resolveSpawnType("scout")).toEqual({ ok: true, type: "scout" });
-    expect(resolveSpawnType("SCOUT").ok).toBe(true);
-    expect(resolveSpawnType("SCOUT")).toEqual({
-      ok: true, type: "general-purpose", fellBackFrom: "SCOUT",
-    });
-  });
-
-  it("routes unresolvable types to a named fallback agent", () => {
-    registerAgents(roster());
-    setFallbackSubagent("router");
-    expect(resolveSpawnType("typoo")).toEqual({
-      ok: true, type: "router", fellBackFrom: "typoo",
-    });
-  });
-
-  it("fails loudly when the configured fallback is itself unusable", () => {
-    registerAgents(roster());
-    setFallbackSubagent("retired");
-    const r = resolveSpawnType("typoo");
-    expect(r.ok).toBe(false);
-    if (r.ok) throw new Error("expected rejection");
-    expect(r.message).toContain("fallbackSubagent");
+    expect(resolveSpawnType("SCOUT").ok).toBe(false);
   });
 
   it("treats a missing type like any other unresolvable one", () => {
     registerAgents(roster());
-    for (const empty of ["", "   ", undefined]) {
-      expect(resolveSpawnType(empty)).toMatchObject({ ok: true, type: "general-purpose" });
-    }
-
-    setFallbackSubagent(NO_FALLBACK);
     for (const empty of ["", "   ", undefined]) {
       const r = resolveSpawnType(empty);
       expect(r.ok).toBe(false);
@@ -424,14 +330,21 @@ describe("resolveSpawnType — fail-closed dispatch (#183)", () => {
     }
   });
 
-  it("resolves strictly regardless of the setting, for nested delegation", () => {
+  it("resolves strictly for nested delegation too", () => {
     const registry = roster();
-    setFallbackSubagent("router");
     expect(resolveEnabledTypeIn(registry, "typoo")).toBeUndefined();
     expect(resolveEnabledTypeIn(registry, "retired")).toBeUndefined();
     expect(resolveEnabledTypeIn(registry, " SCOUT ")).toBe("scout");
-    expect(resolveSpawnTypeIn(registry, "typoo")).toEqual({
-      ok: true, type: "router", fellBackFrom: "typoo",
-    });
+    expect(resolveSpawnTypeIn(registry, "typoo").ok).toBe(false);
+  });
+
+  it("yields no types for an empty registry and an error for any type", () => {
+    const empty = new Map<string, AgentConfig>();
+    expect(getAvailableTypesIn(empty)).toEqual([]);
+    const r = resolveSpawnTypeIn(empty, "anything");
+    expect(r.ok).toBe(false);
+    if (r.ok) throw new Error("expected rejection");
+    expect(r.message).toContain('Unknown or disabled agent type: "anything"');
+    expect(r.message).toContain("Available: (none)");
   });
 });

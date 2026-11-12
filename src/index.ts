@@ -1,7 +1,7 @@
 // Size: extension entry point; it builds the shared closure state (manager, widget, fleet, settings) and wires the feature modules to it, which has to happen in one place.
 
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, getAvailableTypes, getConfig, registerAgents, setDefaultsDisabled, setFallbackSubagent } from "./agents/agent-types.js";
+import { getAgentConfig, getAvailableTypes, getConfig, registerAgents } from "./agents/agent-types.js";
 import { loadCustomAgents } from "./agents/custom-agents.js";
 import { setScopeModelsEnabled } from "./config/model-scope.js";
 import { setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "./config/runner-defaults.js";
@@ -117,7 +117,7 @@ export default function (pi: ExtensionAPI) {
   const registryEntry = {
     waitForAll: () => manager.waitForAll(),
     hasRunning: () => manager.hasRunning(),
-    spawn: spawnTopLevel,
+    spawn: (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => spawnTopLevel(piRef, ctxRef, type, prompt, options),
     getRecord: (id: string) => {
       const record = manager.getRecord(id);
       return record !== undefined && isTopLevelAgent(record) ? record : undefined;
@@ -277,11 +277,6 @@ export default function (pi: ExtensionAPI) {
   function isSchedulingEnabled(): boolean { return settings.schedulingEnabled; }
   function setSchedulingEnabled(b: boolean) { settings.setScheduling(b); }
 
-  function setDisableDefaultAgents(b: boolean): void {
-    setDefaultsDisabled(b);
-    reloadCustomAgents();
-  }
-
   function setToolDescriptionMode(mode: ToolDescriptionMode): void { settings.setToolDescMode(mode); }
 
   const startBackgroundResume = createBackgroundResume({ pi, manager, notifier, widget, fleet, settings });
@@ -302,7 +297,6 @@ export default function (pi: ExtensionAPI) {
     setSchedulingEnabled,
     setScopeModels: setScopeModelsEnabled,
     setStrictAgentFiles: (b) => { strictAgentFiles = b; },
-    setDisableDefaultAgents: setDisableDefaultAgents,
     setToolDescriptionMode: setToolDescriptionMode,
     setFleetView: setFleetViewEnabled,
     setAgentMentions: setAgentMentionMode,
@@ -311,7 +305,6 @@ export default function (pi: ExtensionAPI) {
     setOutputTranscript: setOutputTranscriptDefault,
     setWorktreeIsolation: setWorktreeIsolationEnabled,
     setMaxSubagentDepth: setMaxSubagentDepth,
-    setFallbackSubagent: setFallbackSubagent,
     setReportUsage,
     setShowCost,
     setShowModel,

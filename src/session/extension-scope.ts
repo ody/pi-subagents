@@ -239,15 +239,18 @@ export function installExtensionToolScope(
     extNames: Set<string>;
     narrowing: Map<string, Set<string>>;
     readmitToolNames: Set<string>;
+    deniedExtNames?: Set<string>;
+    noExtensionTools?: boolean;
   },
 ): void {
-  const { loader, toolNames, disallowedSet, extNames, narrowing, readmitToolNames } = ctx;
+  const { loader, toolNames, disallowedSet, extNames, narrowing, readmitToolNames, deniedExtNames, noExtensionTools } = ctx;
 
   const inScope = (): Set<string> => {
     const keep = new Set(toolNames.filter((t) => !disallowedSet?.has(t)));
     const optInActive = extNames.size > 0;
-    for (const extension of loader.getExtensions().extensions) {
+    for (const extension of noExtensionTools ? [] : loader.getExtensions().extensions) {
       const canons = extensionCanonicalNames(extension.path);
+      if (canons.some((c) => deniedExtNames?.has(c))) continue;
       if (optInActive && !canons.some((c) => extNames.has(c))) continue;
       const narrowed = canons.map((c) => narrowing.get(c)).find(Boolean);
       for (const name of extension.tools.keys()) {

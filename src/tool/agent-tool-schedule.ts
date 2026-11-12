@@ -48,7 +48,7 @@ export function scheduleConflict(
 export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentInput) {
   const { scheduler, settings } = deps;
   const { params, call } = input;
-  const { requestedType, fallbackNote, isolated, isolation } = call;
+  const { subagentType, isolated, isolation } = call;
 
   const conflict = scheduleConflict(params, {
     schedulingEnabled: settings.schedulingEnabled,
@@ -61,7 +61,7 @@ export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentI
       name: params.description,
       description: params.description,
       schedule: params.schedule as string,
-      subagent_type: requestedType,
+      subagent_type: subagentType,
       prompt: params.prompt,
       model: params.model,
       thinking: params.thinking as ThinkingLevel | undefined,
@@ -72,7 +72,7 @@ export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentI
     });
     const next = scheduler.getNextRun(job.id);
     return textResult(
-      `${fallbackNote}Scheduled "${job.name}" (id: ${job.id}, type: ${job.scheduleType}). ` +
+      `Scheduled "${job.name}" (id: ${job.id}, type: ${job.scheduleType}). ` +
       `Next run: ${next ?? "(unknown)"}. ` +
       `Manage via /agents → Scheduled jobs.`,
     );

@@ -229,7 +229,7 @@ export class ConversationViewer implements Component {
 
   private headerLine(): string {
     const th = this.theme;
-    const modeLabel = getPromptModeLabel(this.record.type);
+    const modeLabel = getPromptModeLabel(this.record);
     const modeTag = modeLabel ? ` ${th.fg("dim", `(${modeLabel})`)}` : "";
     const statusIcon = this.record.status === "running"
       ? th.fg("accent", "●")
@@ -251,7 +251,7 @@ export class ConversationViewer implements Component {
     const cost = this.showCost ? formatCost(getLifetimeCost(this.record.lifetimeUsage)) : "";
     if (cost) headerParts.push(cost);
 
-    return `${statusIcon} ${renderAgentName(this.record.type, th, { bold: true })}${modeTag}  ${th.fg("muted", this.record.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`;
+    return `${statusIcon} ${renderAgentName(this.record, th, { bold: true })}${modeTag}  ${th.fg("muted", this.record.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`;
   }
 
   private composerFooter(innerW: number): string[] {
@@ -377,7 +377,8 @@ export class ConversationViewer implements Component {
   private invocationLine(): string | undefined {
     const { modelName, modelId, tags } = buildInvocationTags(this.record.invocation);
     const model = modelId ?? modelName;
-    const parts = model ? [model, ...tags] : tags;
+    const filtered = this.record.filtered?.length ? [`policy removed ${this.record.filtered.join(", ")}`] : [];
+    const parts = [...(model ? [model, ...tags] : tags), ...filtered];
     if (parts.length === 0) return undefined;
     return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
   }

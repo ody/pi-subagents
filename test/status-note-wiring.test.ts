@@ -7,6 +7,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
+import { grant } from "./helpers/capability.js";
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -142,6 +143,7 @@ describe("status note reaches the parent through the real handlers", () => {
     pi.appendEntry.mockClear();
     pi.sendMessage.mockClear();
     const id = rawManager.spawn(pi, ctx(), "general-purpose", "nested", {
+      capability: grant(),
       description: "nested child",
       isBackground: true,
       parentAgentId: topId,
@@ -260,6 +262,7 @@ describe("subagents:compacted", () => {
     pi.events.emit.mockClear();
 
     rawManager.spawn(pi, ctx(), "general-purpose", "nested", {
+      capability: grant(),
       description: "nested child",
       isBackground: true,
       parentAgentId: parentId,

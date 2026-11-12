@@ -2,11 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildAgentRegistry, getAvailableTypes, registerAgents, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { buildAgentRegistry, getAvailableTypes, registerAgents } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import { setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { encodeCwd } from "../src/platform/output-file.js";
 import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/tool/nested-tools.js";
+import { grant } from "./helpers/capability.js";
 
 let cwd: string;
 let manager: NestedAgentManager;
@@ -79,7 +80,15 @@ beforeEach(() => {
     spawn,
     spawnAndWait,
     awaitStartup: vi.fn(async () => {}),
-    getRecord: (id: string) => records.get(id),
+    getRecord: (id: string) => {
+      const record = records.get(id);
+      if (id !== "parent-1") return record;
+      if (record) {
+        record.capabilities ??= grant().capabilities;
+        return record;
+      }
+      return { id, capabilities: grant().capabilities };
+    },
     resume: vi.fn(),
     abort: vi.fn((id: string) => {
       const record = records.get(id);
@@ -488,22 +497,17 @@ describe("child-safe nested agent tools", () => {
     settleChild?.();
   });
 
-  it("still rejects unknown types when the project configures a fallback", async () => {
-    setFallbackSubagent("scout");
-    try {
-      const [agent] = tools(["scout"]);
-      const result = await execute(agent, {
-        subagent_type: "definitely-missing",
-        description: "typo",
-        prompt: "Do work",
-      });
+  it("rejects unknown types", async () => {
+    const [agent] = tools(["scout"]);
+    const result = await execute(agent, {
+      subagent_type: "definitely-missing",
+      description: "typo",
+      prompt: "Do work",
+    });
 
-      expect(result.isError).toBe(true);
-      expect(result.content[0].text).toContain("Unknown or disabled nested agent type");
-      expect(spawnAndWait).not.toHaveBeenCalled();
-    } finally {
-      setFallbackSubagent(undefined);
-    }
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("Unknown or disabled nested agent type");
+    expect(spawnAndWait).not.toHaveBeenCalled();
   });
 
   it("hands the branch cap down to the child it spawns", async () => {

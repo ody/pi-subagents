@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { registerAgents, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { registerAgents } from "../src/agents/agent-types.js";
 import { detailBaseFor, resolveAgentCall } from "../src/tool/agent-call-resolution.js";
 import type { AgentRecord } from "../src/types.js";
 
@@ -48,11 +48,9 @@ describe("detailBaseFor", () => {
 describe("resolveAgentCall", () => {
   beforeEach(() => {
     registerAgents(new Map());
-    setFallbackSubagent(undefined);
   });
   afterEach(() => {
     registerAgents(new Map());
-    setFallbackSubagent(undefined);
   });
 
   it("resolves a known type with defaults applied", () => {
@@ -60,8 +58,6 @@ describe("resolveAgentCall", () => {
     expect(out.ok).toBe(true);
     if (!out.ok) return;
     expect(out.subagentType).toBe("Explore");
-    expect(out.requestedType).toBe("Explore");
-    expect(out.fallbackNote).toBe("");
     expect(out.runInBackground).toBe(true);
     expect(out.detailBase.description).toBe("scan");
     expect(out.detailBase.subagentType).toBe("Explore");
@@ -76,24 +72,16 @@ describe("resolveAgentCall", () => {
     expect(out.ok && out.runInBackground).toBe(false);
   });
 
-  it("falls back for an unknown type by default and says so", () => {
-    const out = resolveAgentCall({ subagent_type: "nope", description: "d", prompt: "p" } as never, ctx, opts);
-    expect(out.ok).toBe(true);
-    if (!out.ok) return;
-    expect(out.subagentType).toBe("general-purpose");
-    expect(out.requestedType).toBe("nope");
-    expect(out.fallbackNote).toContain('Unknown agent type "nope"');
-  });
-
-  it("refuses an unknown type before anything spawns when fallbackSubagent is none", () => {
-    setFallbackSubagent("none");
+  it("refuses an unknown type, lists the enabled types, and suggests omitting the type", () => {
     const out = resolveAgentCall({ subagent_type: "nope", description: "d", prompt: "p" } as never, ctx, opts);
     expect(out.ok).toBe(false);
-    if (!out.ok) expect(out.message).toContain("nope");
+    if (out.ok) return;
+    expect(out.message).toContain('Unknown or disabled agent type: "nope"');
+    expect(out.message).toContain("Available:");
+    expect(out.message).toContain("Omit subagent_type");
   });
 
   it("does not gate an unknown type when resuming", () => {
-    setFallbackSubagent("none");
     const out = resolveAgentCall(
       { subagent_type: "nope", description: "d", prompt: "p", resume: "abc" } as never,
       ctx,

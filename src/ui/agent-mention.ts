@@ -27,7 +27,7 @@ export function mentionRoster(
     const handle = record.alias ?? record.handle!;
     taken.add(handle.toLowerCase());
     if (record.handle) taken.add(record.handle.toLowerCase());
-    targets.push({ kind: "record", handle, record, typeLabel: displayNameOf(record.type) });
+    targets.push({ kind: "record", handle, record, typeLabel: record.displayName ?? displayNameOf(record.type) });
   }
 
   for (const entry of manager.listTombstones()) {

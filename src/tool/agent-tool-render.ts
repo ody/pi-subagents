@@ -24,7 +24,7 @@ export function renderRunningAgentStatus(
 }
 
 export function renderAgentCall(
-  args: { subagent_type: string; description?: string },
+  args: { subagent_type?: string; description?: string },
   theme: PiTheme,
   context: { isPartial: boolean; isError: boolean },
 ): Text {

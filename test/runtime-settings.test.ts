@@ -54,10 +54,10 @@ describe("snapshotSettings", () => {
     expect(s.maxConcurrentForeground).toBe(3);
   });
 
-  it("materializes no implicit fallbackSubagent default", () => {
+  it("snapshots neither a fallback agent nor a defaults switch", () => {
     const s = snapshotSettings(runtimeSettings(), { manager });
-    expect("fallbackSubagent" in s).toBe(true);
-    expect(s.fallbackSubagent).toBeUndefined();
+    expect(Object.keys(s)).not.toContain("fallbackSubagent");
+    expect(Object.keys(s)).not.toContain("disableDefaultAgents");
   });
 });
 
