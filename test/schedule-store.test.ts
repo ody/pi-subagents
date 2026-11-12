@@ -94,6 +94,18 @@ describe("ScheduleStore", () => {
     expect(existsSync(file + ".tmp")).toBe(false);
   });
 
+  it("keeps a legacy job unversioned and a version 2 job marked, in one file", () => {
+    const file = join(tmp, "mixed.json");
+    writeFileSync(file, JSON.stringify({ version: 1, jobs: [makeJob({ id: "old", thinking: "high", max_turns: 3 })] }));
+    const store = new ScheduleStore(file);
+    store.add(makeJob({ id: "new", version: 2, thinking: "low", max_turns: 0 }));
+
+    const reloaded = new ScheduleStore(file);
+    expect(reloaded.get("old")?.version).toBeUndefined();
+    expect(reloaded.get("old")?.max_turns).toBe(3);
+    expect(reloaded.get("new")).toMatchObject({ version: 2, thinking: "low", max_turns: 0 });
+  });
+
   it("self-heals from a corrupt JSON file — load silently empties, next save rewrites", () => {
     const file = join(tmp, "s.json");
     writeFileSync(file, "{ this is not valid JSON");
@@ -102,7 +114,7 @@ describe("ScheduleStore", () => {
 
     store.add(makeJob({ id: "fresh" }));
     const data = JSON.parse(readFileSync(file, "utf-8"));
-    expect(data.version).toBe(1);
+    expect(data.version).toBe(2);
     expect(data.jobs).toHaveLength(1);
     expect(data.jobs[0].id).toBe("fresh");
   });
