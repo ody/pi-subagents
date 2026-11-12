@@ -1,5 +1,8 @@
+import type { Model } from "@earendil-works/pi-ai";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { AgentConfig, IsolationMode, JoinMode, ThinkingLevel } from "../types.js";
+import { resolveModel } from "../config/model-resolver.js";
+import type { AgentConfig, AgentInvocation, IsolationMode, JoinMode, ThinkingLevel } from "../types.js";
 
 const isolationParamShape = {
   isolation: Type.Optional(
@@ -73,6 +76,23 @@ export function resolveAgentInvocationConfig(
         runInBackground: overriddenRunInBackground,
       }
       : undefined,
+  };
+}
+
+export function describeOverrides(
+  overridden: ReturnType<typeof resolveAgentInvocationConfig>["overridden"],
+  model: Model<any> | undefined,
+  modelRegistry: ExtensionContext["modelRegistry"],
+): Pick<AgentInvocation, "pinnedModel" | "pinnedThinking" | "pinnedMaxTurns" | "pinnedRunInBackground"> {
+  const pin = overridden?.model;
+  const resolvedPin = pin === undefined ? undefined : resolveModel(pin, modelRegistry);
+  const samePin = resolvedPin !== undefined && typeof resolvedPin !== "string"
+    && resolvedPin.provider === model?.provider && resolvedPin.id === model?.id;
+  return {
+    pinnedModel: pin === undefined || samePin ? undefined : pin,
+    pinnedThinking: overridden?.thinking,
+    pinnedMaxTurns: overridden?.maxTurns,
+    pinnedRunInBackground: overridden?.runInBackground,
   };
 }
 

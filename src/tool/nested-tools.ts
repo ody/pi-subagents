@@ -33,7 +33,7 @@ import type {
 } from "../types.js";
 import { addUsage } from "../usage.js";
 import { abortable } from "./abortable.js";
-import { isolationParam, resolveAgentInvocationConfig } from "./invocation-config.js";
+import { describeOverrides, isolationParam, resolveAgentInvocationConfig } from "./invocation-config.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
 
 let maxSubagentDepth = 2;
@@ -263,6 +263,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           inheritContext: invocation.inheritContext,
           runInBackground: invocation.runInBackground,
           isolation: invocation.isolation,
+          ...describeOverrides(invocation.overridden, model, ctx.modelRegistry),
         },
         onAssistantUsage: usage => addUsageToAncestors(context.manager, context.parentAgentId, usage),
         depth: childDepth,

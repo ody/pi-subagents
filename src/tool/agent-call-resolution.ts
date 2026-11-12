@@ -6,7 +6,7 @@ import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import type { AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
 import { buildInvocationTags, getDisplayName, getPromptModeLabel } from "../ui/agent-format.js";
-import { resolveAgentInvocationConfig } from "./invocation-config.js";
+import { describeOverrides, resolveAgentInvocationConfig } from "./invocation-config.js";
 
 export interface DetailBase {
   displayName: string;
@@ -109,18 +109,12 @@ export function resolveAgentCall(
   const outputTranscript = customConfig?.outputTranscript ?? getOutputTranscriptDefault();
 
   const { modelName, modelId } = model ? describeModel(model) : { modelName: undefined, modelId: undefined };
-  const pinnedModel = ((pin: string | undefined) => {
-    if (!pin) return undefined;
-    const resolvedPin = resolveModel(pin, ctx.modelRegistry);
-    if (typeof resolvedPin === "string") return pin;
-    return resolvedPin.provider === model?.provider && resolvedPin.id === model?.id ? undefined : pin;
-  })(resolvedConfig.overridden?.model);
   const effectiveMaxTurns = resolvedConfig.maxTurns ?? getDefaultMaxTurns();
   const agentInvocation: AgentInvocation = {
     modelName,
     modelId,
     thinking,
-    pinnedModel,
+    ...describeOverrides(resolvedConfig.overridden, model, ctx.modelRegistry),
     maxTurns: normalizeMaxTurns(resolvedConfig.maxTurns),
     isolated,
     inheritContext,

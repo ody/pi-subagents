@@ -822,10 +822,20 @@ Independent of `reportUsage`: this one is what you read, that one is what your s
 
 Off by default because the row already carries the description, turns, tool uses, tokens and elapsed time, and every character it gains is one the description loses on a narrow terminal. The other surfaces show the pair either way: the `agent` tool result names the model beside its tags, and the conversation viewer's `↳` row spells out the canonical `provider/model-id`.
 
-Both places report what the run *actually* used, read back from the child session once pi has resolved its defaults and clamped the level to what the model supports — not what the call asked for. Where those differ, the losing side is kept beside the effective value rather than dropped: `(asked max)` when pi clamped a level or an agent file outranked it, `(over pinned ...)` when a caller's `model` displaced a pin.
+Both places report what the run *actually* used, read back from the child session once pi has resolved its defaults and clamped the level to what the model supports — not what the call asked for. Where those differ, the losing side is kept beside the effective value rather than dropped. The `Agent` tool result and the viewer show every field where the caller displaced an agent file's value:
+
+| Field | Reads |
+| --- | --- |
+| `model` | `opus 4.6 (over pinned anthropic/claude-haiku-4-5)` |
+| `thinking` | `high (over low)` |
+| `thinking`, clamped by pi | `high (asked xhigh, over low)` |
+| `max_turns` | `5 turns (over 20)` |
+| `run_in_background` | `background (over foreground)` |
+
+The widget shows model and thinking only. Nested spawns disclose in the widget and the viewer. A caller `model` that does not resolve refuses the spawn rather than falling back to the file's pin.
 
 ```text
-  ↳ anthropic/claude-haiku-4-5 · thinking: low (asked max) · background
+  ↳ anthropic/claude-haiku-4-5 · thinking: high (asked xhigh, over low) · background (over foreground)
 ```
 
 Toggle via `/agents → Settings → Show model`; applied live.
