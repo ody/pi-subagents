@@ -24,7 +24,6 @@ export interface AgentsCommandDeps {
   reloadCustomAgents: (strict?: boolean) => void;
   settings: Readonly<Pick<RuntimeSettings, "showCost" | "viewerMarkdown">>;
   chooseViewerMarkdown: (mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext) => void;
-  showCreateWizard: (ctx: ExtensionCommandContext) => Promise<void>;
   showSettings: (ctx: ExtensionCommandContext) => Promise<void>;
 }
 
@@ -45,7 +44,7 @@ export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] 
 }
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
-  const { manager, scheduler, reloadCustomAgents, settings, chooseViewerMarkdown, showCreateWizard, showSettings } = deps;
+  const { manager, scheduler, reloadCustomAgents, settings, chooseViewerMarkdown, showSettings } = deps;
 
   function getModelLabel(type: string, registry?: ModelRegistry): string {
     const cfg = getAgentConfig(type);
@@ -82,13 +81,10 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       options.push(`Scheduled jobs (${jobCount})`);
     }
 
-    options.push("Create new agent");
     options.push("Settings");
 
     const noAgentsMsg = allNames.length === 0 && agents.length === 0
-      ? "No agents found. Create specialized subagents that can be delegated to.\n\n" +
-        "Each subagent has its own context window, custom system prompt, and specific tools.\n\n" +
-        "Try creating: Code Reviewer, Security Auditor, Test Writer, or Documentation Writer.\n\n"
+      ? `No agents found. Define them as .md files in ${projectAgentsDir()} (project) or ${personalAgentsDir()} (personal).\n\n`
       : "";
 
     if (noAgentsMsg) {
@@ -107,8 +103,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     } else if (choice.startsWith("Scheduled jobs (")) {
       await showSchedulesMenu(ctx, scheduler);
       await showAgentsMenu(ctx);
-    } else if (choice === "Create new agent") {
-      await showCreateWizard(ctx);
     } else if (choice === "Settings") {
       await showSettings(ctx);
       await showAgentsMenu(ctx);

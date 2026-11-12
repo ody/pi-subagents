@@ -57,7 +57,6 @@ function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; l
     reloadCustomAgents: (strict?: boolean) => registerAgents(loadCustomAgents(cwd, strict)),
     settings: { showCost: false, viewerMarkdown: "all" },
     chooseViewerMarkdown: () => {},
-    showCreateWizard: async () => {},
     showSettings: async () => {},
   } as unknown as AgentsCommandDeps);
 
