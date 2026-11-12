@@ -242,7 +242,7 @@ function narrowToolScope(
   const extSelectors = map ? selectorsOf(map) : [];
   const declaredCount = (config.builtinToolNames?.length ?? 0) + (config.extSelectors?.length ?? 0);
   if (declaredCount > 0 && builtin.value.length === 0 && extSelectors.length === 0) {
-    refuse("filtering the explicit tool list left no tools.");
+    refuse("no tool is left once the policy and the parent agent's tools are applied.");
   }
   return {
     builtinToolNames: builtin.value,
