@@ -1,3 +1,4 @@
+import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { AgentActivity, AgentRecord } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
@@ -52,7 +53,7 @@ export async function resume(
     activity.responseText = "";
     activity.turnCount = 1;
     activity.session = record.session;
-    if (options?.maxTurns !== undefined) activity.maxTurns = options.maxTurns;
+    if (options?.maxTurns !== undefined) activity.maxTurns = normalizeMaxTurns(options.maxTurns);
   }
 
   if (options?.isBackground) {

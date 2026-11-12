@@ -209,6 +209,70 @@ describe("child-safe nested agent tools", () => {
     expect(inScope.isError).toBe(false);
   });
 
+  it("runs a caller's model over an agent file's pin", async () => {
+    writeAgent("pinned", "model: anthropic/blocked\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    await execute(agent, { subagent_type: "pinned", description: "d", prompt: "p", model: "anthropic/allowed" });
+
+    expect(spawnAndWait.mock.calls[0][4].model).toMatchObject({ provider: "anthropic", id: "allowed" });
+  });
+
+  it("refuses a caller model that does not resolve instead of falling back to the pin", async () => {
+    writeAgent("pinned", "model: anthropic/blocked\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    const result = await execute(agent, { subagent_type: "pinned", description: "d", prompt: "p", model: "nope/none" });
+
+    expect(result.isError).toBe(true);
+    expect(spawnAndWait).not.toHaveBeenCalled();
+  });
+
+  it("lets the caller's thinking and max_turns win over the file's", async () => {
+    writeAgent("tuned", "thinking: low\nmax_turns: 20\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    await execute(agent, { subagent_type: "tuned", description: "d", prompt: "p", thinking: "high", max_turns: 5 });
+
+    expect(spawnAndWait.mock.calls[0][4]).toMatchObject({ thinkingLevel: "high", maxTurns: 5 });
+  });
+
+  it("passes a caller max_turns of 0 as an explicit unlimited", async () => {
+    writeAgent("tuned", "max_turns: 20\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    await execute(agent, { subagent_type: "tuned", description: "d", prompt: "p", max_turns: 0 });
+
+    expect(spawnAndWait.mock.calls[0][4].maxTurns).toBe(0);
+  });
+
+  it("uses the file's thinking and max_turns when the caller is silent", async () => {
+    writeAgent("tuned", "thinking: low\nmax_turns: 20\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    await execute(agent, { subagent_type: "tuned", description: "d", prompt: "p" });
+
+    expect(spawnAndWait.mock.calls[0][4]).toMatchObject({ thinkingLevel: "low", maxTurns: 20 });
+  });
+
+  it("lets the caller's run_in_background win over the file's, and defaults nested calls to foreground", async () => {
+    writeAgent("detached", "run_in_background: true\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    await execute(agent, { subagent_type: "detached", description: "d", prompt: "p", run_in_background: false });
+    expect(spawnAndWait).toHaveBeenCalledTimes(1);
+    expect(spawn).not.toHaveBeenCalled();
+
+    await execute(agent, { subagent_type: "scout", description: "d", prompt: "p" });
+    expect(spawnAndWait).toHaveBeenCalledTimes(2);
+  });
+
   it("queues a steer for an owned child whose session is not ready yet", async () => {
     const [, , steer] = tools();
     const record: Record<string, unknown> = {

@@ -1,4 +1,5 @@
 import type { AgentToolUpdateCallback, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { streamToOutputFile } from "../platform/output-file.js";
@@ -51,7 +52,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
   let queuedAhead: number | undefined;
 
   const emptyActivity: AgentActivity = {
-    activeTools: new Map(), toolUses: 0, turnCount: 1, maxTurns: effectiveMaxTurns, responseText: "",
+    activeTools: new Map(), toolUses: 0, turnCount: 1, maxTurns: normalizeMaxTurns(effectiveMaxTurns), responseText: "",
   };
   const fgActivity = (): AgentActivity => (fgId ? manager.getActivity(fgId) : undefined) ?? emptyActivity;
 

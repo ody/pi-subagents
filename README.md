@@ -20,7 +20,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too.
   - `@` completes live agents, resumable ones, and startable types alongside pi's file completion. `@main` forces text back to the main model.
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
-- **Session resume** — pick up where an agent left off, preserving full conversation context. Resumes detached by default and notifies you on completion, just like a fresh spawn; pass `run_in_background: false` to block and get the result inline
+- **Session resume** — pick up where an agent left off, preserving full conversation context. The session keeps its model and thinking level; `run_in_background` and `max_turns` come from the resuming call, else from the run's original values. Pass `run_in_background: false` to block and get the result inline
 - **Graceful turn limits** — agents get a "wrap up" warning before hard abort, producing clean partial results instead of cut-off output
 - **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — falls back to general-purpose with a note, or is refused outright under [`fallbackSubagent: none`](#persistent-settings)
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
@@ -35,7 +35,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - Session-scoped jobs with PID-locked persistence.
   - Results land via the same `subagent-notification` followUp path as manual background completions.
   - Manage via `/agents → Scheduled jobs`.
-- **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (sourced from `/scoped-models`, with both global and project-local pi settings honored). Caller-supplied out-of-scope → hard error to orchestrator; frontmatter-pinned out-of-scope → warning + runs anyway (frontmatter authoritative). Toggle via `/agents → Settings → Scope models`
+- **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (sourced from `/scoped-models`, with both global and project-local pi settings honored). Caller-supplied out-of-scope → hard error to orchestrator; frontmatter-pinned out-of-scope → warning + runs anyway (frontmatter pins only warn). Toggle via `/agents → Settings → Scope models`
 
 ## Install
 
@@ -226,7 +226,7 @@ The agent it starts is attributed to the *real* session, so its transcript and `
 | `direct` | the agent starts here, immediately, with your message verbatim as its prompt. No model call at all, so no latency before it begins |
 | `off` | `@` means only "attach a file" again |
 
-Either way the started agent honours its own frontmatter — `model:`, `thinking:`, `max_turns:` all apply, since neither path passes them and the agent's config wins.
+Either way the started agent honours its own frontmatter — `model:`, `thinking:`, `max_turns:` all apply, since neither path passes them.
 
 Mentioning something as the very first thing in a session works: there is simply no history to carry, and the clone still runs on your model and system prompt.
 
@@ -396,14 +396,14 @@ All fields are optional — sensible defaults for everything.
 | `isolation` | — | Set to `worktree` to run in an isolated git worktree, or `off` to refuse one even when the caller passes `isolation: "worktree"` (frontmatter is authoritative). `none`, `no`, and `false` are accepted spellings of `off` |
 | `model` | inherit parent | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly (`.`/`-` and a trailing date stamp are interchangeable) and falls back to the same model under another provider if the named one doesn't have it |
 | `thinking` | inherit | off, minimal, low, medium, high, xhigh, max — actual availability depends on your pi version and model; pi clamps unsupported levels down |
-| `max_turns` | unlimited | Max agentic turns before graceful shutdown. `0` or omit for unlimited |
+| `max_turns` | unlimited | Max agentic turns before graceful shutdown. `0` or omit for unlimited. A caller `max_turns` overrides it |
 | `persist_session` | `subagents.json` `rememberAgents` (default `true`) | Persist this subagent as a normal pi session instead of keeping the session in memory only; overrides the `rememberAgents` project default in both directions. It records its spawning session as parent, so it nests under it in `/resume`. The subagent's `.output` transcript is still written either way unless `output_transcript: false` |
 | `output_transcript` | `true` (or `subagents.json` `outputTranscript`) | Write this subagent's `.output` transcript; when set, overrides the `subagents.json` `outputTranscript` default. Set `false` to write no transcript file or path. Governs only the transcript — independent of `persist_session` and `isolation: worktree` |
 | `session_dir` | pi default | Optional session directory when `persist_session: true`; omitted uses pi's normal session location, and relative paths resolve from the agent cwd. A session outside the parent's session directory (this override, or `isolation: worktree`) is listed separately, so it shows as a root instead of nesting |
 | `allowed_subagents` | none | Opt in to scoped nested `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools. Omitted / empty / `none` / `false` = no nesting. `all` (or `"*"` / `true`) = any enabled agent. Comma-separated list = only those agent types |
 | `prompt_mode` | `replace` | `replace`: body is the full system prompt (no AGENTS.md / CLAUDE.md inheritance). `append`: body appended to parent's prompt (agent acts as a "parent twin" — inherits parent's AGENTS.md / CLAUDE.md) |
 | `inherit_context` | `false` | Fork parent conversation into agent |
-| `run_in_background` | — | Pin this agent to background (`true`) or foreground (`false`). Omit to follow `backgroundByDefault` |
+| `run_in_background` | — | Default this agent to background (`true`) or foreground (`false`); a caller value overrides it. Omit to follow `backgroundByDefault` |
 | `isolated` | `false` | Hermetic specialist mode: forces `extensions: false` + `skills: false` + drops `ext:` selectors. Only built-in tools. Distinct from `isolation: worktree` (filesystem) |
 | `enabled` | `true` | Set to `false` to disable an agent (useful for hiding a default agent per-project) |
 
@@ -423,7 +423,7 @@ All fields are optional — sensible defaults for everything.
 
 Badge text is black or white, whichever clears 4.5:1 against the rendered background — Claude Code uses one inverse color for every badge. Invalid values render no badge and preserve each surface's existing theme foreground.
 
-Frontmatter is authoritative for everything except `model`. If an agent file sets `thinking`, `max_turns`, `inherit_context`, `run_in_background`, `isolated`, or `isolation`, those values are locked for that agent, and `agent` tool parameters only fill fields the agent config leaves unspecified.
+The caller can override four fields of a named agent for one run: `model`, `thinking`, `max_turns`, and `run_in_background`. Precedence is the `agent` tool parameter, then frontmatter, then the default (the session model, pi's default thinking level, `defaultMaxTurns`, and `backgroundByDefault`; nested calls default to foreground). A caller `max_turns` of `0` means unlimited and is not re-resolved from the file. Every other field binds the agent: `inherit_context`, `isolated`, and `isolation` only fill what the file leaves unspecified, and `isolation: off` still refuses a worktree.
 
 `model` is the exception: a `model` passed to the `agent` tool takes effect even against a pin, so `model:` in an agent file means "this agent's model unless the caller says otherwise". Three consequences:
 
@@ -549,8 +549,8 @@ Launch a sub-agent.
 | `subagent_type` | string | yes | Agent type (built-in or custom) |
 | `model` | string | no | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly (`.`/`-` and a trailing date stamp interchangeable) with provider fallback |
 | `thinking` | string | no | Thinking level: off, minimal, low, medium, high, xhigh, max (availability depends on pi version and model) |
-| `max_turns` | number | no | Max agentic turns. Omit for unlimited (default) |
-| `run_in_background` | boolean | no | Defaults to `true`; `false` blocks and returns the result inline |
+| `max_turns` | number | no | Max agentic turns; `0` is unlimited. Overrides the agent's frontmatter; omit to use it, then `defaultMaxTurns` |
+| `run_in_background` | boolean | no | Overrides the agent's frontmatter; otherwise follows `backgroundByDefault`. `false` blocks and returns the result inline |
 | `resume` | string | no | Agent ID to resume a previous session |
 | `isolated` | boolean | no | No extension/MCP tools |
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when `worktreeIsolation: false` |
@@ -675,7 +675,7 @@ When on, each subagent spawn's effective model is validated against pi's own `en
 | --- | --- |
 | Caller-supplied via `agent({ model: "..." })` | Hard error returned to the orchestrator, listing allowed models |
 | Caller-supplied via cross-extension RPC (`subagents:rpc:spawn`, e.g. pi-tasks `TaskExecute`) | Hard error returned to the calling extension, listing allowed models |
-| Pinned in agent frontmatter, with no caller `model` | Warning toast + the pinned model runs (frontmatter is authoritative) |
+| Pinned in agent frontmatter, with no caller `model` | Warning toast + the pinned model runs |
 | Parent-inherited (neither set) | Warning toast + parent's model runs |
 
 **Design:** `scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin still runs when out of scope, with a visible warning. A caller-supplied `model` is hard-checked whether or not the agent file pins one — winning the precedence contest against a pin does not buy it warn-only treatment.

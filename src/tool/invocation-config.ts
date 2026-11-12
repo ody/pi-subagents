@@ -42,31 +42,36 @@ export function resolveAgentInvocationConfig(
   runInBackground: boolean;
   isolated: boolean;
   isolation?: IsolationMode;
-  overridden?: { thinking?: ThinkingLevel; model?: string };
+  overridden?: { thinking?: ThinkingLevel; model?: string; maxTurns?: number; runInBackground?: boolean };
 } {
   const requested = agentConfig?.isolation ?? params.isolation;
   const isolation = requested === "worktree" && opts?.worktreeAllowed !== false ? "worktree" : undefined;
 
-  const overriddenThinking = agentConfig?.thinking != null && params.thinking != null
-    && agentConfig.thinking !== params.thinking
-    ? params.thinking as ThinkingLevel
-    : undefined;
-  const overriddenModel = agentConfig?.model != null && params.model != null
-    && agentConfig.model !== params.model
-    ? agentConfig.model
-    : undefined;
+  const displaced = <T,>(fileValue: T | undefined, callerValue: T | undefined): T | undefined =>
+    fileValue != null && callerValue != null && fileValue !== callerValue ? fileValue : undefined;
+  const overriddenThinking = displaced(agentConfig?.thinking as ThinkingLevel | undefined, params.thinking as ThinkingLevel | undefined);
+  const overriddenModel = displaced(agentConfig?.model, params.model);
+  const overriddenMaxTurns = displaced(agentConfig?.maxTurns, params.max_turns);
+  const overriddenRunInBackground = displaced(agentConfig?.runInBackground, params.run_in_background);
+  const hasOverride = overriddenThinking !== undefined || overriddenModel !== undefined
+    || overriddenMaxTurns !== undefined || overriddenRunInBackground !== undefined;
 
   return {
     modelInput: params.model ?? agentConfig?.model,
     modelFromParams: params.model != null,
-    thinking: (agentConfig?.thinking ?? params.thinking) as ThinkingLevel | undefined,
-    maxTurns: agentConfig?.maxTurns ?? params.max_turns,
+    thinking: (params.thinking ?? agentConfig?.thinking) as ThinkingLevel | undefined,
+    maxTurns: params.max_turns ?? agentConfig?.maxTurns,
     inheritContext: agentConfig?.inheritContext ?? params.inherit_context ?? false,
-    runInBackground: agentConfig?.runInBackground ?? params.run_in_background ?? opts?.defaultRunInBackground ?? false,
+    runInBackground: params.run_in_background ?? agentConfig?.runInBackground ?? opts?.defaultRunInBackground ?? false,
     isolated: agentConfig?.isolated ?? params.isolated ?? false,
     isolation,
-    overridden: overriddenThinking || overriddenModel
-      ? { thinking: overriddenThinking, model: overriddenModel }
+    overridden: hasOverride
+      ? {
+        thinking: overriddenThinking,
+        model: overriddenModel,
+        maxTurns: overriddenMaxTurns,
+        runInBackground: overriddenRunInBackground,
+      }
       : undefined,
   };
 }

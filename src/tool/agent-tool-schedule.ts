@@ -1,3 +1,4 @@
+import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { SubagentScheduler } from "../triggers/schedule.js";
 import type { AgentCallResolution } from "./agent-call-resolution.js";
 import { textResult } from "./tool-result.js";
@@ -62,7 +63,7 @@ export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentI
       prompt: params.prompt,
       model: params.model,
       thinking,
-      max_turns: effectiveMaxTurns,
+      max_turns: normalizeMaxTurns(effectiveMaxTurns),
       isolated,
       isolation,
     });

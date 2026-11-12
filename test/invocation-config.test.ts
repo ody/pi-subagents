@@ -19,7 +19,7 @@ function makeConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
 }
 
 describe("resolveAgentInvocationConfig", () => {
-  it("prefers agent config over tool-call params for locked fields", () => {
+  it("prefers tool-call params over agent config for the four overridable fields and keeps the rest fill-only", () => {
     const resolved = resolveAgentInvocationConfig(
       makeConfig({
         model: "provider/config-model",
@@ -43,10 +43,10 @@ describe("resolveAgentInvocationConfig", () => {
 
     expect(resolved.modelInput).toBe("provider/param-model");
     expect(resolved.modelFromParams).toBe(true);
-    expect(resolved.thinking).toBe("high");
-    expect(resolved.maxTurns).toBe(42);
+    expect(resolved.thinking).toBe("minimal");
+    expect(resolved.maxTurns).toBe(1);
     expect(resolved.inheritContext).toBe(false);
-    expect(resolved.runInBackground).toBe(false);
+    expect(resolved.runInBackground).toBe(true);
     expect(resolved.isolated).toBe(false);
     expect(resolved.isolation).toBe("worktree");
   });
@@ -151,7 +151,12 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
       { model: "provider/param-model", thinking: "max" },
     );
 
-    expect(resolved.overridden).toEqual({ thinking: "max", model: "provider/config-model" });
+    expect(resolved.overridden).toEqual({
+      thinking: "low",
+      model: "provider/config-model",
+      maxTurns: undefined,
+      runInBackground: undefined,
+    });
   });
 
   it("lets a caller-supplied model beat a frontmatter pin", () => {
@@ -172,13 +177,43 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
     expect(resolved.modelFromParams).toBe(true);
   });
 
-  it("still lets a pinned thinking level outrank the caller's", () => {
+  it("lets the caller's thinking level outrank the file's", () => {
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ thinking: "low" }),
       { thinking: "max" },
     );
 
+    expect(resolved.thinking).toBe("max");
+  });
+
+  it("falls back to the file's thinking, max_turns, and run_in_background when the caller is silent", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ thinking: "low", maxTurns: 20, runInBackground: true }),
+      {},
+      { defaultRunInBackground: false },
+    );
+
     expect(resolved.thinking).toBe("low");
+    expect(resolved.maxTurns).toBe(20);
+    expect(resolved.runInBackground).toBe(true);
+  });
+
+  it("lets a caller run_in_background of false beat a file's true and the default", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ runInBackground: true }),
+      { run_in_background: false },
+      { defaultRunInBackground: true },
+    );
+
+    expect(resolved.runInBackground).toBe(false);
+    expect(resolved.overridden?.runInBackground).toBe(true);
+  });
+
+  it("keeps a caller max_turns of 0 as an explicit unlimited over the file's limit", () => {
+    const resolved = resolveAgentInvocationConfig(makeConfig({ maxTurns: 20 }), { max_turns: 0 });
+
+    expect(resolved.maxTurns).toBe(0);
+    expect(resolved.overridden?.maxTurns).toBe(20);
   });
 
   it("records nothing when the caller got what they asked for", () => {
@@ -208,7 +243,12 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
       { model: "provider/param-model", thinking: "max" },
     );
 
-    expect(resolved.overridden).toEqual({ thinking: "max", model: undefined });
+    expect(resolved.overridden).toEqual({
+      thinking: "low",
+      model: undefined,
+      maxTurns: undefined,
+      runInBackground: undefined,
+    });
   });
 
   it("records the pin alone when only the model disagreed", () => {
@@ -217,6 +257,11 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
       { model: "provider/param-model" },
     );
 
-    expect(resolved.overridden).toEqual({ thinking: undefined, model: "provider/config-model" });
+    expect(resolved.overridden).toEqual({
+      thinking: undefined,
+      model: "provider/config-model",
+      maxTurns: undefined,
+      runInBackground: undefined,
+    });
   });
 });

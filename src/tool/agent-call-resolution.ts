@@ -115,12 +115,11 @@ export function resolveAgentCall(
     if (typeof resolvedPin === "string") return pin;
     return resolvedPin.provider === model?.provider && resolvedPin.id === model?.id ? undefined : pin;
   })(resolvedConfig.overridden?.model);
-  const effectiveMaxTurns = normalizeMaxTurns(resolvedConfig.maxTurns ?? getDefaultMaxTurns());
+  const effectiveMaxTurns = resolvedConfig.maxTurns ?? getDefaultMaxTurns();
   const agentInvocation: AgentInvocation = {
     modelName,
     modelId,
     thinking,
-    requestedThinking: resolvedConfig.overridden?.thinking,
     pinnedModel,
     maxTurns: normalizeMaxTurns(resolvedConfig.maxTurns),
     isolated,

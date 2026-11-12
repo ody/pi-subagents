@@ -188,12 +188,12 @@ describe("agent tool result — effective model", () => {
     expect(result.details.tags).toContain("thinking: high (asked max)");
   });
 
-  it("discloses a level an agent file pinned over the caller's (#182)", async () => {
+  it("runs the caller's thinking level over the one an agent file pinned", async () => {
     pinnedAgent("thinking: low\n");
     const tool = agentTool();
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
 
-    const result = await tool.execute(
+    await tool.execute(
       "tc-4",
       { prompt: "go", description: "d", subagent_type: "pinned", thinking: "max", run_in_background: true },
       undefined,
@@ -201,7 +201,7 @@ describe("agent tool result — effective model", () => {
       ctx(),
     );
 
-    expect(result.details.tags).toContain("thinking: low (asked max)");
+    expect(vi.mocked(runAgent).mock.lastCall?.[3].thinkingLevel).toBe("max");
   });
 
   it("runs a caller's model over an agent file's pin, and discloses the pin", async () => {
