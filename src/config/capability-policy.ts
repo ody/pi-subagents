@@ -43,6 +43,7 @@ export interface CapabilityRequest {
   config: CapabilityDeclaration;
   callerSupplied: ReadonlySet<CapabilityField>;
   explicitTools?: readonly string[];
+  parent?: { allowedSubagents?: "all" | string[] };
   ephemeral: boolean;
   cwd: string;
   isolated?: boolean;
@@ -325,6 +326,22 @@ function narrowAllowedSubagents(
   return [];
 }
 
+function capByParent(
+  declared: "all" | string[] | undefined,
+  parent: { allowedSubagents?: "all" | string[] },
+  callerSupplied: boolean,
+): Narrowing<"all" | string[] | undefined> {
+  if (declared === undefined || parent.allowedSubagents === "all") return { value: declared, filtered: [] };
+  const allowed = new Set(lower(parent.allowedSubagents ?? []));
+  const requested = declared === "all" ? undefined : declared;
+  const kept = requested?.filter(type => allowed.has(type.toLowerCase())) ?? [...(parent.allowedSubagents ?? [])];
+  const dropped = requested?.filter(type => !allowed.has(type.toLowerCase())) ?? ["all"];
+  if (dropped.length > 0 && callerSupplied) {
+    refuse(`allowed_subagents ${dropped.map(type => `"${type}"`).join(", ")} is outside the parent agent's allowed_subagents.`);
+  }
+  return { value: kept, filtered: dropped.map(type => `allowed_subagents ${type}`) };
+}
+
 function boundsOf(policy: LoadedPolicy, extra: CapabilityBound[] | undefined): CapabilityBound[] {
   return [
     { label: "global", scope: policy.global },
@@ -342,14 +359,16 @@ function evaluate(request: CapabilityRequest, policy: LoadedPolicy): GrantedCapa
   const extensions = narrowExtensions(isolated ? false : config.extensions, config.excludeExtensions, bounds, callerSupplied.has("extensions"), cwd);
   const skills = narrowSkills(isolated ? false : config.skills, bounds, callerSupplied.has("skills"));
   const { filtered: toolFiltered, ...toolScope } = tools;
+  const policySubagents = narrowAllowedSubagents(config.allowedSubagents, ephemeral, policy.ephemeralNesting, callerSupplied.has("allowedSubagents"));
+  const subagents = request.parent ? capByParent(policySubagents, request.parent, callerSupplied.has("allowedSubagents")) : { value: policySubagents, filtered: [] };
   const capabilities: EffectiveCapabilities = {
     ...toolScope,
     extSelectors: isolated ? [] : toolScope.extSelectors,
     ...extensions.value,
     ...skills.value,
-    allowedSubagents: narrowAllowedSubagents(config.allowedSubagents, ephemeral, policy.ephemeralNesting, callerSupplied.has("allowedSubagents")),
+    allowedSubagents: subagents.value,
   };
-  return { kind: "ok", capabilities, filtered: [...toolFiltered, ...extensions.filtered, ...skills.filtered] };
+  return { kind: "ok", capabilities, filtered: [...toolFiltered, ...extensions.filtered, ...skills.filtered, ...subagents.filtered] };
 }
 
 export function checkCapabilityPolicy(request: CapabilityRequest): CapabilityVerdict {
@@ -421,6 +440,7 @@ export interface ResolveCapabilityArgs {
   ephemeral?: boolean;
   isolated?: boolean;
   extraBounds?: CapabilityBound[];
+  parent?: { allowedSubagents?: "all" | string[] };
   notify?: (message: string, level: "warning") => void;
 }
 
@@ -434,6 +454,7 @@ export function resolveCapability(args: ResolveCapabilityArgs): GrantedCapabilit
     cwd: args.cwd,
     isolated: args.isolated,
     extraBounds: args.extraBounds,
+    parent: args.parent,
   });
   if (verdict.kind === "error") throw new Error(verdict.message);
   if (verdict.filtered.length > 0) {
