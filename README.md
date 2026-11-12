@@ -546,7 +546,14 @@ Launch a sub-agent.
 | `prompt` | string | yes | The task for the agent |
 | `description` | string | yes | Short 3-5 word summary (shown in UI) |
 | `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `steer_subagent`/`get_subagent_result`/`stop_subagent`. Additive — the type-derived handle is still assigned |
-| `subagent_type` | string | yes | Agent type (built-in or custom) |
+| `subagent_type` | string | no | Agent type to run. Omit it to build a one-off [ephemeral agent](#ephemeral-agents) from the parameters below. Ignored with `resume` |
+| `tools` | `string[]` | no | Ephemeral only. `*`, built-in names, `none`, and `ext:` selectors, as in the agent file `tools` field. Default: all built-ins and all extension tools |
+| `disallowed_tools` | `string[]` | no | Ephemeral only. Tools to remove, built-in or from an extension |
+| `extensions` | `boolean` \| `string[]` | no | Ephemeral only. Default `true` |
+| `exclude_extensions` | `string[]` | no | Ephemeral only. Extensions to leave out |
+| `skills` | `boolean` \| `string[]` | no | Ephemeral only. Default `true` |
+| `allowed_subagents` | `"all"` \| `string[]` | no | Ephemeral only. Default `[]`, which means no nesting. Refused when `policy.ephemeralNesting` is `false` |
+| `prompt_mode` | `"append"` \| `"replace"` | no | Ephemeral only. Default `append` |
 | `model` | string | no | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly (`.`/`-` and a trailing date stamp interchangeable) with provider fallback |
 | `thinking` | string | no | Thinking level: off, minimal, low, medium, high, xhigh, max (availability depends on pi version and model) |
 | `max_turns` | number | no | Max agentic turns. Omit for unlimited (default) |
@@ -555,6 +562,20 @@ Launch a sub-agent.
 | `isolated` | boolean | no | No extension/MCP tools |
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when `worktreeIsolation: false` |
 | `inherit_context` | boolean | no | Fork parent conversation into agent |
+
+#### Ephemeral agents
+
+A call with no `subagent_type` runs an agent built from its parameters, and the agent never enters the registry.
+
+- Passing `tools`, `disallowed_tools`, `extensions`, `exclude_extensions`, `skills`, `allowed_subagents`, or `prompt_mode` together with a `subagent_type` is an error that names the parameter.
+- `isolated: true` together with `extensions`, `skills`, or an `ext:` entry in `tools` is refused.
+- There is no system prompt parameter. `prompt` is the task. `append` reuses the session's system prompt, and `replace` gives the sub-agent preamble and an environment block.
+- The defaults are all built-in tools, `extensions: true`, `skills: true`, `allowed_subagents: []`, the session's model, `inherit_context: false`, `isolated: false`, and no worktree. `max_turns` follows `defaultMaxTurns`, and `run_in_background` follows `backgroundByDefault`.
+- The type is minted as `ephemeral-<8 hex>`, and an agent file whose name starts with `ephemeral-` is skipped with a warning. Lifecycle events carry the minted type.
+- The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge reads `Agent`.
+- The session is not persisted. The agent is steerable and resumable while its record is in memory, and it cannot be reopened once evicted.
+- A scheduled call with no `subagent_type` is an error.
+- Every value is checked against the [capability policy](#capability-policy).
 
 ### `get_subagent_result`
 
@@ -1169,6 +1190,7 @@ src/
     default-agents.ts # Embedded default agent configs (general-purpose, Explore, Plan)
     custom-agents.ts  # Load user-defined agents from .pi/agents/, .agents/agents/, global agents, and skill-embedded agents
     agent-types.ts    # Unified agent registry (defaults + user), tool name resolution
+    ephemeral-agent.ts # Build the one-off agent an `agent` call with no subagent_type runs
     agent-file-toggle.ts # Locate/edit an agent's .md: enabled: toggle, eject to frontmatter
 
   session/            # One child session: how it is built, run, and read

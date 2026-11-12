@@ -37,6 +37,8 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     subagentType,
     fallbackNote: typeFallbackNote,
     capability,
+    agentConfig,
+    ephemeral,
     model,
     thinking,
     inheritContext,
@@ -118,7 +120,9 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
   try {
     const fgResult = await manager.spawnAndWait(pi, ctx, subagentType, params.prompt, {
       description: params.description,
-      name: params.name as string | undefined,
+      name: ephemeral ? undefined : (params.name as string | undefined),
+      agentConfig,
+      ephemeral,
       capability,
       model,
       maxTurns: effectiveMaxTurns,

@@ -42,6 +42,7 @@ export interface CapabilityBound {
 export interface CapabilityRequest {
   config: CapabilityDeclaration;
   callerSupplied: ReadonlySet<CapabilityField>;
+  explicitTools?: readonly string[];
   ephemeral: boolean;
   cwd: string;
   isolated?: boolean;
@@ -167,7 +168,7 @@ function denyEntries(bounds: CapabilityBound[]): string[] {
 function narrowBuiltinTools(
   declared: string[] | undefined,
   bounds: CapabilityBound[],
-  callerSupplied: boolean,
+  refusing: ReadonlySet<string>,
 ): Narrowing<string[]> {
   const filtered: string[] = [];
   const kept: string[] = [];
@@ -177,7 +178,7 @@ function narrowBuiltinTools(
       kept.push(name);
       continue;
     }
-    if (callerSupplied && declared !== undefined) refuse(`tool "${name}" is not allowed: ${reason}.`);
+    if (refusing.has(name)) refuse(`tool "${name}" is not allowed: ${reason}.`);
     filtered.push(`tool ${name}`);
   }
   return { value: kept, filtered };
@@ -217,8 +218,9 @@ function narrowToolScope(
   config: CapabilityDeclaration,
   bounds: CapabilityBound[],
   callerSupplied: boolean,
+  refusing: ReadonlySet<string>,
 ): Pick<EffectiveCapabilities, "builtinToolNames" | "extSelectors" | "noExtensionTools" | "deniedExtensionNames" | "disallowedTools"> & { filtered: string[] } {
-  const builtin = narrowBuiltinTools(config.builtinToolNames, bounds, callerSupplied);
+  const builtin = narrowBuiltinTools(config.builtinToolNames, bounds, refusing);
   const denies = denyEntries(bounds);
   const deniedWhole = new Set<string>();
   const disallowed = new Set(config.disallowedTools ?? []);
@@ -334,7 +336,8 @@ function boundsOf(policy: LoadedPolicy, extra: CapabilityBound[] | undefined): C
 function evaluate(request: CapabilityRequest, policy: LoadedPolicy): GrantedCapability {
   const { config, callerSupplied, ephemeral, cwd } = request;
   const bounds = boundsOf(policy, request.extraBounds);
-  const tools = narrowToolScope(config, bounds, callerSupplied.has("tools"));
+  const refusing = callerSupplied.has("tools") ? new Set(request.explicitTools ?? config.builtinToolNames ?? []) : new Set<string>();
+  const tools = narrowToolScope(config, bounds, callerSupplied.has("tools"), refusing);
   const isolated = request.isolated === true;
   const extensions = narrowExtensions(isolated ? false : config.extensions, config.excludeExtensions, bounds, callerSupplied.has("extensions"), cwd);
   const skills = narrowSkills(isolated ? false : config.skills, bounds, callerSupplied.has("skills"));
@@ -386,6 +389,7 @@ export interface ResolveCapabilityArgs {
   cwd: string;
   config?: AgentConfig;
   raw?: Partial<AgentConfig>;
+  explicitTools?: readonly string[];
   ephemeral?: boolean;
   isolated?: boolean;
   notify?: (message: string, level: "warning") => void;
@@ -396,6 +400,7 @@ export function resolveCapability(args: ResolveCapabilityArgs): GrantedCapabilit
   const verdict = checkCapabilityPolicy({
     config,
     callerSupplied: callerFieldsOf(args.raw),
+    explicitTools: args.explicitTools,
     ephemeral: args.ephemeral === true,
     cwd: args.cwd,
     isolated: args.isolated,

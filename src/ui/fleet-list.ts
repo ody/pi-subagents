@@ -339,8 +339,8 @@ export class FleetList {
   private renderAgentRow(node: FleetNode & { kind: "agent" }, selectedKey: string, width: number, theme: Theme): string {
     const record = node.record;
     const selected = node.key === selectedKey;
-    const name = renderAgentName(record.type, theme, selected
-      ? { fallbackColor: "text", bold: hasAgentBadge(record.type) }
+    const name = renderAgentName(record, theme, selected
+      ? { fallbackColor: "text", bold: hasAgentBadge(record) }
       : { fallbackColor: "muted" });
     const description = selected ? theme.fg("text", record.description) : record.description;
     const left = `${this.gutter(node, selectedKey, theme)}${name}  ${description}`;

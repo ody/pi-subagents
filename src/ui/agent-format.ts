@@ -92,13 +92,20 @@ export function formatDuration(startedAt: number, completedAt?: number): string 
   return `${formatMs(Date.now() - startedAt)} (running)`;
 }
 
-export function getDisplayName(type: SubagentType): string {
-  return getConfig(type).displayName;
+export interface AgentLabelSource {
+  type: SubagentType;
+  displayName?: string;
+  promptMode?: "replace" | "append";
 }
 
-export function getPromptModeLabel(type: SubagentType): string | undefined {
-  const config = getConfig(type);
-  return config.promptMode === "append" ? "twin" : undefined;
+export function getDisplayName(agent: SubagentType | AgentLabelSource): string {
+  if (typeof agent === "string") return getConfig(agent).displayName;
+  return agent.displayName ?? getConfig(agent.type).displayName;
+}
+
+export function getPromptModeLabel(agent: SubagentType | AgentLabelSource): string | undefined {
+  const promptMode = typeof agent === "string" ? getConfig(agent).promptMode : (agent.promptMode ?? getConfig(agent.type).promptMode);
+  return promptMode === "append" ? "twin" : undefined;
 }
 
 export function buildInvocationTags(

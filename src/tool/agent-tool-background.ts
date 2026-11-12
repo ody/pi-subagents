@@ -36,6 +36,8 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     subagentType,
     fallbackNote: typeFallbackNote,
     capability,
+    agentConfig,
+    ephemeral,
     displayName,
     model,
     thinking,
@@ -62,7 +64,9 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   id = manager.spawn(pi, ctx, subagentType, params.prompt, {
     description: params.description,
-    name: params.name,
+    name: ephemeral ? undefined : params.name,
+    agentConfig,
+    ephemeral,
     capability,
     model,
     maxTurns: effectiveMaxTurns,
