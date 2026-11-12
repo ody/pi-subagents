@@ -60,7 +60,7 @@ describe("status note reaches the parent through the real handlers", () => {
     vi.restoreAllMocks();
   });
 
-  it("foreground turn-limit abort → the Agent result flags an incomplete outcome", async () => {
+  it("foreground turn-limit abort → the agent result flags an incomplete outcome", async () => {
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "partial work so far",
       session: { dispose: vi.fn() } as any,

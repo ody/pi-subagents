@@ -54,7 +54,7 @@ function bootAgentTool() {
   return tools.get("agent");
 }
 
-describe("one Agent call, one sweep of the agent directories", () => {
+describe("one agent call, one sweep of the agent directories", () => {
   it("reloads agent files at most once per background spawn", async () => {
     const agent = bootAgentTool();
     loads = 0;

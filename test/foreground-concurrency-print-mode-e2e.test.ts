@@ -74,7 +74,7 @@ describe.skipIf(LIVE)("maxConcurrentForeground e2e (real pi agent loop)", () => 
     return { maxInFlight, order };
   }
 
-  it("runs a turn's two blocking Agent calls one at a time when the limit is 1", async () => {
+  it("runs a turn's two blocking agent calls one at a time when the limit is 1", async () => {
     const { maxInFlight, order } = await twoBlockingAgents({ maxConcurrentForeground: 1 });
 
     expect(maxInFlight).toBe(1);

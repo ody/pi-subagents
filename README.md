@@ -14,7 +14,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings)).
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally, with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
 - **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
-- **Agent mentions** — subagents are first-class: type `@explore also check the RPC path` at the prompt and it goes to that agent instead of the main model, without a word of it entering the chat. Toggle via `/agents → Settings → Agent mentions`.
+- **Agent mentions** — subagents are first-class: type `@reviewer also check the RPC path` at the prompt and it goes to that agent instead of the main model, without a word of it entering the chat. Toggle via `/agents → Settings → Agent mentions`.
   - One syntax covers the whole lifecycle: message it while it runs, resume it once it has finished, reopen its session from disk long after that, or start it if it never ran.
   - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation, so it gets Claude Code's context-written prompt and a real `agent` tool call without a word of it reaching the chat. `direct` mode starts it here from your text instead, with no model call at all.
   - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too.
@@ -178,21 +178,21 @@ A viewer stays open when its agent finishes so you can read the final output, an
 
 ### Agent mentions
 
-Subagents are addressable. Every agent has a typeable handle — the agent type, lowercased, numbered when instances collide (`explore`, `explore-2`) — and `@handle <message>` at the prompt talks to that agent, whatever state it happens to be in. Type `@` to pick one:
+Subagents are addressable. Every agent has a typeable handle — the agent type, lowercased, numbered when instances collide (`reviewer`, `reviewer-2`) — and `@handle <message>` at the prompt talks to that agent, whatever state it happens to be in. Type `@` to pick one:
 
 ```text
 ❯ @
   @auth-audit     send message · reviewer · running · audit the auth flow
-  @explore-2      send message · running · find flaky tests
+  @reviewer-2     send message · running · find flaky tests
   @code-review    resume · code-review · check the diff
-  @plan           start agent · Software architect agent for designing implementation plans.
+  @auditor        start agent · Reviews code for security vulnerabilities.
   index.ts        src/index.ts                        ← pi's own file rows, still there
   index.d.ts      dist/index.d.ts
 ```
 
 The handle names the **agent**, not one process, so a single syntax covers its whole lifecycle:
 
-| State | `@explore fix the flaky test` does |
+| State | `@reviewer fix the flaky test` does |
 | --- | --- |
 | running or queued | sends the message into its conversation, exactly as `steer_subagent` would |
 | finished | **resumes** it in the background from its existing session, continuing where it left off |
@@ -224,14 +224,14 @@ The agent it starts is attributed to the *real* session, so its transcript and `
 
 | Mode | `@planner sketch the migration`, with no planner agent running |
 | --- | --- |
-| `model` (default) | a clone of this conversation takes the turn off-screen and calls `agent`, so the agent starts with a prompt **written from the conversation**. Nothing reaches the chat but a `Prompting @plan…` toast — the wording marks the wait for that turn, where `direct`'s `Started @plan` means it is already running |
+| `model` (default) | a clone of this conversation takes the turn off-screen and calls `agent`, so the agent starts with a prompt **written from the conversation**. Nothing reaches the chat but a `Prompting @reviewer…` toast — the wording marks the wait for that turn, where `direct`'s `Started @reviewer` means it is already running |
 | `direct` | the agent starts here, immediately, with your message verbatim as its prompt. No model call at all, so no latency before it begins |
 | `off` | `@` means only "attach a file" again |
 
 Either way the started agent honours its own frontmatter — `model:`, `thinking:`, `max_turns:` all apply, unless you name a model or reasoning level in `model` mode.
 
 - **`direct`** sends your message unchanged and carries no overrides.
-- **`model`** reads your words, so `@plan with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run.
+- **`model`** reads your words, so `@reviewer with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run.
 - The clone's `agent` tool refuses `max_turns`, `run_in_background`, `resume`, and `schedule`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool.
 - The clone's forced background start is not disclosed as an override.
 - A refused clone call is reported as a warning toast with the refusal message, and the agent is not started directly.
@@ -240,19 +240,19 @@ Mentioning something as the very first thing in a session works: there is simply
 
 If the clone never calls the tool — a model can always answer in prose instead — the agent is started directly with your text and the toast says so, rather than leaving you with nothing running.
 
-`model` is also the only mode that works outside the TUI: `pi -p '@plan the migration'` clones, spawns, and reports through the normal completion path, where a direct start would have detached the agent and printed nothing. Messaging and resuming stay TUI-only for that reason, in both modes.
+`model` is also the only mode that works outside the TUI: `pi -p '@reviewer the migration'` clones, spawns, and reports through the normal completion path, where a direct start would have detached the agent and printed nothing. Messaging and resuming stay TUI-only for that reason, in both modes.
 
 Two things to weigh against `direct`: the clone re-sends the whole conversation, and the agent does not start until that turn finishes.
 
 #### Named agents
 
-The `agent` tool takes an optional `name`, so the orchestrator can call one `auth-audit` instead of leaving you to tell `@explore-2` from `@explore-3`. A name is *additive*: the type-derived handle is still assigned, so `@explore` keeps reaching that agent rather than starting a second one beside it.
+The `agent` tool takes an optional `name`, so the orchestrator can call one `auth-audit` instead of leaving you to tell `@reviewer-2` from `@reviewer-3`. A name is *additive*: the type-derived handle is still assigned, so `@reviewer` keeps reaching that agent rather than starting a second one beside it.
 
 Both names share one namespace — an alias can never shadow a live handle or the reverse — and the popup shows one row per agent, under its alias, with the type moved into the description. `steer_subagent`, `get_subagent_result`, and `stop_subagent` accept a handle too, so you and the model address agents the same way.
 
 #### Resuming much later
 
-Because subagent sessions are persisted by default ([`rememberAgents`](#persistent-settings)), a handle keeps working after the agent's in-memory record is evicted: `@explore anything else?` reopens the conversation from disk.
+Because subagent sessions are persisted by default ([`rememberAgents`](#persistent-settings)), a handle keeps working after the agent's in-memory record is evicted: `@reviewer anything else?` reopens the conversation from disk.
 
 - Only the *definition* is re-resolved, so a continuation runs under the agent type's current frontmatter, not the one the first run used.
 - If the type has since been deleted or disabled, the resume is refused rather than falling back to another agent. Re-enable it and the handle works again.
@@ -264,11 +264,11 @@ The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets sw
 
 | Input | Goes to |
 | --- | --- |
-| `@explore fix the flaky test` | the `explore` agent |
-| `@agent-explore fix the flaky test` | the same agent — Claude Code's manual spelling, accepted as a synonym |
-| `@main @explore is not a mention` | the main model, with the leading `@main` and its trailing space stripped — the escape hatch |
-| `@explore` (no message) | the main model — a bare handle is never a send |
-| `hey @explore look at this` | the main model — only a **leading** mention is routed |
+| `@reviewer fix the flaky test` | the `reviewer` agent |
+| `@agent-reviewer fix the flaky test` | the same agent — Claude Code's manual spelling, accepted as a synonym |
+| `@main @reviewer is not a mention` | the main model, with the leading `@main` and its trailing space stripped — the escape hatch |
+| `@reviewer` (no message) | the main model — a bare handle is never a send |
+| `hey @reviewer look at this` | the main model — only a **leading** mention is routed |
 | `@src/index.ts summarize this` | the main model, with pi's normal file attachment |
 | `@nosuchagent hello` | the main model, verbatim — no agent, no type, no interception |
 
@@ -278,7 +278,7 @@ Four rules decide what a handle can name:
 
 - `main` is reserved and can never be an agent's handle. A type slugging to it gets `main-2`.
 - Handles are capped at 64 characters.
-- A handle written as typed always wins over the `@agent-` form, so an agent genuinely called `agent-explore` stays reachable.
+- A handle written as typed always wins over the `@agent-` form, so an agent genuinely called `agent-reviewer` stays reachable.
 - [Nested subagents](#nested-subagents) are not addressable. They are absent from every programmatic top-level surface and only their owner may steer them *by tool*, so a handle that would name one starts a fresh top-level agent instead of reaching through that boundary. They are still visible and steerable by hand in [FleetView](#fleetview) and `/agents → Agents`.
 
 Suggestions list live agents first, then resumable ones, then startable types — and then pi's own file rows, in the same popup: `@` stays the file picker it always was, and the handles are added to it rather than replacing it. Disable the whole thing via `/agents → Settings → Agent mentions`.
@@ -341,7 +341,7 @@ Project-level agents override global ones with the same name, so you can customi
 
 A skill can ship agents in an `agents/` directory next to its `SKILL.md`, so it can dispatch work into a clean context without asking the user to install agent files. Skills are found the way pi finds them: any directory under `$PI_CODING_AGENT_DIR/skills/` that holds a `SKILL.md`, at any depth, following symlinks. Rules for skill agents:
 
-- Any user location overrides a skill agent of the same name; a skill agent overrides a built-in default.
+- Any user location overrides a skill agent of the same name.
 - Two skills shipping the same name log a warning. The skill found later wins: the walk is breadth-first, sorted by name at each level.
 - `/agents` never edits a skill's file. **Eject** copies it to a user location, and **Disable** writes a user stub that shadows it.
 
@@ -816,7 +816,7 @@ Two visible consequences of the default:
 
 Agents spawned by another agent are excluded — they get no handle, so nothing could reopen their transcript. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
 
-With it off, handles expire with their record (roughly ten minutes past completion) and `@explore` then starts a fresh agent rather than resuming — the behaviour before this setting existed.
+With it off, handles expire with their record (roughly ten minutes past completion) and `@reviewer` then starts a fresh agent rather than resuming — the behaviour before this setting existed.
 
 ### Output transcript
 
