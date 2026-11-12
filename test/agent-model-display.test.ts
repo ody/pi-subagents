@@ -90,7 +90,7 @@ beforeEach(() => {
   process.env.PI_CODING_AGENT_DIR = join(cwd, "agent-dir");
   process.env.HOME = cwd;
   mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
-  writeFileSync(join(cwd, ".pi", "agents", "general-purpose.md"), "---\ndescription: general\nprompt_mode: append\n---\n\nbody\n");
+  writeFileSync(join(cwd, ".pi", "agents", "general-purpose.md"), "---\ndescription: general\nprompt_mode: replace\n---\n\nbody\n");
 });
 
 afterEach(() => {
@@ -151,7 +151,7 @@ describe("agent tool result — effective model", () => {
       .render(200).join("\n")).toContain("opus 4.6");
   });
 
-  it("keeps the twin label beside the model", async () => {
+  it("keeps the bare label beside the model", async () => {
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
       const s = session("anthropic", "claude-opus-4-6", "high");
       options.onSessionCreated?.(s);
@@ -167,8 +167,8 @@ describe("agent tool result — effective model", () => {
       ctx(),
     );
 
-    expect(result.details.tags).toContain("twin");
-    expect(render(tool, result)).toContain("twin");
+    expect(result.details.tags).toContain("bare");
+    expect(render(tool, result)).toContain("bare");
   });
 
   it("reports the session's level, and what was asked for, when pi clamps it", async () => {

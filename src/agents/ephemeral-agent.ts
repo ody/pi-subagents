@@ -3,9 +3,16 @@ import type { AgentConfig } from "../types.js";
 import { BUILTIN_TOOL_NAMES } from "./agent-types.js";
 
 export const EPHEMERAL_TYPE_PREFIX = "ephemeral-";
-export const EPHEMERAL_DISPLAY_NAME = "Agent";
+const DISPLAY_NAME_WORDS = 3;
+
+export function ephemeralDisplayName(seed: string | undefined): string {
+  const words = (seed ?? "").split(/[^A-Za-z0-9]+/).filter(Boolean).slice(0, DISPLAY_NAME_WORDS);
+  if (words.length === 0) return "Agent";
+  return words.map(word => word[0].toUpperCase() + word.slice(1)).join(" ");
+}
 
 export interface EphemeralParams {
+  name?: string;
   description: string;
   tools?: string[];
   disallowed_tools?: string[];
@@ -82,7 +89,7 @@ export function buildEphemeralAgent(params: EphemeralParams): BuiltEphemeralAgen
 
   const config: AgentConfig = {
     name: type,
-    displayName: EPHEMERAL_DISPLAY_NAME,
+    displayName: ephemeralDisplayName(params.name ?? params.description),
     description: params.description,
     builtinToolNames: tools?.builtinToolNames ?? [...BUILTIN_TOOL_NAMES],
     extSelectors: tools?.extSelectors,
