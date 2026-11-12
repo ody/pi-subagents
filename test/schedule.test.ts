@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NO_FALLBACK, registerAgents, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { registerAgents } from "../src/agents/agent-types.js";
 import { SubagentScheduler } from "../src/triggers/schedule.js";
 import { ScheduleStore } from "../src/triggers/schedule-store.js";
 
@@ -210,6 +210,7 @@ describe("SubagentScheduler — fire path", () => {
   let ctx: any;
 
   beforeEach(() => {
+    registerAgents(new Map());
     vi.useFakeTimers();
     tmp = mkdtempSync(join(tmpdir(), "scheduler-fire-"));
     store = new ScheduleStore(join(tmp, "s.json"));
@@ -223,7 +224,6 @@ describe("SubagentScheduler — fire path", () => {
   afterEach(() => {
     scheduler.stop();
     vi.useRealTimers();
-    setFallbackSubagent(undefined);
     registerAgents(new Map());
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -243,7 +243,6 @@ describe("SubagentScheduler — fire path", () => {
 
   it("refuses at fire time when the job's agent type no longer resolves", () => {
     registerAgents(new Map());
-    setFallbackSubagent(NO_FALLBACK);
     const job = scheduler.addJob({
       name: "gone", description: "vanished agent", schedule: "+1s",
       subagent_type: "deleted-since", prompt: "run",
@@ -258,7 +257,7 @@ describe("SubagentScheduler — fire path", () => {
       "subagents:scheduled",
       expect.objectContaining({
         type: "error",
-        error: expect.stringContaining("Unknown or disabled agent type"),
+        error: expect.stringContaining('Unknown or disabled agent type: "deleted-since"'),
       }),
     );
   });

@@ -59,7 +59,7 @@ Three things that are not obvious from the tables:
 The shape is `AgentConfig` from `src/types.ts`, using its field names rather than frontmatter spellings. The RPC boundary completes it:
 
 - `systemPrompt` is required.
-- `name` is always set to `type`, which names the run (handle, session name, record) and is never resolved, so `fallbackSubagent` does not apply.
+- `name` is always set to `type`, which names the run (handle, session name, record) and is never resolved against the registry.
 - `description` defaults to `options.description`, then `type`.
 - `extensions` and `skills` default to `true`, and `promptMode` to `"replace"`, like omitted frontmatter.
 - `builtinToolNames` omitted means all built-ins. `[]` means none.
@@ -87,7 +87,7 @@ pi.events.emit("subagents:rpc:spawn", {
 Three things to know:
 
 - **Sessions persist by default.** `rememberAgents` writes top-level agent sessions to disk. Set `persistSession: false` for a one-shot agent whose transcript nobody will reopen.
-- **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders as the fallback agent's name next to its `description`.
+- **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders under a generic name next to its `description`.
 - **An evicted inline agent cannot be reopened by `@handle`.** Reopening resolves the type against the registry and refuses when nothing is registered under that name. A registered agent with the same name would be reopened instead, so pick a type no agent file uses. A live record whose session still exists resumes normally, under the tools it was created with.
 
 ### Names that look right and are not
@@ -118,9 +118,8 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 | `Capability policy: a spawn needs a verdict from checkCapabilityPolicy.` | `src/manager/agent-spawn.ts` — a spawn reached the manager without a verdict. Not reachable from the bus or the registry |
 | `Model not found: "<input>".` + available models | `src/config/model-resolver.ts:125` |
 | `Model not in scope: "<input>".` + allowed models | `src/config/model-scope.ts:62` — only with `scopeModels` on, and checked against the *resolved* model |
-| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts:187` — only under `fallbackSubagent: none` |
-| `No agent type given. Available: <list>.` | `src/agents/agent-types.ts:187-194` — same condition |
-| `<reason> The configured fallbackSubagent "<x>" is itself unknown or disabled. Available: <list>.` | `src/agents/agent-types.ts:205-207` |
+| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts` — `type` does not resolve to exactly one enabled agent, and no `agentConfig` was given |
+| `No agent type given. Available: <list>.` | `src/agents/agent-types.ts` — `type` is empty and no `agentConfig` was given |
 | `SpawnOptions.cwd must be an absolute path: "<value>"` | `src/manager/agent-manager-rules.ts:38` |
 | `SpawnOptions.cwd does not exist: "<cwd>"` | `src/manager/agent-manager-rules.ts:44` |
 | `SpawnOptions.cwd is not a directory: "<cwd>"` | `src/manager/agent-manager-rules.ts:47` |

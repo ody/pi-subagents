@@ -1,6 +1,5 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getFallbackSubagent, NO_FALLBACK, setFallbackSubagent } from "../src/agents/agent-types.js";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../src/config/runner-defaults.js";
 import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../src/platform/output-file.js";
@@ -9,7 +8,6 @@ import { getMaxSubagentDepth, setMaxSubagentDepth } from "../src/tool/nested-too
 import { applySettingValue, type SettingsMenuDeps, showSettings } from "../src/ui/settings-menu.js";
 
 const saved = {
-  fallback: getFallbackSubagent(),
   scope: isScopeModelsEnabled(),
   depth: getMaxSubagentDepth(),
   transcript: getOutputTranscriptDefault(),
@@ -20,7 +18,6 @@ const saved = {
 };
 
 afterEach(() => {
-  setFallbackSubagent(saved.fallback);
   setScopeModelsEnabled(saved.scope);
   setMaxSubagentDepth(saved.depth);
   setOutputTranscriptDefault(saved.transcript);
@@ -35,7 +32,6 @@ const appliers = {
   setBackgroundByDefault: vi.fn(),
   setSchedulingEnabled: vi.fn(),
   setStrictAgentFiles: vi.fn(),
-  setDisableDefaultAgents: vi.fn(),
   setToolDescriptionMode: vi.fn(),
   setFleetView: vi.fn(),
   setAgentMentions: vi.fn(),
@@ -219,28 +215,6 @@ describe("applySettingValue enum and toggle settings", () => {
     apply("strictAgentFiles", "off");
     expect(appliers.setStrictAgentFiles).toHaveBeenCalledWith(false);
     expect(lastMessage()).toBe("Strict agent files disabled. Takes effect on next pi session.");
-  });
-
-  it("disableDefaultAgents", () => {
-    apply("disableDefaultAgents", "on");
-    expect(appliers.setDisableDefaultAgents).toHaveBeenCalledWith(true);
-    expect(lastMessage()).toBe("Default agents disabled. Tool spec change takes effect on next pi session.");
-    vi.clearAllMocks();
-    apply("disableDefaultAgents", "off");
-    expect(appliers.setDisableDefaultAgents).toHaveBeenCalledWith(false);
-    expect(lastMessage()).toBe("Default agents enabled. Tool spec change takes effect on next pi session.");
-  });
-
-  it("fallbackSubagent with an agent type", () => {
-    apply("fallbackSubagent", "Explore");
-    expect(getFallbackSubagent()).toBe("Explore");
-    expect(lastMessage()).toBe("Unknown agent types will fall back to Explore");
-  });
-
-  it("fallbackSubagent none", () => {
-    apply("fallbackSubagent", NO_FALLBACK);
-    expect(getFallbackSubagent()).toBe(NO_FALLBACK);
-    expect(lastMessage()).toBe("Unknown or disabled agent types will now be rejected");
   });
 
   it("outputTranscript", () => {

@@ -34,7 +34,6 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
   const { ctx, toolCallId, params, call, attachTranscript } = input;
   const {
     subagentType,
-    fallbackNote: typeFallbackNote,
     capability,
     agentConfig,
     ephemeral,
@@ -49,7 +48,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     detailBase,
   } = call;
 
-  const fallbackNote = typeFallbackNote + (capability ? filteredNote(capability) : "");
+  const capabilityNote = capability ? filteredNote(capability) : "";
   const bgCallbacks = createActivityTracker();
 
   let id: string;
@@ -109,7 +108,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   const isQueued = record?.status === "queued";
   return textResult(
-    `${fallbackNote}Agent ${isQueued ? "queued" : "started"} in background.\n` +
+    `${capabilityNote}Agent ${isQueued ? "queued" : "started"} in background.\n` +
     `Agent ID: ${id}\n` +
     `Type: ${displayName}\n` +
     `Description: ${params.description}\n` +

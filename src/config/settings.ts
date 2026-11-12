@@ -2,7 +2,6 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { NO_FALLBACK } from "../agents/agent-types.js";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
 import { policyEventPayload, readProjectPolicyRaw } from "./capability-policy-config.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
@@ -17,7 +16,6 @@ export interface SubagentsSettings {
   schedulingEnabled?: boolean;
   scopeModels?: boolean;
   strictAgentFiles?: boolean;
-  disableDefaultAgents?: boolean;
   toolDescriptionMode?: ToolDescriptionMode;
   fleetView?: boolean;
   agentMentions?: AgentMentionMode;
@@ -26,7 +24,6 @@ export interface SubagentsSettings {
   outputTranscript?: boolean;
   worktreeIsolation?: boolean;
   maxSubagentDepth?: number;
-  fallbackSubagent?: string;
   reportUsage?: boolean;
   showCost?: boolean;
 
@@ -46,7 +43,6 @@ export interface SettingsAppliers {
   setSchedulingEnabled: (b: boolean) => void;
   setScopeModels: (enabled: boolean) => void;
   setStrictAgentFiles: (b: boolean) => void;
-  setDisableDefaultAgents: (b: boolean) => void;
   setToolDescriptionMode: (mode: ToolDescriptionMode) => void;
   setFleetView: (b: boolean) => void;
   setAgentMentions: (mode: AgentMentionMode) => void;
@@ -55,7 +51,6 @@ export interface SettingsAppliers {
   setOutputTranscript: (b: boolean) => void;
   setWorktreeIsolation: (b: boolean) => void;
   setMaxSubagentDepth: (n: number) => void;
-  setFallbackSubagent: (v: string | undefined) => void;
   setReportUsage: (b: boolean) => void;
   setShowCost: (b: boolean) => void;
   setShowModel: (b: boolean) => void;
@@ -130,9 +125,6 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (typeof r.strictAgentFiles === "boolean") {
     out.strictAgentFiles = r.strictAgentFiles;
   }
-  if (typeof r.disableDefaultAgents === "boolean") {
-    out.disableDefaultAgents = r.disableDefaultAgents;
-  }
   if (typeof r.toolDescriptionMode === "string" && VALID_TOOL_DESCRIPTION_MODES.has(r.toolDescriptionMode)) {
     out.toolDescriptionMode = r.toolDescriptionMode as ToolDescriptionMode;
   }
@@ -167,11 +159,6 @@ function sanitize(raw: unknown): SubagentsSettings {
   }
   if (typeof r.viewerMarkdown === "string" && VALID_VIEWER_MARKDOWN_MODES.has(r.viewerMarkdown)) {
     out.viewerMarkdown = r.viewerMarkdown as ViewerMarkdownMode;
-  }
-  if (r.fallbackSubagent === false) {
-    out.fallbackSubagent = NO_FALLBACK;
-  } else if (typeof r.fallbackSubagent === "string" && r.fallbackSubagent.trim()) {
-    out.fallbackSubagent = r.fallbackSubagent.trim();
   }
   return out;
 }
@@ -216,13 +203,11 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (typeof s.defaultMaxTurns === "number") appliers.setDefaultMaxTurns(s.defaultMaxTurns);
   if (typeof s.graceTurns === "number") appliers.setGraceTurns(s.graceTurns);
   if (typeof s.maxSubagentDepth === "number") appliers.setMaxSubagentDepth(s.maxSubagentDepth);
-  if (typeof s.fallbackSubagent === "string") appliers.setFallbackSubagent(s.fallbackSubagent);
   if (s.defaultJoinMode) appliers.setDefaultJoinMode(s.defaultJoinMode);
   if (typeof s.backgroundByDefault === "boolean") appliers.setBackgroundByDefault(s.backgroundByDefault);
   if (typeof s.schedulingEnabled === "boolean") appliers.setSchedulingEnabled(s.schedulingEnabled);
   if (typeof s.scopeModels === "boolean") appliers.setScopeModels(s.scopeModels);
   if (typeof s.strictAgentFiles === "boolean") appliers.setStrictAgentFiles(s.strictAgentFiles);
-  if (typeof s.disableDefaultAgents === "boolean") appliers.setDisableDefaultAgents(s.disableDefaultAgents);
   if (s.toolDescriptionMode) appliers.setToolDescriptionMode(s.toolDescriptionMode);
   if (typeof s.fleetView === "boolean") appliers.setFleetView(s.fleetView);
   if (s.agentMentions) appliers.setAgentMentions(s.agentMentions);

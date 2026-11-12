@@ -8,25 +8,9 @@ export const BUILTIN_TOOL_NAMES: string[] = [
 
 const agents = new Map<string, AgentConfig>();
 
-let disableDefaults = false;
-
-export function isDefaultsDisabled(): boolean { return disableDefaults; }
-
-export function setDefaultsDisabled(b: boolean): void { disableDefaults = b; }
-
-export const NO_FALLBACK = "none";
-
-let fallbackSubagent: string | undefined;
-
-export function getFallbackSubagent(): string | undefined { return fallbackSubagent; }
-
-export function setFallbackSubagent(v: string | undefined): void { fallbackSubagent = v; }
-
 export function buildAgentRegistry(userAgents: Map<string, AgentConfig>): Map<string, AgentConfig> {
   const registry = new Map<string, AgentConfig>();
-  if (!disableDefaults) {
-    for (const [name, config] of DEFAULT_AGENTS) registry.set(name, config);
-  }
+  for (const [name, config] of DEFAULT_AGENTS) registry.set(name, config);
   for (const [name, config] of userAgents) registry.set(name, config);
   return registry;
 }
@@ -90,7 +74,7 @@ export function resolveEnabledTypeIn(
 }
 
 export type SpawnTypeResolution =
-  | { ok: true; type: string; fellBackFrom?: string }
+  | { ok: true; type: string }
   | { ok: false; message: string };
 
 export function resolveSpawnTypeIn(
@@ -105,26 +89,7 @@ export function resolveSpawnTypeIn(
 
   const reason = raw ? `Unknown or disabled agent type: "${raw}".` : "No agent type given.";
 
-  const configured = typeof fallbackSubagent === "string" ? fallbackSubagent.trim() : undefined;
-
-  if (configured !== undefined && configured.toLowerCase() === NO_FALLBACK) {
-    return { ok: false, message: `${reason} Available: ${available()}.` };
-  }
-
-  if (configured !== undefined) {
-    const fallbackKey = resolveUnambiguousKeyIn(registry, configured);
-    if (fallbackKey === undefined || registry.get(fallbackKey)?.enabled === false) {
-      return {
-        ok: false,
-        message:
-          `${reason} The configured fallbackSubagent "${configured}" is itself ` +
-          `unknown or disabled. Available: ${available()}.`,
-      };
-    }
-    return { ok: true, type: fallbackKey, fellBackFrom: raw };
-  }
-
-  return { ok: true, type: "general-purpose", fellBackFrom: raw };
+  return { ok: false, message: `${reason} Available: ${available()}.` };
 }
 
 export function resolveSpawnType(requested: unknown): SpawnTypeResolution {
