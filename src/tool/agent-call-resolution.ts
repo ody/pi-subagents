@@ -1,5 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getAgentConfig, resolveSpawnType, resolveType } from "../agents/agent-types.js";
+import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import {
   type BuiltEphemeralAgent,
   buildEphemeralAgent,
@@ -37,8 +37,6 @@ export type AgentCallResolution =
   | {
       ok: true;
       subagentType: SubagentType;
-      requestedType: string;
-      fallbackNote: string;
       displayName: string;
       model: any;
       thinking: ThinkingLevel | undefined;
@@ -111,16 +109,13 @@ function typeParamConflict(params: AgentCallParams): string | undefined {
 function dispatchType(
   params: AgentCallParams,
   built: BuiltEphemeralAgent | undefined,
-): { ok: false; message: string } | { ok: true; subagentType: SubagentType; requestedType: string; fallbackNote: string } {
+): { ok: false; message: string } | { ok: true; subagentType: SubagentType } {
   const rawType = (params.subagent_type ?? "") as SubagentType;
-  const dispatch = built ? { ok: true as const, type: built.type, fellBackFrom: undefined } : resolveSpawnType(rawType);
-  if (!dispatch.ok && !params.resume) return { ok: false, message: dispatch.message };
-  const subagentType = dispatch.ok ? dispatch.type : rawType;
-  const requestedType = (dispatch.ok && dispatch.fellBackFrom) || subagentType;
-  const fallbackNote = dispatch.ok && dispatch.fellBackFrom !== undefined
-    ? `Note: Unknown agent type "${dispatch.fellBackFrom}" — using ${resolveType(subagentType) ? subagentType : "the fallback agent config"}.\n\n`
-    : "";
-  return { ok: true, subagentType, requestedType, fallbackNote };
+  const dispatch = built ? { ok: true as const, type: built.type } : resolveSpawnType(rawType);
+  if (!dispatch.ok && !params.resume) {
+    return { ok: false, message: `${dispatch.message} Omit subagent_type to run a one-off agent built from the call's parameters.` };
+  }
+  return { ok: true, subagentType: dispatch.ok ? dispatch.type : rawType };
 }
 
 export function resolveAgentCall(
@@ -133,7 +128,7 @@ export function resolveAgentCall(
   const built = omitsType(params) ? buildEphemeralAgent({ ...params, description: params.description }) : undefined;
   const dispatched = dispatchType(params, built);
   if (!dispatched.ok) return dispatched;
-  const { subagentType, requestedType, fallbackNote } = dispatched;
+  const { subagentType } = dispatched;
 
   const displayName = getDisplayName({ type: subagentType, displayName: built?.config.displayName });
 
@@ -210,8 +205,6 @@ export function resolveAgentCall(
   return {
     ok: true,
     subagentType,
-    requestedType,
-    fallbackNote,
     displayName,
     model,
     thinking,

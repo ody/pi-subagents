@@ -22,7 +22,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context. Resumes detached by default and notifies you on completion, just like a fresh spawn; pass `run_in_background: false` to block and get the result inline
 - **Graceful turn limits** — agents get a "wrap up" warning before hard abort, producing clean partial results instead of cut-off output
-- **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — falls back to general-purpose with a note, or is refused outright under [`fallbackSubagent: none`](#persistent-settings)
+- **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — is refused with an error that lists the enabled types
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
 - **Git worktree isolation** — run agents in isolated repo copies; changes auto-committed to branches on completion
@@ -473,7 +473,7 @@ The read-only agent above therefore cannot obtain writes through its children, b
 - `all` (or `"*"` / `true`, matching how `extensions:` and `skills:` take booleans) allows any enabled agent.
 - Omitted, empty, `none`, or `false` means no nested tools are injected at all.
 
-Unknown, disabled, and out-of-list types are rejected rather than falling back — regardless of the project's [fallback agent](#persistent-settings) setting, so a configured fallback can never hand a nested caller an agent outside its allowlist. A nested `model:` is validated against [Model Scope](#model-scope) exactly like a top-level spawn.
+Unknown, disabled, and out-of-list types are rejected. A nested `model:` is validated against [Model Scope](#model-scope) exactly like a top-level spawn.
 
 Result, resume, and steering operations are ownership-scoped, so a parent can control only its own children. Nested records stay internal to that parent for every *programmatic* surface — top-level tools, lifecycle events, the [RPC channels](docs/rpc.md), `@handle` resolution — and when a parent finishes, is stopped, or ends a resumed turn, its nested children are stopped with it.
 
@@ -727,8 +727,8 @@ Runtime tuning values set via `/agents` → Settings persist across pi restarts:
 
 - max concurrency, max foreground concurrency
 - default max turns, grace turns
-- nested depth, fallback agent, default join mode
-- scheduling on/off, scope models on/off, disable defaults on/off
+- nested depth, default join mode
+- scheduling on/off, scope models on/off
 - strict agent files on/off, agent mentions on/off, output transcript on/off
 - tool description full/compact/custom
 - widget all/background/off
@@ -742,22 +742,20 @@ Two files, merged on load:
 
 ### Precedence
 
-Project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`, defaults enabled).
+Project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`).
 
 ### Nested depth
 
 `maxSubagentDepth`, default `2`: the hard ceiling on [nested delegation](#nested-subagents), counted from the main session (main = 0, its subagents = 1). `0` or `1` disables nesting project-wide regardless of any agent's `allowed_subagents`. Read when a subagent session is built, so a change applies to agents started after it.
 
-### Fallback agent
+### Unresolved agent types
 
-`fallbackSubagent`, default `general-purpose`: the agent used when a caller-supplied `subagent_type` doesn't resolve to exactly one enabled agent — unknown, disabled, or ambiguous because two agents differ only by case. Also settable from `/agents → Settings → Fallback agent`.
+A `subagent_type` that does not resolve to exactly one enabled agent is an error that lists the enabled types. That covers unknown, disabled, and ambiguous types, where two agents differ only by case.
 
-- Name any enabled agent to route those calls there instead.
-- Set `none` for **strict**, fail-closed dispatch: the call is refused with an error listing the available types, and nothing spawns. Strict mode matters most for background and scheduled calls, which would otherwise start executing a substituted agent before the caller learns anything.
-- The boolean `false` is accepted as a spelling of `none`, because it would otherwise be dropped as the wrong type and silently leave the permissive default in place.
-- Every other value is read as an agent name, so a mistaken `off` fails loudly at dispatch rather than meaning one thing in the settings file and another in the resolver.
-- A fallback agent that is itself unknown or disabled is a misconfiguration and is reported rather than quietly replaced.
-- The default stays permissive by design: with `disableDefaultAgents` and no `general-purpose` of your own, an unresolvable type still resolves to a built-in config carrying *all* tools. Set `none` (or name one of your own agents) to close that.
+- Only the `agent` tool's message suggests omitting the type to run a one-off agent.
+- An empty `type` on `subagents:rpc:spawn` without `agentConfig` is an error envelope.
+- A stored reference to a removed type, such as a scheduled job, fails when it is used, with the type named.
+- A key for a removed setting in `subagents.json` is ignored.
 
 ### Capability policy
 
@@ -794,10 +792,6 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 ### Strict agent files
 
 `strictAgentFiles`, default `false`: when on, an unreadable or unparseable [agent file](#custom-agents) aborts extension load at startup and names the file, instead of being skipped with a warning — so a checked-in `.pi/agents/` can't silently fall through to a same-named agent from another location. Startup only: the mid-session reload that runs on each `Agent` call keeps warning either way, since a bad edit shouldn't kill a session on an unrelated spawn. Also settable from `/agents → Settings → Strict agent files`.
-
-### Disable defaults
-
-`disableDefaultAgents`, default `false`: when on, the three built-in agents (general-purpose, Explore, Plan) are not registered — only your project/global custom agents are advertised and spawnable. User-defined agents are unaffected, including ones that override a default by name. The Agent tool's type list updates on the next pi session (the tool schema is registered at startup).
 
 ### Agent mentions setting
 

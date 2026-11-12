@@ -86,13 +86,27 @@ describe("Agent tool → persisted scheduled job", () => {
     }
   });
 
-  it("stores the caller's own subagent_type, not the fallback substitute", async () => {
-    const { job, reply, restore } = await scheduleAndReadBack({ subagent_type: "does-not-exist" });
+  it("refuses an unknown subagent_type instead of persisting a job", async () => {
+    const hermetic = hermeticDir();
+    const { pi, tools, lifecycle } = makePi();
+    subagentsExtension(pi);
+    const c = bootedCtx();
+    await lifecycle.get("session_start")?.({}, c);
     try {
-      expect(job.subagent_type).toBe("does-not-exist");
-      expect(reply).toContain("Scheduled");
+      const reply = textOf(
+        await tools.get("Agent").execute(
+          "tc-sched",
+          { prompt: "x", description: "nightly sweep", schedule: "0 3 * * * *", subagent_type: "does-not-exist" },
+          undefined,
+          undefined,
+          c,
+        ),
+      );
+      expect(reply).toContain('Unknown or disabled agent type: "does-not-exist"');
+      expect(new ScheduleStore(resolveStorePath(c.cwd, SESSION_ID)).list()).toEqual([]);
     } finally {
-      restore();
+      await lifecycle.get("session_shutdown")?.();
+      hermetic.restore();
     }
   });
 });

@@ -1,5 +1,4 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { getFallbackSubagent, isDefaultsDisabled } from "../agents/agent-types.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
@@ -44,7 +43,6 @@ export function snapshotSettings(settings: Readonly<RuntimeSettings>, src: Snaps
     schedulingEnabled: settings.schedulingEnabled,
     scopeModels: isScopeModelsEnabled(),
     strictAgentFiles: settings.strictAgentFiles,
-    disableDefaultAgents: isDefaultsDisabled(),
     toolDescriptionMode: settings.toolDescriptionMode,
     fleetView: settings.fleetView,
     agentMentions: settings.agentMentionMode,
@@ -53,7 +51,6 @@ export function snapshotSettings(settings: Readonly<RuntimeSettings>, src: Snaps
     outputTranscript: getOutputTranscriptDefault(),
     worktreeIsolation: isWorktreeIsolationEnabled(),
     maxSubagentDepth: getMaxSubagentDepth(),
-    fallbackSubagent: getFallbackSubagent(),
     reportUsage: settings.reportUsage,
     showCost: settings.showCost,
     showModel: settings.showModel,
