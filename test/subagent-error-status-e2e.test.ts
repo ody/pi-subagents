@@ -10,7 +10,7 @@ import {
 
 function agentToolResult(session: AgentSession): string {
   const msg = [...session.messages].reverse().find(
-    (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
+    (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
   );
   return ((msg?.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? "").join("");
 }

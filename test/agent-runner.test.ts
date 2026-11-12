@@ -100,7 +100,7 @@ vi.mock("../src/session/skill-loader.js", () => ({
 vi.mock("../src/tool/nested-tools.js", () => ({
   getMaxSubagentDepth: vi.fn(() => 2),
   createNestedSubagentTools: vi.fn(() => [
-    { name: "Agent" },
+    { name: "agent" },
     { name: "get_subagent_result" },
     { name: "steer_subagent" },
     { name: "stop_subagent" },
@@ -860,7 +860,7 @@ describe("agent-runner master tool allowlist", () => {
     vi.mocked(getAgentConfig).mockReturnValueOnce(makeAgentConfig({ extensions: true }));
     vi.mocked(getToolNamesForType).mockReturnValueOnce(BUILTINS_7);
     withExtensions({
-      "/ext/evil.ts": ["Agent", "get_subagent_result", "steer_subagent", "ok_ext"],
+      "/ext/evil.ts": ["agent", "get_subagent_result", "steer_subagent", "ok_ext"],
     });
     const { session } = createSession("OK");
     createAgentSession.mockResolvedValue({ session });
@@ -868,7 +868,7 @@ describe("agent-runner master tool allowlist", () => {
     await runAgent(ctx, "Explore", "go", { pi });
 
     const tools = lastToolsPassed();
-    expect(tools).not.toContain("Agent");
+    expect(tools).not.toContain("agent");
     expect(tools).not.toContain("get_subagent_result");
     expect(tools).not.toContain("steer_subagent");
     expect(tools).toContain("ok_ext");
@@ -887,7 +887,7 @@ describe("agent-runner master tool allowlist", () => {
     });
 
     expect(createNestedSubagentTools).not.toHaveBeenCalled();
-    expect(lastToolsPassed()).not.toContain("Agent");
+    expect(lastToolsPassed()).not.toContain("agent");
     expect(createAgentSession.mock.calls[0][0].customTools).toEqual([]);
   });
 
@@ -915,7 +915,7 @@ describe("agent-runner master tool allowlist", () => {
       configCwd: "/tmp",
     }));
     expect(lastToolsPassed()).toEqual(expect.arrayContaining([
-      "Agent", "get_subagent_result", "steer_subagent", "stop_subagent",
+      "agent", "get_subagent_result", "steer_subagent", "stop_subagent",
     ]));
     expect(createAgentSession.mock.calls[0][0].customTools).toHaveLength(4);
   });
@@ -936,10 +936,10 @@ describe("agent-runner master tool allowlist", () => {
     });
 
     const opts = createAgentSession.mock.calls[0][0];
-    expect(opts.excludeTools ?? []).not.toContain("Agent");
+    expect(opts.excludeTools ?? []).not.toContain("agent");
     expect(opts.customTools).toHaveLength(4);
     const active = lastToolsPassed();
-    expect(active).toEqual(expect.arrayContaining(["Agent", "get_subagent_result", "steer_subagent", "stop_subagent"]));
+    expect(active).toEqual(expect.arrayContaining(["agent", "get_subagent_result", "steer_subagent", "stop_subagent"]));
     expect(active).toContain("ok_ext");
   });
 
@@ -947,7 +947,7 @@ describe("agent-runner master tool allowlist", () => {
     it("denies the tool under the isolated static allowlist", async () => {
       vi.mocked(getConfig).mockReturnValueOnce(makeConfig({ extensions: false }));
       vi.mocked(getAgentConfig).mockReturnValueOnce(
-        makeAgentConfig({ extensions: false, allowedSubagents: "all", disallowedTools: ["Agent"] }),
+        makeAgentConfig({ extensions: false, allowedSubagents: "all", disallowedTools: ["agent"] }),
       );
       vi.mocked(getToolNamesForType).mockReturnValueOnce(BUILTINS_7);
       const { session } = createSession("OK");
@@ -959,14 +959,14 @@ describe("agent-runner master tool allowlist", () => {
       });
 
       const tools = lastToolsPassed();
-      expect(tools).not.toContain("Agent");
+      expect(tools).not.toContain("agent");
       expect(tools).toEqual(expect.arrayContaining(["get_subagent_result", "steer_subagent"]));
     });
 
     it("denies the tool at the registry gate under extensions", async () => {
       vi.mocked(getConfig).mockReturnValueOnce(makeConfig({ extensions: true }));
       vi.mocked(getAgentConfig).mockReturnValueOnce(
-        makeAgentConfig({ extensions: true, allowedSubagents: "all", disallowedTools: ["Agent"] }),
+        makeAgentConfig({ extensions: true, allowedSubagents: "all", disallowedTools: ["agent"] }),
       );
       vi.mocked(getToolNamesForType).mockReturnValueOnce(BUILTINS_7);
       withExtensions({ "/ext/ok.ts": ["ok_ext"] });
@@ -978,14 +978,14 @@ describe("agent-runner master tool allowlist", () => {
         nestedRuntime: { manager: {} as any, parentAgentId: "parent", depth: 1 },
       });
 
-      expect(createAgentSession.mock.calls[0][0].excludeTools ?? []).toContain("Agent");
-      expect(lastToolsPassed()).not.toContain("Agent");
+      expect(createAgentSession.mock.calls[0][0].excludeTools ?? []).toContain("agent");
+      expect(lastToolsPassed()).not.toContain("agent");
     });
 
     it("blocks the tool at runtime even though it was injected as a customTool", async () => {
       vi.mocked(getConfig).mockReturnValueOnce(makeConfig({ extensions: true }));
       vi.mocked(getAgentConfig).mockReturnValueOnce(
-        makeAgentConfig({ extensions: true, allowedSubagents: "all", disallowedTools: ["Agent"] }),
+        makeAgentConfig({ extensions: true, allowedSubagents: "all", disallowedTools: ["agent"] }),
       );
       vi.mocked(getToolNamesForType).mockReturnValueOnce(BUILTINS_7);
       withExtensions({ "/ext/ok.ts": ["ok_ext"] });
@@ -998,7 +998,7 @@ describe("agent-runner master tool allowlist", () => {
       });
 
       await expect(
-        session.agent.beforeToolCall?.({ toolCall: { name: "Agent" } }),
+        session.agent.beforeToolCall?.({ toolCall: { name: "agent" } }),
       ).resolves.toMatchObject({ block: true });
       await expect(
         session.agent.beforeToolCall?.({ toolCall: { name: "steer_subagent" } }),
@@ -1025,7 +1025,7 @@ describe("agent-runner master tool allowlist", () => {
 
       const tools = lastToolsPassed();
       expect(tools).not.toContain("get_subagent_result");
-      expect(tools).toContain("Agent");
+      expect(tools).toContain("agent");
       expect(tools).toContain("steer_subagent");
     });
   });
@@ -1034,14 +1034,14 @@ describe("agent-runner master tool allowlist", () => {
     vi.mocked(getConfig).mockReturnValueOnce(makeConfig({ extensions: true }));
     vi.mocked(getAgentConfig).mockReturnValueOnce(makeAgentConfig({ extensions: true }));
     vi.mocked(getToolNamesForType).mockReturnValueOnce(BUILTINS_7);
-    withExtensions({ "/ext/evil.ts": ["Agent", "get_subagent_result", "steer_subagent", "ok_ext"] });
+    withExtensions({ "/ext/evil.ts": ["agent", "get_subagent_result", "steer_subagent", "ok_ext"] });
     const { session } = createSession("OK");
     createAgentSession.mockResolvedValue({ session });
 
     await runAgent(ctx, "Explore", "go", { pi });
 
     const active = lastToolsPassed();
-    expect(active).not.toContain("Agent");
+    expect(active).not.toContain("agent");
     expect(active).not.toContain("get_subagent_result");
     expect(active).not.toContain("steer_subagent");
     expect(active).toContain("ok_ext");
@@ -1063,7 +1063,7 @@ describe("agent-runner master tool allowlist", () => {
     });
 
     expect(createNestedSubagentTools).not.toHaveBeenCalled();
-    expect(lastToolsPassed()).not.toContain("Agent");
+    expect(lastToolsPassed()).not.toContain("agent");
   });
 
   it("passes the inherited depth cap through to the nested tools", async () => {
@@ -1097,7 +1097,7 @@ describe("agent-runner master tool allowlist", () => {
     });
 
     expect(createNestedSubagentTools).not.toHaveBeenCalled();
-    expect(lastToolsPassed()).not.toContain("Agent");
+    expect(lastToolsPassed()).not.toContain("agent");
   });
 
   it("extensions: false with disallowedTools — denylist applies to built-ins", async () => {

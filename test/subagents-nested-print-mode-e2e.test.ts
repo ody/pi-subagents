@@ -14,7 +14,7 @@ import {
 
 vi.setConfig({ testTimeout: 30_000 });
 
-const NESTED_TOOLS = ["Agent", "get_subagent_result", "steer_subagent", "stop_subagent"];
+const NESTED_TOOLS = ["agent", "get_subagent_result", "steer_subagent", "stop_subagent"];
 
 function userPrompt(ctx: Context): string {
   for (const message of ctx.messages) {
@@ -148,7 +148,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
           observed.set(route, tools(ctx));
           return "PLAIN_CHILD_RESULT";
         }
-        if (toolResults(ctx, "Agent").length === 0) {
+        if (toolResults(ctx, "agent").length === 0) {
           return agentCall({
             subagent_type: "plain",
             description: "plain child",
@@ -156,7 +156,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             run_in_background: false,
           });
         }
-        return lastToolResult(ctx, "Agent");
+        return lastToolResult(ctx, "agent");
       },
       { prompt: "root-default" },
     ));
@@ -183,7 +183,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
           return `AT_CAP tools=${nested.length === 0 ? "none" : nested.join(",")}`;
         }
         if (route === "level_one-child") {
-          if (toolResults(ctx, "Agent").length === 0) {
+          if (toolResults(ctx, "agent").length === 0) {
             return agentCall({
               subagent_type: "level_two",
               description: "allowed level",
@@ -191,9 +191,9 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
               run_in_background: false,
             });
           }
-          return lastToolResult(ctx, "Agent");
+          return lastToolResult(ctx, "agent");
         }
-        if (toolResults(ctx, "Agent").length === 0) {
+        if (toolResults(ctx, "agent").length === 0) {
           return agentCall({
             subagent_type: "level_one",
             description: "recursive chain",
@@ -201,7 +201,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             run_in_background: false,
           });
         }
-        return lastToolResult(ctx, "Agent");
+        return lastToolResult(ctx, "agent");
       },
       { prompt: "root-depth", maxModelCalls: 24 },
     ));
@@ -229,7 +229,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
           return "BACKGROUND_NESTED_RESULT";
         }
         if (route === "background-delegator-child") {
-          if (toolResults(ctx, "Agent").length === 0) {
+          if (toolResults(ctx, "agent").length === 0) {
             return agentCall({
               subagent_type: "background_grandchild",
               description: "nested foreground work",
@@ -237,9 +237,9 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
               run_in_background: false,
             });
           }
-          return lastToolResult(ctx, "Agent");
+          return lastToolResult(ctx, "agent");
         }
-        const agents = toolResults(ctx, "Agent");
+        const agents = toolResults(ctx, "agent");
         if (agents.length === 0) {
           return agentCall({
             subagent_type: "background_delegator",
@@ -315,7 +315,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             return "OWNED_NESTED_RESULT";
           }
           if (route === "owner-child") {
-            const agents = toolResults(ctx, "Agent");
+            const agents = toolResults(ctx, "agent");
             if (agents.length === 0) {
               return agentCall({
                 subagent_type: "owned_child",
@@ -356,7 +356,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             probeResults.steer = steers.at(-1);
             return "OWNERSHIP_PROBE_DONE";
           }
-          const agents = toolResults(ctx, "Agent");
+          const agents = toolResults(ctx, "agent");
           if (agents.length === 0) {
             return agentCall({
               subagent_type: "owner",

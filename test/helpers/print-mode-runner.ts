@@ -76,7 +76,7 @@ export function agentCall(
   },
   opts?: { id?: string },
 ): ToolCall {
-  return fauxToolCall("Agent", { subagent_type: "general-purpose", ...args }, opts);
+  return fauxToolCall("agent", { subagent_type: "general-purpose", ...args }, opts);
 }
 
 function resolveReply(
@@ -92,10 +92,10 @@ export function routeBySession(routes: {
   subagent: FauxReply | ((ctx: Context) => FauxReply);
 }): FauxResponder {
   return (context) => {
-    const isParent = (context.tools ?? []).some((t) => t.name === "Agent");
+    const isParent = (context.tools ?? []).some((t) => t.name === "agent");
     if (!isParent) return resolveReply(routes.subagent, context);
     const spawned = context.messages.some(
-      (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
+      (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
     );
     if (spawned) {
       return routes.parentFinal != null
@@ -117,7 +117,7 @@ function toAssistantMessage(reply: FauxReply): AssistantMessage {
 }
 
 const DEFAULT_SYSTEM_PROMPT =
-  "You are a headless orchestrator. Use the Agent tool to delegate, then report the result.";
+  "You are a headless orchestrator. Use the agent tool to delegate, then report the result.";
 
 function isLive(options: RunPrintModeOptions): boolean {
   if (options.live === false) return false;
@@ -330,7 +330,7 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
 }
 
 export function agentToolResults(session: AgentSession): string[] {
-  return toolResultsNamed(session, "Agent");
+  return toolResultsNamed(session, "agent");
 }
 
 export function toolResultsNamed(session: AgentSession, toolName: string): string[] {
@@ -370,7 +370,7 @@ export function invokedToolNames(session: AgentSession): string[] {
 }
 
 export function agentToolCalls(session: AgentSession): Array<Record<string, unknown>> {
-  return toolCallsNamed(session, "Agent");
+  return toolCallsNamed(session, "agent");
 }
 
 export function toolCallsNamed(

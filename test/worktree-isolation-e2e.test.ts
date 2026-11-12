@@ -45,7 +45,7 @@ function toolResultNames(context: Context): string[] {
 
 function agentResultText(session: Context): string {
   return session.messages
-    .filter((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent")
+    .filter((m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent")
     .flatMap((m) => ((m.content ?? []) as Array<{ text?: string }>).map((b) => b.text ?? ""))
     .join("\n");
 }
@@ -58,7 +58,7 @@ function respondSpawning(isolation: "worktree" | undefined): (context: Context) 
       }
       return CHILD_MARKER;
     }
-    if (toolResultNames(context).includes("Agent")) {
+    if (toolResultNames(context).includes("agent")) {
       return `parent saw: ${agentResultText(context)}`;
     }
     return agentCall({

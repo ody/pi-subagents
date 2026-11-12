@@ -37,7 +37,7 @@ describe("mention clone tool reachability against real pi-mono", () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("the clone's Agent tool is live on the real session, and it is the only one", async () => {
+  it("the clone's agent tool is live on the real session, and it is the only one", async () => {
     const model = faux.getModel();
     const backend = fauxModelBackend(model);
     const ctx: any = {
@@ -48,11 +48,11 @@ describe("mention clone tool reachability against real pi-mono", () => {
       sessionManager: { getEntries: () => [], getLeafId: () => undefined },
     };
 
-    const agentTool = { name: "Agent", execute: vi.fn() } as any;
+    const agentTool = { name: "agent", execute: vi.fn() } as any;
 
     await runMentionClone({ ctx, type: "Explore", message: "go", agentTool });
 
     expect(sessions).toHaveLength(1);
-    expect(sessions[0].getActiveToolNames()).toEqual(["Agent"]);
+    expect(sessions[0].getActiveToolNames()).toEqual(["agent"]);
   });
 });

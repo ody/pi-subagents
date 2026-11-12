@@ -95,7 +95,7 @@ afterEach(() => {
   rmSync(cwd, { recursive: true, force: true });
 });
 
-describe("child-safe nested Agent tools", () => {
+describe("child-safe nested agent tools", () => {
   it("allows any enabled agent when allowed_subagents is omitted", async () => {
     const [agent] = tools();
     const result = await execute(agent, {

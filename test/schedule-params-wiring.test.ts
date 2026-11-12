@@ -30,7 +30,7 @@ async function scheduleAndReadBack(
   await lifecycle.get("session_start")?.({}, c);
 
   const reply = textOf(
-    await tools.get("Agent").execute(
+    await tools.get("agent").execute(
       "tc-sched",
       { prompt: "do the thing", description: "nightly sweep", schedule: "0 3 * * * *", ...params },
       undefined,
@@ -46,7 +46,7 @@ async function scheduleAndReadBack(
   return { job: jobs[0], reply, restore: hermetic.restore };
 }
 
-describe("Agent tool → persisted scheduled job", () => {
+describe("agent tool → persisted scheduled job", () => {
   it("persists the run-shaping params the job will fire with", async () => {
     const { job, restore } = await scheduleAndReadBack({
       subagent_type: "general-purpose",
@@ -97,7 +97,7 @@ describe("Agent tool → persisted scheduled job", () => {
   });
 });
 
-describe("Agent tool → schedule restrictions", () => {
+describe("agent tool → schedule restrictions", () => {
   async function scheduleCall(
     params: Record<string, unknown>,
     settings?: Record<string, unknown>,
@@ -110,7 +110,7 @@ describe("Agent tool → schedule restrictions", () => {
     await lifecycle.get("session_start")?.({}, c);
 
     const reply = textOf(
-      await tools.get("Agent").execute(
+      await tools.get("agent").execute(
         "tc-sched",
         {
           prompt: "do the thing",

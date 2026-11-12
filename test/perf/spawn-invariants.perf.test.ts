@@ -51,7 +51,7 @@ function bootAgentTool() {
   });
   const { pi, tools } = makePi();
   subagentsExtension(pi);
-  return tools.get("Agent");
+  return tools.get("agent");
 }
 
 describe("one Agent call, one sweep of the agent directories", () => {

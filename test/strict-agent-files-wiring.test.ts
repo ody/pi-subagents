@@ -93,7 +93,7 @@ describe("strictAgentFiles gates extension activation", () => {
 
     const agentTool = (pi.registerTool as any).mock.calls
       .map((c: any[]) => c[0])
-      .find((t: any) => t.name === "Agent");
+      .find((t: any) => t.name === "agent");
     expect(agentTool).toBeDefined();
 
     const uiCtx = {

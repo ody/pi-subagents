@@ -16,7 +16,7 @@ function agentTool() {
     sendMessage: vi.fn(),
   } as any;
   subagentsExtension(pi);
-  return tools.get("Agent");
+  return tools.get("agent");
 }
 
 const theme = {
@@ -33,7 +33,7 @@ function render(tool: any, result: any): string {
   ).render(120).join("\n");
 }
 
-describe("Agent tool invocation error rendering", () => {
+describe("agent tool invocation error rendering", () => {
   it("shows a Pi tool error instead of structured terminal status", () => {
     const output = render(agentTool(), {
       content: [{ type: "text", text: 'Cannot run with isolation: "worktree" — Git probe failed.' }],
@@ -77,7 +77,7 @@ function renderWith(result: any, opts: { expanded?: boolean; isPartial?: boolean
 const base = { toolUses: 1, durationMs: 1000, tokens: "5k tokens", modelName: "haiku", tags: ["t1"], turnCount: 2 };
 const body = (text: string) => [{ type: "text", text }];
 
-describe("Agent tool status rendering", () => {
+describe("agent tool status rendering", () => {
   it("caps expanded completed output at 50 lines", () => {
     const text = Array.from({ length: 60 }, (_, i) => `line${i}`).join("\n");
     const output = renderWith({ content: body(text), details: { ...base, status: "completed" } }, { expanded: true });

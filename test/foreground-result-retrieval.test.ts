@@ -53,7 +53,7 @@ async function runForegroundSteeredAgent(tools: Map<string, any>) {
     aborted: false,
     steered: true,
   });
-  const res = await tools.get("Agent").execute(
+  const res = await tools.get("agent").execute(
     "tc-fg",
     {
       prompt: "Perform a very thorough read-only codebase exploration.",

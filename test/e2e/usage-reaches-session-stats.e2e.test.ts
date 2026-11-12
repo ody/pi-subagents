@@ -40,7 +40,7 @@ describe("subagent usage reaches the parent session's stats (real pi)", () => {
     return {
       role: "toolResult" as const,
       toolCallId: "tc-1",
-      toolName: "Agent",
+      toolName: "agent",
       content: [{ type: "text" as const, text: "Agent completed." }],
       isError: false,
       timestamp: 1,

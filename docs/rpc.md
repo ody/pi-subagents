@@ -52,7 +52,7 @@ Three things that are not obvious from the tables:
 
 ### Inline agent definitions
 
-`options.agentConfig` lets an extension ship its agent with the spawn instead of installing an agent file. The definition is used for that one run and is never added to the registry, so the `Agent` tool and `/agents` never offer it.
+`options.agentConfig` lets an extension ship its agent with the spawn instead of installing an agent file. The definition is used for that one run and is never added to the registry, so the `agent` tool and `/agents` never offer it.
 
 The shape is `AgentConfig` from `src/types.ts`, using its field names rather than frontmatter spellings. The RPC boundary completes it:
 
@@ -94,7 +94,7 @@ One of these already shipped as a bug in this project's own README example, so i
 
 | You might write | What it does | What you meant |
 | --- | --- | --- |
-| `run_in_background` | Forwarded verbatim and ignored — it is the [`Agent`](../README.md#agent) *tool's* parameter name | `isBackground` |
+| `run_in_background` | Forwarded verbatim and ignored — it is the [`agent`](../README.md#agent) *tool's* parameter name | `isBackground` |
 | `isolated: true` | Disables extensions, skills and nested tools | `isolation: "worktree"` for a git worktree |
 | `isolation: "worktree"` | Creates a git worktree | `isolated: true` to strip capabilities |
 | `configCwd` | Stripped | `cwd` |
@@ -208,7 +208,7 @@ So: send `consume` unconditionally and ignore the outcome — an older build has
 
 The consequence is worth stating plainly: **a session that excludes pi-subagents is indistinguishable from pi-subagents not being installed.** It emits no `subagents:ready` and answers nothing. Give discovery a timeout and treat expiry as "not available here" rather than waiting indefinitely. The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (`src/index.ts:1100-1103`), so a later `session_start` re-registers and re-emits.
 
-One more trap on the way in: an RPC-spawned agent emits **no `subagents:created`**. The only two emit sites are the `Agent` tool's background branch (`src/index.ts:2104`) and detached resume (`:1350`). Your first event for your own agent is `subagents:started` (`:625`), so key your bookkeeping off the id that `spawn` handed you, not off `subagents:created`.
+One more trap on the way in: an RPC-spawned agent emits **no `subagents:created`**. The only two emit sites are the `agent` tool's background branch (`src/index.ts:2104`) and detached resume (`:1350`). Your first event for your own agent is `subagents:started` (`:625`), so key your bookkeeping off the id that `spawn` handed you, not off `subagents:created`.
 
 ## What the tests pin
 

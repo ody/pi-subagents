@@ -29,7 +29,7 @@ function agentTool() {
     sendMessage: vi.fn(),
   } as any;
   subagentsExtension(pi);
-  return tools.get("Agent");
+  return tools.get("agent");
 }
 
 function ctx() {
@@ -103,7 +103,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("Agent tool result — effective model", () => {
+describe("agent tool result — effective model", () => {
   it("names the model even when the child inherited the parent's", async () => {
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
       const s = session("anthropic", "claude-opus-4-6", "high");
@@ -250,7 +250,7 @@ describe("Agent tool result — effective model", () => {
     expect(text).not.toContain("asked");
   });
 
-  it("never advertises the pin override in the Agent tool schema", async () => {
+  it("never advertises the pin override in the agent tool schema", async () => {
     const tool = agentTool();
     const description = tool.parameters.properties.model.description as string;
 
@@ -316,7 +316,7 @@ describe("Agent tool result — effective model", () => {
   });
 });
 
-describe("Agent tool result — resume", () => {
+describe("agent tool result — resume", () => {
   it("renders the reopened session's settings, not the resume call's", async () => {
     const s = session("anthropic", "claude-haiku-4-5", "low");
     vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {

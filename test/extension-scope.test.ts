@@ -259,22 +259,22 @@ describe("resolveSessionToolScope", () => {
   it("builds a strict allowlist under noExtensions, re-admitting nested tools", () => {
     const scope = resolveSessionToolScope({
       noExtensions: true,
-      toolNames: ["read", "bash", "Agent"],
+      toolNames: ["read", "bash", "agent"],
       disallowedSet: new Set(["bash", "steer_subagent"]),
-      nestedToolNames: new Set(["Agent", "steer_subagent"]),
+      nestedToolNames: new Set(["agent", "steer_subagent"]),
     });
-    expect(scope).toEqual({ sessionTools: ["read", "Agent"], sessionExcludeTools: undefined });
+    expect(scope).toEqual({ sessionTools: ["read", "agent"], sessionExcludeTools: undefined });
   });
   it("builds a deny list when extensions are in play", () => {
     const scope = resolveSessionToolScope({
       noExtensions: false,
       toolNames: ["read"],
       disallowedSet: new Set(["foo"]),
-      nestedToolNames: new Set(["Agent"]),
+      nestedToolNames: new Set(["agent"]),
     });
     expect(scope.sessionTools).toBeUndefined();
     const deny = new Set(scope.sessionExcludeTools);
-    expect(deny.has("Agent")).toBe(false);
+    expect(deny.has("agent")).toBe(false);
     expect(deny.has("get_subagent_result")).toBe(true);
     expect(deny.has("foo")).toBe(true);
     expect(deny.has("read")).toBe(false);
@@ -284,9 +284,9 @@ describe("resolveSessionToolScope", () => {
     const scope = resolveSessionToolScope({
       noExtensions: false,
       toolNames: [],
-      disallowedSet: new Set(["Agent"]),
-      nestedToolNames: new Set(["Agent"]),
+      disallowedSet: new Set(["agent"]),
+      nestedToolNames: new Set(["agent"]),
     });
-    expect(scope.sessionExcludeTools).toContain("Agent");
+    expect(scope.sessionExcludeTools).toContain("agent");
   });
 });

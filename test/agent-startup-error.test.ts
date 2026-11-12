@@ -71,7 +71,7 @@ describe("Agent startup failures fail the tool call (#179)", () => {
       const tools = boot();
 
       await expect(
-        tools.get("Agent").execute(
+        tools.get("agent").execute(
           "tc-1",
           {
             prompt: "do it",

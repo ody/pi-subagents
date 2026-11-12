@@ -51,7 +51,7 @@ const settled = (text: string) =>
   } as any);
 
 function spawn(tools: Map<string, any>, params: Record<string, unknown> = {}) {
-  return tools.get("Agent").execute(
+  return tools.get("agent").execute(
     "tc",
     { prompt: "go", description: "d", subagent_type: "general-purpose", ...params },
     undefined,

@@ -128,8 +128,8 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
       settingsPersist.notifyApplied(
         ctx,
         enabled
-          ? "Agent calls run in the background unless they pass run_in_background: false"
-          : "Agent calls block and return inline unless they pass run_in_background: true",
+          ? "agent calls run in the background unless they pass run_in_background: false"
+          : "agent calls block and return inline unless they pass run_in_background: true",
       );
     },
     schedulingEnabled: (value) => {
@@ -302,14 +302,14 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       {
         id: "backgroundByDefault",
         label: "Background by default",
-        description: "An Agent call that doesn't say runs detached (off = blocks the turn and returns inline)",
+        description: "An agent call that doesn't say runs detached (off = blocks the turn and returns inline)",
         currentValue: settings.backgroundByDefault ? "on" : "off",
         values: ["on", "off"],
       },
       {
         id: "schedulingEnabled",
         label: "Scheduling",
-        description: "Schedule subagent feature (off removes `schedule` param from Agent tool spec on next pi session)",
+        description: "Schedule subagent feature (off removes `schedule` param from agent tool spec on next pi session)",
         currentValue: settings.schedulingEnabled ? "on" : "off",
         values: ["on", "off"],
       },
@@ -352,7 +352,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         id: "worktreeIsolation",
         label: "Worktree isolation",
         description:
-          "Allow isolation: worktree to copy the repo. Off refuses worktrees on every path immediately — for repos where a copy costs too much time or disk — and drops the `isolation` param from the Agent tool spec on next pi session.",
+          "Allow isolation: worktree to copy the repo. Off refuses worktrees on every path immediately — for repos where a copy costs too much time or disk — and drops the `isolation` param from the agent tool spec on next pi session.",
         currentValue: isWorktreeIsolationEnabled() ? "on" : "off",
         values: ["on", "off"],
       },
@@ -376,7 +376,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         id: "showModel",
         label: "Show model",
         description:
-          "Name the model driving each agent, and the thinking level it is running at, on the widget's running rows. The Agent tool result and the conversation viewer show the pair either way — this adds it to the widget, where the row is already dense.",
+          "Name the model driving each agent, and the thinking level it is running at, on the widget's running rows. The agent tool result and the conversation viewer show the pair either way — this adds it to the widget, where the row is already dense.",
         currentValue: settings.showModel ? "on" : "off",
         values: ["on", "off"],
       },
@@ -398,7 +398,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       {
         id: "agentMentions",
         label: "Agent mentions",
-        description: "Route `@handle message` at the prompt to that agent. model = an off-screen clone of this conversation calls the Agent tool, so the agent gets a context-written prompt, a transcript and per-tool detail, and the chat stays clean; direct = started here from your text, no model call. Messaging and resuming are direct either way.",
+        description: "Route `@handle message` at the prompt to that agent. model = an off-screen clone of this conversation calls the agent tool, so the agent gets a context-written prompt, a transcript and per-tool detail, and the chat stays clean; direct = started here from your text, no model call. Messaging and resuming are direct either way.",
         currentValue: settings.agentMentionMode,
         values: ["model", "direct", "off"],
       },
@@ -419,7 +419,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       {
         id: "toolDescriptionMode",
         label: "Tool description",
-        description: "Agent tool description sent to the LLM: full (rich, default), compact (~75% fewer tokens, for small/local models), or custom (.pi/agent-tool-description.md with {{placeholders}})",
+        description: "agent tool description sent to the LLM: full (rich, default), compact (~75% fewer tokens, for small/local models), or custom (.pi/agent-tool-description.md with {{placeholders}})",
         currentValue: settings.toolDescriptionMode,
         values: ["full", "compact", "custom"],
       },

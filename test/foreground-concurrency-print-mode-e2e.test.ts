@@ -47,10 +47,10 @@ describe.skipIf(LIVE)("maxConcurrentForeground e2e (real pi agent loop)", () => 
       cwd: projectDir(settings),
       live: false,
       respond: async (context: Context) => {
-        const isParent = (context.tools ?? []).some(t => t.name === "Agent");
+        const isParent = (context.tools ?? []).some(t => t.name === "agent");
         if (isParent) {
           const alreadySpawned = context.messages.some(
-            m => m.role === "toolResult" && (m as { toolName?: string }).toolName === "Agent",
+            m => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
           );
           if (alreadySpawned) return "Both jobs are done.";
           return [
