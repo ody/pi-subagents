@@ -112,7 +112,7 @@ describe("checkCapabilityPolicy", () => {
 
     it("refuses when filtering empties an explicit tool list", () => {
       const verdict = check({ builtinToolNames: ["bash"] }, policyOf({ tools: { deny: ["bash"] } }));
-      expect(verdict).toEqual({ kind: "error", message: expect.stringMatching(/^Capability policy: .*no tools/) });
+      expect(verdict).toEqual({ kind: "error", message: expect.stringMatching(/^Capability policy: no tool is left/) });
     });
 
     it("does not refuse an explicit empty tool list", () => {
