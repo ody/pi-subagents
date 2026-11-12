@@ -11,11 +11,14 @@ import {
   DefaultResourceLoader,
   type ExtensionAPI,
   getAgentDir,
+  type ResourceDiagnostic,
   SessionManager,
   SettingsManager,
+  type Skill,
 } from "@earendil-works/pi-coding-agent";
-import { BUILTIN_TOOL_NAMES, getAgentConfig, getConfig, getToolNamesForType } from "../agents/agent-types.js";
+import { BUILTIN_TOOL_NAMES, getAgentConfig } from "../agents/agent-types.js";
 import { DEFAULT_AGENTS } from "../agents/default-agents.js";
+import type { EffectiveCapabilities, GrantedCapability } from "../config/capability-policy.js";
 import { getGraceTurns, getRememberAgents, resolveEffectiveMaxTurns, turnLimitAction } from "../config/runner-defaults.js";
 import { detectEnv } from "../platform/env.js";
 import { createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager } from "../tool/nested-tools.js";
@@ -69,6 +72,7 @@ export interface RunOptions {
   inheritContext?: boolean;
   thinkingLevel?: ThinkingLevel;
   agentConfig?: AgentConfig;
+  capability: GrantedCapability;
   resumeSessionFile?: string;
   nested?: boolean;
   cwd?: string;
@@ -162,20 +166,30 @@ function trackRunEvents(session: AgentSession, options: RunOptions, maxTurns: nu
   return state;
 }
 
-function resolveExtensionInputs(
-  options: RunOptions,
-  config: Pick<AgentConfig, "extensions" | "excludeExtensions" | "skills">,
-  agentConfig: AgentConfig | undefined,
-) {
+function resolveExtensionInputs(options: RunOptions, capabilities: EffectiveCapabilities) {
   if (options.isolated) {
     return { extensions: false as const, excludeExtensions: undefined, skills: false as const, extSelectors: [] };
   }
   return {
-    extensions: config.extensions,
-    excludeExtensions: config.excludeExtensions,
-    skills: config.skills,
-    extSelectors: agentConfig?.extSelectors ?? [],
+    extensions: capabilities.extensions,
+    excludeExtensions: capabilities.excludeExtensions,
+    skills: capabilities.skills,
+    extSelectors: capabilities.extSelectors,
   };
+}
+
+function skillsOverrideFor(capabilities: EffectiveCapabilities) {
+  const { allow, deny } = capabilities.skillScope;
+  if (capabilities.skills !== true || (!allow && deny.length === 0)) return undefined;
+  const denied = new Set(deny.map(name => name.toLowerCase()));
+  const allowed = allow ? new Set(allow.map(name => name.toLowerCase())) : undefined;
+  return (base: { skills: Skill[]; diagnostics: ResourceDiagnostic[] }) => ({
+    ...base,
+    skills: base.skills.filter(skill => {
+      const key = skill.name.toLowerCase();
+      return !denied.has(key) && (!allowed || allowed.has(key));
+    }),
+  });
 }
 
 function buildRunSystemPrompt(
@@ -192,19 +206,19 @@ function buildRunSystemPrompt(
   return buildAgentPrompt({ ...fallback, name: type }, cwd, env, parentSystemPrompt, extras);
 }
 
-function resolveNestedTools(options: RunOptions, agentConfig: AgentConfig | undefined, configCwd: string) {
+function resolveNestedTools(options: RunOptions, capabilities: EffectiveCapabilities, configCwd: string) {
   const effectiveMaxDepth = options.nestedRuntime?.maxSubagentDepth ?? getMaxSubagentDepth();
   const nestedRuntime = options.nestedRuntime && options.nestedRuntime.depth < effectiveMaxDepth
     ? options.nestedRuntime
     : undefined;
-  if (!agentConfig?.allowedSubagents || !nestedRuntime || options.isolated) return [];
+  if (!capabilities.allowedSubagents || !nestedRuntime || options.isolated) return [];
   return createNestedSubagentTools({
     manager: nestedRuntime.manager,
     pi: options.pi,
     parentAgentId: nestedRuntime.parentAgentId,
     depth: nestedRuntime.depth,
     maxSubagentDepth: effectiveMaxDepth,
-    allowedSubagents: agentConfig.allowedSubagents,
+    allowedSubagents: capabilities.allowedSubagents,
     configCwd,
   });
 }
@@ -234,8 +248,8 @@ export async function runAgent(
   options: RunOptions,
 ): Promise<RunResult> {
   const inline = options.agentConfig;
-  const config = inline ?? getConfig(type);
   const agentConfig = inline ?? getAgentConfig(type);
+  const capabilities = options.capability.capabilities;
 
   const effectiveCwd = options.cwd ?? ctx.cwd;
   const configCwd = options.configCwd ?? effectiveCwd;
@@ -247,7 +261,7 @@ export async function runAgent(
   const extras: PromptExtras = {};
   if (options.worktreeBase) extras.worktreeBase = options.worktreeBase;
 
-  const { extensions, excludeExtensions, skills, extSelectors } = resolveExtensionInputs(options, config, agentConfig);
+  const { extensions, excludeExtensions, skills, extSelectors } = resolveExtensionInputs(options, capabilities);
 
   if (Array.isArray(skills)) {
     const loaded = preloadSkills(skills, configCwd);
@@ -256,7 +270,7 @@ export async function runAgent(
     }
   }
 
-  const toolNames = inline ? (inline.builtinToolNames ?? [...BUILTIN_TOOL_NAMES]) : getToolNamesForType(type);
+  const toolNames = capabilities.builtinToolNames;
 
   const systemPrompt = buildRunSystemPrompt(type, agentConfig, effectiveCwd, env, parentSystemPrompt, extras);
 
@@ -275,6 +289,7 @@ export async function runAgent(
     additionalExtensionPaths: plan.additionalExtensionPaths,
     extensionsOverride: plan.extensionsOverride,
     noSkills,
+    skillsOverride: skillsOverrideFor(capabilities),
     noPromptTemplates: true,
     noThemes: true,
     noContextFiles: true,
@@ -283,7 +298,7 @@ export async function runAgent(
   });
   await runInChildSessionContext(() => loader.reload());
 
-  for (const name of agentConfig?.builtinToolNames ?? []) {
+  for (const name of capabilities.builtinToolNames) {
     if (BUILTIN_TOOL_NAMES.includes(name)) continue;
     options.onToolActivity?.({
       type: "end",
@@ -309,11 +324,11 @@ export async function runAgent(
 
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinking;
 
-  const disallowedSet = agentConfig?.disallowedTools
-    ? new Set(agentConfig.disallowedTools)
+  const disallowedSet = capabilities.disallowedTools.length > 0
+    ? new Set(capabilities.disallowedTools)
     : undefined;
 
-  const nestedTools = resolveNestedTools(options, agentConfig, configCwd);
+  const nestedTools = resolveNestedTools(options, capabilities, configCwd);
   const nestedToolNames = new Set(nestedTools.map(tool => tool.name));
 
   const readmitToolNames = new Set(
@@ -377,6 +392,8 @@ export async function runAgent(
       extNames,
       narrowing,
       readmitToolNames,
+      deniedExtNames: new Set(capabilities.deniedExtensionNames),
+      noExtensionTools: capabilities.noExtensionTools,
     });
   }
 

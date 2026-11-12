@@ -1,4 +1,4 @@
-import { BUILTIN_TOOL_NAMES } from "../agents/agent-types.js";
+import { BUILTIN_TOOL_NAMES, getAgentConfig } from "../agents/agent-types.js";
 import { parseExtensionsSpec, parseExtSelectors } from "../session/extension-scope.js";
 import type { AgentConfig } from "../types.js";
 import { type LoadedPolicy, loadCapabilityPolicy, type PolicyList, type PolicyScope } from "./capability-policy-config.js";
@@ -367,6 +367,42 @@ export function checkCapabilityPolicy(request: CapabilityRequest): CapabilityVer
   }
 }
 
-export function describeFiltered(filtered: readonly string[]): string {
-  return `Capability policy removed: ${filtered.join(", ")}.`;
+export function filteredNote(grant: Pick<GrantedCapability, "filtered">): string {
+  return grant.filtered.length === 0 ? "" : `Note: the capability policy removed ${grant.filtered.join(", ")} from this agent.\n\n`;
+}
+
+export function callerFieldsOf(raw: Partial<AgentConfig> | undefined): Set<CapabilityField> {
+  const fields = new Set<CapabilityField>();
+  if (!raw) return fields;
+  if (raw.builtinToolNames !== undefined || raw.extSelectors !== undefined || raw.disallowedTools !== undefined) fields.add("tools");
+  if (raw.extensions !== undefined || raw.excludeExtensions !== undefined) fields.add("extensions");
+  if (raw.skills !== undefined) fields.add("skills");
+  if (raw.allowedSubagents !== undefined) fields.add("allowedSubagents");
+  return fields;
+}
+
+export interface ResolveCapabilityArgs {
+  type: string;
+  cwd: string;
+  config?: AgentConfig;
+  raw?: Partial<AgentConfig>;
+  ephemeral?: boolean;
+  isolated?: boolean;
+  notify?: (message: string, level: "warning") => void;
+}
+
+export function resolveCapability(args: ResolveCapabilityArgs): GrantedCapability {
+  const config: CapabilityDeclaration = args.config ?? getAgentConfig(args.type) ?? { extensions: true, skills: true };
+  const verdict = checkCapabilityPolicy({
+    config,
+    callerSupplied: callerFieldsOf(args.raw),
+    ephemeral: args.ephemeral === true,
+    cwd: args.cwd,
+    isolated: args.isolated,
+  });
+  if (verdict.kind === "error") throw new Error(verdict.message);
+  if (verdict.filtered.length > 0) {
+    args.notify?.(`The capability policy removed ${verdict.filtered.join(", ")} from ${args.type}.`, "warning");
+  }
+  return verdict;
 }

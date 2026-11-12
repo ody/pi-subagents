@@ -15,6 +15,7 @@ import {
   resolveTypeIn,
 } from "../agents/agent-types.js";
 import { loadCustomAgents } from "../agents/custom-agents.js";
+import { filteredNote, type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
 import { resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import {
@@ -45,6 +46,7 @@ const NESTED_TOOL_NAMES = ["Agent", "get_subagent_result", "steer_subagent", "st
 
 interface NestedSpawnOptions {
   description: string;
+  capability: GrantedCapability;
   model?: Model<any>;
   maxTurns?: number;
   isolated?: boolean;
@@ -246,10 +248,25 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       });
       if (scopeVerdict.kind === "error") return textResult(scopeVerdict.message, true);
 
+      let capability: GrantedCapability;
+      try {
+        capability = resolveCapability({
+          type: resolvedType,
+          cwd: context.configCwd,
+          config,
+          isolated: invocation.isolated,
+          notify: (message, level) => ctx.ui?.notify(message, level),
+        });
+      } catch (err) {
+        return textResult(err instanceof Error ? err.message : String(err), true);
+      }
+      const note = filteredNote(capability);
+
       const rootSessionId = context.manager.getRecord(context.parentAgentId)?.rootSessionId;
       const childDepth = context.depth + 1;
       const options: NestedSpawnOptions = {
         description: params.description,
+        capability,
         model,
         maxTurns: invocation.maxTurns,
         isolated: invocation.isolated,
@@ -300,7 +317,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           });
           attachTranscript(id);
           await context.manager.awaitStartup(id);
-          return textResult(`Nested agent started in background. Agent ID: ${id}`);
+          return textResult(`${note}Nested agent started in background. Agent ID: ${id}`);
         }
 
         const { record } = await context.manager.spawnAndWait(
@@ -311,7 +328,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           { ...options, signal },
           attachTranscript,
         );
-        return textResult(formatRecord(record, "inline"), record.status === "error");
+        return textResult(note + formatRecord(record, "inline"), record.status === "error");
       } catch (err) {
         return textResult(err instanceof Error ? err.message : String(err), true);
       }

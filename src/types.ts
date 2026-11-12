@@ -109,6 +109,7 @@ export interface AgentRecord {
   parentAgentId?: string;
   maxSubagentDepth?: number;
   rootSessionId?: string;
+  filtered?: string[];
 }
 
 export type EffectiveThinkingLevel = ThinkingLevel | "off";

@@ -2,6 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Cron } from "croner";
 import { nanoid } from "nanoid";
 import { resolveSpawnType } from "../agents/agent-types.js";
+import { resolveCapability } from "../config/capability-policy.js";
 import { resolveModel } from "../config/model-resolver.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
@@ -198,8 +199,15 @@ export class SubagentScheduler {
     try {
       const dispatch = resolveSpawnType(job.subagent_type);
       if (!dispatch.ok) throw new Error(dispatch.message);
+      const capability = resolveCapability({
+        type: dispatch.type,
+        cwd: ctx.cwd,
+        isolated: job.isolated,
+        notify: (message, level) => ctx.ui?.notify(message, level),
+      });
       agentId = manager.spawn(pi, ctx, dispatch.type, job.prompt, {
         description: job.description,
+        capability,
         isBackground: true,
         bypassQueue: true,
         model: resolvedModel,

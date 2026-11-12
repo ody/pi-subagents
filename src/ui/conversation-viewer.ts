@@ -377,7 +377,8 @@ export class ConversationViewer implements Component {
   private invocationLine(): string | undefined {
     const { modelName, modelId, tags } = buildInvocationTags(this.record.invocation);
     const model = modelId ?? modelName;
-    const parts = model ? [model, ...tags] : tags;
+    const filtered = this.record.filtered?.length ? [`policy removed ${this.record.filtered.join(", ")}`] : [];
+    const parts = [...(model ? [model, ...tags] : tags), ...filtered];
     if (parts.length === 0) return undefined;
     return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
   }

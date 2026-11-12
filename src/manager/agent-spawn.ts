@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type GrantedCapability, isMintedVerdict } from "../config/capability-policy.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
 import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
@@ -20,6 +21,7 @@ export interface SpawnOptions {
   resumeSessionFile?: string;
   reclaim?: { handle: string; alias?: string };
   agentConfig?: AgentConfig;
+  capability?: GrantedCapability;
   model?: Model<any>;
   maxTurns?: number;
   isolated?: boolean;
@@ -75,6 +77,9 @@ export function spawnAgent(
   options: SpawnOptions,
 ): string {
   assertValidSpawnCwd(options.cwd);
+  if (!isMintedVerdict(options.capability)) {
+    throw new Error("Capability policy: a spawn needs a verdict from checkCapabilityPolicy.");
+  }
 
   const id = randomUUID().slice(0, 17);
   const abortController = new AbortController();
@@ -99,6 +104,7 @@ export function spawnAgent(
     parentAgentId: options.parentAgentId,
     maxSubagentDepth: options.maxSubagentDepth,
     rootSessionId: options.rootSessionId,
+    filtered: options.capability.filtered.length > 0 ? options.capability.filtered : undefined,
   };
   deps.agents.set(id, record);
   deps.activities.set(id, {

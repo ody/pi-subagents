@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, resolveSpawnType, resolveType } from "../agents/agent-types.js";
+import { type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
 import { describeModel, resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults.js";
@@ -20,6 +21,7 @@ export type AgentCallParams = Parameters<typeof resolveAgentInvocationConfig>[1]
   subagent_type: string;
   description: string;
   resume?: string;
+  schedule?: unknown;
 };
 
 export type AgentCallResolution =
@@ -37,6 +39,7 @@ export type AgentCallResolution =
       isolated: boolean;
       isolation: IsolationMode | undefined;
       outputTranscript: boolean;
+      capability: GrantedCapability | undefined;
       effectiveMaxTurns: number | undefined;
       agentInvocation: AgentInvocation;
       detailBase: DetailBase;
@@ -55,6 +58,26 @@ export function detailBaseFor(detailBase: DetailBase, rec: AgentRecord | undefin
     modelName: recModelName,
     tags: recTags.length > 0 ? recTags : undefined,
   };
+}
+
+function mintCapability(
+  params: AgentCallParams,
+  ctx: Pick<ExtensionContext, "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
+  type: SubagentType,
+  isolated: boolean,
+): { ok: true; capability: GrantedCapability | undefined } | { ok: false; message: string } {
+  if (params.resume || params.schedule) return { ok: true, capability: undefined };
+  try {
+    const capability = resolveCapability({
+      type,
+      cwd: ctx.cwd,
+      isolated,
+      notify: (message, level) => ctx.ui.notify(message, level),
+    });
+    return { ok: true, capability };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 export function resolveAgentCall(
@@ -100,6 +123,10 @@ export function resolveAgentCall(
   });
   if (scopeVerdict.kind === "error") return { ok: false, message: scopeVerdict.message };
   if (scopeVerdict.kind === "warn") ctx.ui.notify(scopeVerdict.message, "warning");
+
+  const minted = mintCapability(params, ctx, subagentType, resolvedConfig.isolated);
+  if (!minted.ok) return minted;
+  const capability = minted.capability;
 
   const thinking = resolvedConfig.thinking;
   const inheritContext = resolvedConfig.inheritContext;
@@ -152,6 +179,7 @@ export function resolveAgentCall(
     isolated,
     isolation,
     outputTranscript,
+    capability,
     effectiveMaxTurns,
     agentInvocation,
     detailBase,

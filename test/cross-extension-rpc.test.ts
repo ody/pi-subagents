@@ -134,6 +134,11 @@ describe("cross-extension RPC", () => {
           skills: false,
           promptMode: "replace",
         },
+      }, {
+        systemPrompt: "You are the advisor.",
+        builtinToolNames: [],
+        extensions: false,
+        skills: false,
       });
     });
 

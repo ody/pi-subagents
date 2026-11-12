@@ -749,6 +749,10 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - Extensions match by canonical name and skills by the name pi assigns, both case-insensitively. A deny entry beats an allow entry.
 - A value outside the policy that the caller supplied refuses the spawn with an error that starts `Capability policy:`. A value from an agent file is filtered instead. Filtering an explicit tool list to empty refuses.
 - `ephemeralNesting: false` forces `allowed_subagents: []` on an ephemeral agent and refuses any other caller value.
+- The check runs at the `agent` tool, the nested tool, a scheduled job when it fires, `@handle` starts and tombstone reopens, `subagents:rpc:spawn`, and the registry `spawn`. Resuming a live agent is not re-checked.
+- A filtered value notifies the user, adds a note to the `agent` tool result, and is stored on the agent's record and shown in the conversation viewer.
+- `skills: true` is narrowed through the skill loader, and named skills are filtered before they are preloaded. Extension tools that register after spawn are filtered by the same scope.
+- A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
 - The policy is read at each spawn, so an edit applies without a restart.
 - A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. Every spawn is denied and a warning names the file and entry. A well-formed entry that names nothing known only warns.
 - Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
@@ -1005,6 +1009,8 @@ pi.events.emit("subagents:rpc:spawn", {
   options: { description: "My task", isBackground: true },
 });
 ```
+
+The reply is `{ id, filtered? }`. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy. The registry `spawn` still returns the id and throws the same errors.
 
 `options` is the manager's spawn-option object, not the `Agent` tool's parameter schema — the background flag is `isBackground`, and the tool's snake_case `run_in_background` is forwarded verbatim and ignored.
 

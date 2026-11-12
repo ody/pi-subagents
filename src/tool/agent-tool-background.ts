@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { filteredNote } from "../config/capability-policy.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { CompletionNotifier } from "../manager/completion-notifier.js";
@@ -33,7 +34,8 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
   const { ctx, toolCallId, params, call, attachTranscript } = input;
   const {
     subagentType,
-    fallbackNote,
+    fallbackNote: typeFallbackNote,
+    capability,
     displayName,
     model,
     thinking,
@@ -45,6 +47,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     detailBase,
   } = call;
 
+  const fallbackNote = typeFallbackNote + (capability ? filteredNote(capability) : "");
   const bgCallbacks = createActivityTracker();
 
   let id: string;
@@ -60,6 +63,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
   id = manager.spawn(pi, ctx, subagentType, params.prompt, {
     description: params.description,
     name: params.name,
+    capability,
     model,
     maxTurns: effectiveMaxTurns,
     isolated,
