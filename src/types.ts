@@ -119,6 +119,9 @@ export interface AgentInvocation {
   thinking?: EffectiveThinkingLevel;
   requestedThinking?: EffectiveThinkingLevel;
   pinnedModel?: string;
+  pinnedThinking?: EffectiveThinkingLevel;
+  pinnedMaxTurns?: number;
+  pinnedRunInBackground?: boolean;
   maxTurns?: number;
   isolated?: boolean;
   inheritContext?: boolean;

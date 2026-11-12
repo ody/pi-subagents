@@ -226,6 +226,96 @@ describe("agent tool result — effective model", () => {
     expect(result.details.modelName).toBe("opus 4.6 (over pinned anthropic/claude-haiku-4-5)");
   });
 
+  it("discloses a caller thinking level that displaced the file's", async () => {
+    pinnedAgent("thinking: low\n");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
+      const s = session("anthropic", "claude-opus-4-6", "high");
+      options.onSessionCreated?.(s);
+      return { responseText: "done", session: s, aborted: false, steered: false } as never;
+    });
+
+    const result = await tool.execute(
+      "tc-6",
+      { prompt: "go", description: "d", subagent_type: "pinned", thinking: "high", run_in_background: false },
+      undefined,
+      vi.fn(),
+      ctx(),
+    );
+
+    expect(result.details.tags).toContain("thinking: high (over low)");
+  });
+
+  it("discloses both the clamp and the displaced level", async () => {
+    pinnedAgent("thinking: low\n");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, options: any) => {
+      const s = session("anthropic", "claude-opus-4-6", "high");
+      options.onSessionCreated?.(s);
+      return { responseText: "done", session: s, aborted: false, steered: false } as never;
+    });
+
+    const result = await tool.execute(
+      "tc-6b",
+      { prompt: "go", description: "d", subagent_type: "pinned", thinking: "xhigh", run_in_background: false },
+      undefined,
+      vi.fn(),
+      ctx(),
+    );
+
+    expect(result.details.tags).toContain("thinking: high (asked xhigh, over low)");
+  });
+
+  it("discloses a caller max_turns and run_in_background that displaced the file's", async () => {
+    pinnedAgent("max_turns: 20\nrun_in_background: false\n");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+
+    const result = await tool.execute(
+      "tc-7",
+      { prompt: "go", description: "d", subagent_type: "pinned", max_turns: 5, run_in_background: true },
+      undefined,
+      undefined,
+      ctx(),
+    );
+
+    expect(result.details.tags).toContain("5 turns (over 20)");
+    expect(result.details.tags).toContain("background (over foreground)");
+  });
+
+  it("discloses a caller max_turns of 0 as unlimited over the file's limit", async () => {
+    pinnedAgent("max_turns: 20\n");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+
+    const result = await tool.execute(
+      "tc-7b",
+      { prompt: "go", description: "d", subagent_type: "pinned", max_turns: 0, run_in_background: true },
+      undefined,
+      undefined,
+      ctx(),
+    );
+
+    expect(result.details.tags).toContain("unlimited (over 20)");
+  });
+
+  it("discloses nothing for values the file left unspecified", async () => {
+    pinnedAgent("");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+
+    const result = await tool.execute(
+      "tc-7c",
+      { prompt: "go", description: "d", subagent_type: "pinned", max_turns: 5, run_in_background: true },
+      undefined,
+      undefined,
+      ctx(),
+    );
+
+    expect(result.details.tags).toContain("max turns: 5");
+    expect(result.details.tags.join(" ")).not.toContain("over");
+  });
+
   it("keeps the disclosure suffix out of the text the model reads", async () => {
     pinnedAgent("model: anthropic/claude-haiku-4-5\n");
     const tool = agentTool();

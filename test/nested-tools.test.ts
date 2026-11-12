@@ -240,6 +240,29 @@ describe("child-safe nested agent tools", () => {
     expect(spawnAndWait.mock.calls[0][4]).toMatchObject({ thinkingLevel: "high", maxTurns: 5 });
   });
 
+  it("carries the displaced file values and the pin to the child's invocation", async () => {
+    writeAgent("tuned", "model: anthropic/blocked\nthinking: low\nmax_turns: 20\nrun_in_background: true\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+
+    await execute(agent, {
+      subagent_type: "tuned",
+      description: "d",
+      prompt: "p",
+      model: "anthropic/allowed",
+      thinking: "high",
+      max_turns: 5,
+      run_in_background: false,
+    });
+
+    expect(spawnAndWait.mock.calls[0][4].invocation).toMatchObject({
+      pinnedModel: "anthropic/blocked",
+      pinnedThinking: "low",
+      pinnedMaxTurns: 20,
+      pinnedRunInBackground: true,
+    });
+  });
+
   it("passes a caller max_turns of 0 as an explicit unlimited", async () => {
     writeAgent("tuned", "max_turns: 20\n");
     registerAgents(loadCustomAgents(cwd));

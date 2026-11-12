@@ -106,17 +106,34 @@ export function buildInvocationTags(
 ): { modelName?: string; modelId?: string; tags: string[] } {
   const tags: string[] = [];
   if (!invocation) return { tags };
-  const asked = (value: string | undefined, requested: string | undefined): string | undefined =>
-    value && requested && requested !== value ? `${value} (asked ${requested})` : value;
   const overPinned = (value: string | undefined, pinned: string | undefined): string | undefined =>
     value && pinned && pinned !== value ? `${value} (over pinned ${pinned})` : value;
-  const thinking = asked(invocation.thinking, invocation.requestedThinking);
-  if (thinking) tags.push(`thinking: ${thinking}`);
+  const thinkingNotes = [
+    invocation.requestedThinking && invocation.requestedThinking !== invocation.thinking
+      ? `asked ${invocation.requestedThinking}`
+      : undefined,
+    invocation.pinnedThinking && invocation.pinnedThinking !== invocation.thinking
+      ? `over ${invocation.pinnedThinking}`
+      : undefined,
+  ].filter(note => note !== undefined);
+  if (invocation.thinking) {
+    tags.push(`thinking: ${invocation.thinking}${thinkingNotes.length > 0 ? ` (${thinkingNotes.join(", ")})` : ""}`);
+  }
   if (invocation.isolated) tags.push("isolated");
   if (invocation.isolation === "worktree") tags.push("worktree");
   if (invocation.inheritContext) tags.push("inherit context");
-  if (invocation.runInBackground) tags.push("background");
-  if (invocation.maxTurns != null) tags.push(`max turns: ${invocation.maxTurns}`);
+  if (invocation.pinnedRunInBackground !== undefined && invocation.pinnedRunInBackground !== !!invocation.runInBackground) {
+    const mode = (background: boolean | undefined) => background ? "background" : "foreground";
+    tags.push(`${mode(invocation.runInBackground)} (over ${mode(invocation.pinnedRunInBackground)})`);
+  } else if (invocation.runInBackground) {
+    tags.push("background");
+  }
+  if (invocation.pinnedMaxTurns !== undefined && (invocation.pinnedMaxTurns || undefined) !== invocation.maxTurns) {
+    const pinned = invocation.pinnedMaxTurns === 0 ? "unlimited" : String(invocation.pinnedMaxTurns);
+    tags.push(`${invocation.maxTurns == null ? "unlimited" : `${invocation.maxTurns} turns`} (over ${pinned})`);
+  } else if (invocation.maxTurns != null) {
+    tags.push(`max turns: ${invocation.maxTurns}`);
+  }
   return {
     modelName: overPinned(invocation.modelName, invocation.pinnedModel),
     modelId: overPinned(invocation.modelId, invocation.pinnedModel),
