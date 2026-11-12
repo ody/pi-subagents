@@ -195,7 +195,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
       cwd,
       respond: routeBySession({
         parentInitial: agentCall({
-          subagent_type: "painted",
+          subagent_type: "Painted Agent",
           description: "paint",
           prompt: "Report in.",
           run_in_background: false,

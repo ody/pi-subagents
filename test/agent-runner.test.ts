@@ -116,12 +116,30 @@ import {
   setRememberAgents,
 } from "../src/config/runner-defaults.js";
 import {
+  type RunOptions,
   resolveDefaultModel,
   resumeAgent,
-  runAgent,
+  runAgent as runAgentWithCapability,
 } from "../src/session/agent-runner.js";
 import { SUBAGENT_TOOL_NAMES } from "../src/session/extension-scope.js";
 import { buildAgentPrompt } from "../src/session/prompts.js";
+import { grant } from "./helpers/capability.js";
+
+function runAgent(ctx: any, type: string, prompt: string, options: Omit<RunOptions, "capability"> & Partial<Pick<RunOptions, "capability">>) {
+  if (options.agentConfig) {
+    return runAgentWithCapability(ctx, type, prompt, { capability: grant(options.agentConfig, { isolated: options.isolated }), ...options });
+  }
+  const registered = getAgentConfig(type);
+  const display = getConfig(type);
+  const declared = {
+    ...registered,
+    builtinToolNames: getToolNamesForType(type),
+    extensions: display.extensions,
+    excludeExtensions: display.excludeExtensions,
+    skills: display.skills,
+  };
+  return runAgentWithCapability(ctx, type, prompt, { capability: grant(declared, { isolated: options.isolated }), agentConfig: registered, ...options });
+}
 
 let lastSession: ReturnType<typeof createSession>["session"] | undefined;
 
@@ -1220,6 +1238,38 @@ describe("agent-runner async extension tool registration", () => {
 
     expect(session.getActiveToolNames()).toContain("keep_me");
     expect(session.getActiveToolNames()).not.toContain("drop_me");
+  });
+
+  it("a verdict that denies an extension keeps its late tools out", async () => {
+    setup({});
+    withExtensions({ "/ext/foo.ts": [], "/ext/bar.ts": [] });
+    const { session, listeners } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+    const policy = { global: { tools: { deny: ["ext:foo"] } }, project: {}, ephemeralNesting: true, problems: [] };
+
+    await runAgent(ctx, "Explore", "go", { pi, capability: grant({ builtinToolNames: ["read"] }, { policy }) });
+
+    registerLate("/ext/foo.ts", "foo_late");
+    registerLate("/ext/bar.ts", "bar_late");
+    for (const l of listeners) l({ type: "turn_end" });
+
+    expect(session.getActiveToolNames()).toContain("bar_late");
+    expect(session.getActiveToolNames()).not.toContain("foo_late");
+  });
+
+  it("a verdict with no extension tools keeps every late extension tool out", async () => {
+    setup({});
+    withExtensions({ "/ext/foo.ts": [] });
+    const { session, listeners } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+    const policy = { global: { tools: { allow: ["read"] } }, project: {}, ephemeralNesting: true, problems: [] };
+
+    await runAgent(ctx, "Explore", "go", { pi, capability: grant({ builtinToolNames: ["read"] }, { policy }) });
+
+    registerLate("/ext/foo.ts", "foo_late");
+    for (const l of listeners) l({ type: "turn_end" });
+
+    expect(session.getActiveToolNames()).not.toContain("foo_late");
   });
 
   it("beforeToolCall blocks an out-of-scope tool and delegates otherwise", async () => {

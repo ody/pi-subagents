@@ -117,16 +117,25 @@ export function renderAgentNameLabel(
     + (style.restoreBackground ?? "\u001b[49m");
 }
 
-export function hasAgentBadge(type: string | undefined): boolean {
-  return type !== undefined && resolveAgentColor(getConfig(type).color) !== undefined;
+export interface AgentNameSource {
+  type: string;
+  displayName?: string;
+}
+
+export function hasAgentBadge(agent: string | AgentNameSource | undefined): boolean {
+  if (agent === undefined) return false;
+  const type = typeof agent === "string" ? agent : agent.type;
+  return resolveAgentColor(getConfig(type).color) !== undefined;
 }
 
 export function renderAgentName(
-  type: string | undefined,
+  agent: string | AgentNameSource | undefined,
   theme: AgentNameTheme,
   style: AgentNameStyle = {},
 ): string {
-  if (!type) return renderAgentNameLabel("Agent", undefined, theme, style);
+  if (!agent) return renderAgentNameLabel("Agent", undefined, theme, style);
+  const type = typeof agent === "string" ? agent : agent.type;
   const config = getConfig(type);
-  return renderAgentNameLabel(config.displayName, config.color, theme, style);
+  const displayName = typeof agent === "string" ? config.displayName : (agent.displayName ?? config.displayName);
+  return renderAgentNameLabel(displayName, config.color, theme, style);
 }

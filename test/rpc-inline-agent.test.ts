@@ -8,7 +8,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
   return { ...actual, runAgent: vi.fn() };
 });
 
-import { getAllTypes, setFallbackSubagent } from "../src/agents/agent-types.js";
+import { getAllTypes } from "../src/agents/agent-types.js";
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
 
@@ -73,7 +73,7 @@ describe("subagents:rpc:spawn with an inline agentConfig", () => {
     mkdirSync(join(tmpDir, ".pi"), { recursive: true });
     writeFileSync(
       join(tmpDir, ".pi", "subagents.json"),
-      JSON.stringify({ schedulingEnabled: false, fallbackSubagent: "none" }),
+      JSON.stringify({ schedulingEnabled: false }),
     );
     process.chdir(tmpDir);
   });
@@ -86,7 +86,6 @@ describe("subagents:rpc:spawn with an inline agentConfig", () => {
     else process.env.HOME = prevHome;
     rmSync(tmpDir, { recursive: true, force: true });
     rmSync(agentDir, { recursive: true, force: true });
-    setFallbackSubagent(undefined);
     vi.restoreAllMocks();
   });
 

@@ -1,4 +1,5 @@
 import { resolveSpawnType } from "../agents/agent-types.js";
+import { resolveCapability } from "../config/capability-policy.js";
 import { resolveEffectiveMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
@@ -9,19 +10,30 @@ export interface SpawnFunnelDeps {
 }
 
 export interface SpawnFunnel {
-  spawnResolved: (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => string;
-  spawnTopLevel: (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => string;
+  spawnResolved: (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => string;
+  spawnTopLevel: (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => string;
   resolveAgentRef: (ref: string) => AgentRecord | undefined;
 }
 
 export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
   const { manager, reloadCustomAgents } = deps;
 
-  const spawnResolved = (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => {
+  const capabilityFor = (ctxRef: any, type: string, options: any, config?: AgentConfig, raw?: Partial<AgentConfig>) =>
+    resolveCapability({
+      type,
+      cwd: ctxRef?.cwd ?? process.cwd(),
+      config: config && { ...config, extensions: config.extensions ?? true, skills: config.skills ?? true },
+      raw,
+      isolated: options?.isolated,
+      notify: (message, level) => ctxRef?.ui?.notify?.(message, level),
+    });
+
+  const spawnResolved = (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => {
     const inline: AgentConfig | undefined = options?.agentConfig;
     if (inline) {
       return manager.spawn(piRef, ctxRef, type, prompt, {
         ...options,
+        capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? inline),
         maxTurns: resolveEffectiveMaxTurns(type, options.maxTurns, inline),
       });
     }
@@ -30,11 +42,12 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     if (!dispatch.ok) throw new Error(dispatch.message);
     return manager.spawn(piRef, ctxRef, dispatch.type, prompt, {
       ...options,
+      capability: capabilityFor(ctxRef, dispatch.type, options),
       maxTurns: options?.maxTurns ?? resolveEffectiveMaxTurns(dispatch.type, options?.maxTurns),
     });
   };
 
-  const spawnTopLevel = (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => {
+  const spawnTopLevel = (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => {
     const safeOptions = { ...(options ?? {}) };
     delete safeOptions.parentAgentId;
     delete safeOptions.depth;
@@ -44,7 +57,9 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     delete safeOptions.resumeSessionFile;
     delete safeOptions.reclaim;
     delete safeOptions.blocking;
-    return spawnResolved(piRef, ctxRef, type, prompt, safeOptions);
+    delete safeOptions.capability;
+    delete safeOptions.ephemeral;
+    return spawnResolved(piRef, ctxRef, type, prompt, safeOptions, rawAgentConfig);
   };
 
   const resolveAgentRef = (ref: string): AgentRecord | undefined => {

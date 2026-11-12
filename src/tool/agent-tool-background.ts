@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { filteredNote } from "../config/capability-policy.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { CompletionNotifier } from "../manager/completion-notifier.js";
@@ -33,7 +34,9 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
   const { ctx, toolCallId, params, call, attachTranscript } = input;
   const {
     subagentType,
-    fallbackNote,
+    capability,
+    agentConfig,
+    ephemeral,
     displayName,
     model,
     thinking,
@@ -45,6 +48,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     detailBase,
   } = call;
 
+  const capabilityNote = capability ? filteredNote(capability) : "";
   const bgCallbacks = createActivityTracker();
 
   let id: string;
@@ -59,7 +63,10 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   id = manager.spawn(pi, ctx, subagentType, params.prompt, {
     description: params.description,
-    name: params.name,
+    name: ephemeral ? undefined : params.name,
+    agentConfig,
+    ephemeral,
+    capability,
     model,
     maxTurns: effectiveMaxTurns,
     isolated,
@@ -101,7 +108,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   const isQueued = record?.status === "queued";
   return textResult(
-    `${fallbackNote}Agent ${isQueued ? "queued" : "started"} in background.\n` +
+    `${capabilityNote}Agent ${isQueued ? "queued" : "started"} in background.\n` +
     `Agent ID: ${id}\n` +
     `Type: ${displayName}\n` +
     `Description: ${params.description}\n` +

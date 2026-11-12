@@ -13,7 +13,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
   - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings)).
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally, with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
-- **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. The allowlist is a privilege boundary — a child runs with its own tools, so pick it as carefully as `tools:` itself
+- **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
 - **Agent mentions** — subagents are first-class: type `@explore also check the RPC path` at the prompt and it goes to that agent instead of the main model, without a word of it entering the chat. Toggle via `/agents → Settings → Agent mentions`.
   - One syntax covers the whole lifecycle: message it while it runs, resume it once it has finished, reopen its session from disk long after that, or start it if it never ran.
   - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation, so it gets Claude Code's context-written prompt and a real `agent` tool call without a word of it reaching the chat. `direct` mode starts it here from your text instead, with no model call at all.
@@ -22,7 +22,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context. The session keeps its model and thinking level; `run_in_background` and `max_turns` come from the resuming call, else from the run's original values. Pass `run_in_background: false` to block and get the result inline
 - **Graceful turn limits** — agents get a "wrap up" warning before hard abort, producing clean partial results instead of cut-off output
-- **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — falls back to general-purpose with a note, or is refused outright under [`fallbackSubagent: none`](#persistent-settings)
+- **Case-insensitive agent types** — `"explore"`, `"Explore"`, `"EXPLORE"` all work. A type that doesn't resolve to exactly one *enabled* agent — unknown, disabled, or ambiguous between two agents differing only by case — is refused with an error that lists the enabled types
 - **Fuzzy model selection** — specify models by name (`"haiku"`, `"sonnet"`) instead of full IDs, with automatic filtering to only available/configured models
 - **Context inheritance** — optionally fork the parent conversation into a sub-agent so it knows what's been discussed
 - **Git worktree isolation** — run agents in isolated repo copies; changes auto-committed to branches on completion
@@ -463,7 +463,17 @@ allowed_subagents: support-file-finder, support-callsite-tracer   # or `all`
 ---
 ```
 
-**The allowlist is a privilege boundary, not just a routing hint.** A child runs with *its own* `tools:`, `extensions:`, and `isolated:` — the parent's restrictions are not inherited — so delegation grants the parent the union of what the listed agents can do. The read-only agent above can write and run commands through any listed agent that can, and `all` reaches every enabled agent including `general-purpose`. Choose the list as carefully as you would choose `tools:` itself; that is the main reason this is default-off.
+**A nested child never exceeds its parent.** The parent's tools, extensions, and skills, after the [capability policy](#capability-policy) and its own ceiling, are recorded on its record when its session is built, so the bound is transitive.
+
+- A child's values are compared with the parent's using the policy's expansion rules. Wildcards, `true`, and whole-extension selectors expand and are narrowed, and a child's `skills: true` under a parent list narrows to that list.
+- The parent's `disallowed_tools` and `exclude_extensions` apply to the child.
+- A file value or default that exceeds the parent is narrowed, with a warning to the user and a note in the nested tool result.
+- A child's `allowed_subagents` is a subset of its parent's, and `all` only when the parent has `all`. A file value is narrowed with a warning, and the main session counts as `all`.
+- A nested spawn whose parent record has no recorded set is refused.
+- Extension tools that register after spawn are filtered by the same set.
+- Top-level, `@handle`, RPC, and scheduler spawns have no parent and are bounded by the policy alone.
+
+The read-only agent above therefore cannot obtain writes through its children, but `allowed_subagents` still decides which types it may start.
 
 `allowed_subagents` is runtime-enforced, and takes three forms:
 
@@ -471,7 +481,7 @@ allowed_subagents: support-file-finder, support-callsite-tracer   # or `all`
 - `all` (or `"*"` / `true`, matching how `extensions:` and `skills:` take booleans) allows any enabled agent.
 - Omitted, empty, `none`, or `false` means no nested tools are injected at all.
 
-Unknown, disabled, and out-of-list types are rejected rather than falling back — regardless of the project's [fallback agent](#persistent-settings) setting, so a configured fallback can never hand a nested caller an agent outside its allowlist. A nested `model:` is validated against [Model Scope](#model-scope) exactly like a top-level spawn.
+Unknown, disabled, and out-of-list types are rejected. A nested `model:` is validated against [Model Scope](#model-scope) exactly like a top-level spawn.
 
 Result, resume, and steering operations are ownership-scoped, so a parent can control only its own children. Nested records stay internal to that parent for every *programmatic* surface — top-level tools, lifecycle events, the [RPC channels](docs/rpc.md), `@handle` resolution — and when a parent finishes, is stopped, or ends a resumed turn, its nested children are stopped with it.
 
@@ -554,7 +564,14 @@ Launch a sub-agent.
 | `prompt` | string | yes | The task for the agent |
 | `description` | string | yes | Short 3-5 word summary (shown in UI) |
 | `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `steer_subagent`/`get_subagent_result`/`stop_subagent`. Additive — the type-derived handle is still assigned |
-| `subagent_type` | string | yes | Agent type (built-in or custom) |
+| `subagent_type` | string | no | Agent type to run. Omit it to build a one-off [ephemeral agent](#ephemeral-agents) from the parameters below. Ignored with `resume` |
+| `tools` | `string[]` | no | Ephemeral only. `*`, built-in names, `none`, and `ext:` selectors, as in the agent file `tools` field. Default: all built-ins and all extension tools |
+| `disallowed_tools` | `string[]` | no | Ephemeral only. Tools to remove, built-in or from an extension |
+| `extensions` | `boolean` \| `string[]` | no | Ephemeral only. Default `true` |
+| `exclude_extensions` | `string[]` | no | Ephemeral only. Extensions to leave out |
+| `skills` | `boolean` \| `string[]` | no | Ephemeral only. Default `true` |
+| `allowed_subagents` | `"all"` \| `string[]` | no | Ephemeral only. Default `[]`, which means no nesting. Refused when `policy.ephemeralNesting` is `false` |
+| `prompt_mode` | `"append"` \| `"replace"` | no | Ephemeral only. Default `append` |
 | `model` | string | no | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly (`.`/`-` and a trailing date stamp interchangeable) with provider fallback |
 | `thinking` | string | no | Thinking level: off, minimal, low, medium, high, xhigh, max (availability depends on pi version and model) |
 | `max_turns` | number | no | Max agentic turns; `0` is unlimited. Overrides the agent's frontmatter; omit to use it, then `defaultMaxTurns` |
@@ -563,6 +580,22 @@ Launch a sub-agent.
 | `isolated` | boolean | no | No extension/MCP tools |
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when `worktreeIsolation: false` |
 | `inherit_context` | boolean | no | Fork parent conversation into agent |
+
+#### Ephemeral agents
+
+A call with no `subagent_type` runs an agent built from its parameters, and the agent never enters the registry.
+
+- Passing `tools`, `disallowed_tools`, `extensions`, `exclude_extensions`, `skills`, `allowed_subagents`, or `prompt_mode` together with a `subagent_type` is an error that names the parameter.
+- `isolated: true` together with `extensions`, `skills`, or an `ext:` entry in `tools` is refused.
+- There is no system prompt parameter. `prompt` is the task. `append` reuses the session's system prompt, and `replace` gives the sub-agent preamble and an environment block.
+- The defaults are all built-in tools, `extensions: true`, `skills: true`, `allowed_subagents: []`, the session's model, `inherit_context: false`, `isolated: false`, and no worktree. `max_turns` follows `defaultMaxTurns`, and `run_in_background` follows `backgroundByDefault`.
+- The type is minted as `ephemeral-<8 hex>`, and an agent file whose name starts with `ephemeral-` is skipped with a warning. Lifecycle events carry the minted type.
+- The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge reads `Agent`.
+- The session is not persisted. The agent is steerable and resumable while its record is in memory, and it cannot be reopened once evicted.
+- A scheduled call with no `subagent_type` is an error.
+- Every value is checked against the [capability policy](#capability-policy).
+- The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. A nested ephemeral child is allowed only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn, and ephemeral defaults are narrowed.
+- In `agentMentions: "model"` mode, the conversation clone's `agent` call is refused when it omits `subagent_type` or names a different type than the mention.
 
 ### `get_subagent_result`
 
@@ -700,8 +733,8 @@ Runtime tuning values set via `/agents` → Settings persist across pi restarts:
 
 - max concurrency, max foreground concurrency
 - default max turns, grace turns
-- nested depth, fallback agent, default join mode
-- scheduling on/off, scope models on/off, disable defaults on/off
+- nested depth, default join mode
+- scheduling on/off, scope models on/off
 - strict agent files on/off, agent mentions on/off, output transcript on/off
 - tool description full/compact/custom
 - widget all/background/off
@@ -715,30 +748,56 @@ Two files, merged on load:
 
 ### Precedence
 
-Project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`, defaults enabled).
+Project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`).
 
 ### Nested depth
 
 `maxSubagentDepth`, default `2`: the hard ceiling on [nested delegation](#nested-subagents), counted from the main session (main = 0, its subagents = 1). `0` or `1` disables nesting project-wide regardless of any agent's `allowed_subagents`. Read when a subagent session is built, so a change applies to agents started after it.
 
-### Fallback agent
+### Unresolved agent types
 
-`fallbackSubagent`, default `general-purpose`: the agent used when a caller-supplied `subagent_type` doesn't resolve to exactly one enabled agent — unknown, disabled, or ambiguous because two agents differ only by case. Also settable from `/agents → Settings → Fallback agent`.
+A `subagent_type` that does not resolve to exactly one enabled agent is an error that lists the enabled types. That covers unknown, disabled, and ambiguous types, where two agents differ only by case.
 
-- Name any enabled agent to route those calls there instead.
-- Set `none` for **strict**, fail-closed dispatch: the call is refused with an error listing the available types, and nothing spawns. Strict mode matters most for background and scheduled calls, which would otherwise start executing a substituted agent before the caller learns anything.
-- The boolean `false` is accepted as a spelling of `none`, because it would otherwise be dropped as the wrong type and silently leave the permissive default in place.
-- Every other value is read as an agent name, so a mistaken `off` fails loudly at dispatch rather than meaning one thing in the settings file and another in the resolver.
-- A fallback agent that is itself unknown or disabled is a misconfiguration and is reported rather than quietly replaced.
-- The default stays permissive by design: with `disableDefaultAgents` and no `general-purpose` of your own, an unresolvable type still resolves to a built-in config carrying *all* tools. Set `none` (or name one of your own agents) to close that.
+- Only the `agent` tool's message suggests omitting the type to run a one-off agent.
+- An empty `type` on `subagents:rpc:spawn` without `agentConfig` is an error envelope.
+- A stored reference to a removed type, such as a scheduled job, fails when it is used, with the type named.
+- A key for a removed setting in `subagents.json` is ignored.
+
+### Capability policy
+
+An optional `policy` object in `subagents.json` bounds the tools, extensions, and skills of new agents. It is not a `/agents` setting, and `/agents` never edits it.
+
+```json
+{
+  "policy": {
+    "tools": { "allow": ["read", "ext:web"], "deny": ["bash"] },
+    "extensions": { "deny": ["risky"] },
+    "skills": { "allow": ["review"] },
+    "ephemeralNesting": false
+  }
+}
+```
+
+- Each of `tools`, `extensions`, and `skills` takes optional `allow` and `deny` string lists. An omitted list, or no `policy`, allows everything. `ephemeralNesting` defaults to `true`.
+- The global and project files are evaluated separately. A value must pass both, deny entries from either apply, and `ephemeralNesting: false` in either file turns it off. A project can only narrow.
+- `*` is valid only in an allow list.
+- Built-in tool names match exactly. `ext:<extension>` and `ext:<extension>/<tool>` select extension tools. A bare name in a deny list that is not a built-in matches any tool of that name. The delegation tools are not governed by `policy.tools`.
+- An `allow` list for `tools` with no `ext:` entry and no `*` permits no extension tools.
+- Extensions match by canonical name and skills by the name pi assigns, both case-insensitively. A deny entry beats an allow entry.
+- A value outside the policy that the caller supplied refuses the spawn with an error that starts `Capability policy:`. A value from an agent file is filtered instead. Filtering an explicit tool list to empty refuses.
+- `ephemeralNesting: false` forces `allowed_subagents: []` on an ephemeral agent and refuses any other caller value.
+- The check runs at the `agent` tool, the nested tool, a scheduled job when it fires, `@handle` starts and tombstone reopens, `subagents:rpc:spawn`, and the registry `spawn`. Resuming a live agent is not re-checked.
+- A filtered value notifies the user, adds a note to the `agent` tool result, and is stored on the agent's record and shown in the conversation viewer.
+- `skills: true` is narrowed through the skill loader, and named skills are filtered before they are preloaded. Extension tools that register after spawn are filtered by the same scope.
+- A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
+- The policy is read at each spawn, so an edit applies without a restart.
+- A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. Every spawn is denied and a warning names the file and entry. A well-formed entry that names nothing known only warns.
+- Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
+- `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
 
 ### Strict agent files
 
 `strictAgentFiles`, default `false`: when on, an unreadable or unparseable [agent file](#custom-agents) aborts extension load at startup and names the file, instead of being skipped with a warning — so a checked-in `.pi/agents/` can't silently fall through to a same-named agent from another location. Startup only: the mid-session reload that runs on each `agent` call keeps warning either way, since a bad edit shouldn't kill a session on an unrelated spawn. Also settable from `/agents → Settings → Strict agent files`.
-
-### Disable defaults
-
-`disableDefaultAgents`, default `false`: when on, the three built-in agents (general-purpose, Explore, Plan) are not registered — only your project/global custom agents are advertised and spawnable. User-defined agents are unaffected, including ones that override a default by name. The agent tool's type list updates on the next pi session (the tool schema is registered at startup).
 
 ### Agent mentions setting
 
@@ -930,8 +989,8 @@ Agent lifecycle events are emitted via `pi.events.emit()` so other extensions ca
 | `subagents:scheduled` | Schedule lifecycle change | `{ type: "added" \| "removed" \| "updated" \| "fired" \| "error", … }` (job/agentId/error fields per type) |
 | `subagents:scheduler_ready` | Scheduler bound to session, enabled jobs armed | `sessionId`, `jobCount` |
 | `subagents:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
-| `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project) |
-| `subagents:settings_changed` | `/agents` → Settings mutation was applied | `settings`, `persisted` (`boolean` — `false` on write failure) |
+| `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project), `policy` (`{ global, project, ephemeralNesting }`) |
+| `subagents:settings_changed` | `/agents` → Settings mutation was applied | `settings`, `persisted` (`boolean` — `false` on write failure), `policy` (`{ global, project, ephemeralNesting }`) |
 
 The four agent-lifecycle events — `subagents:started`, `:completed`, `:failed`, `:compacted` — are emitted for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
 
@@ -967,7 +1026,7 @@ Check if the subagents extension is loaded and get the protocol version:
 const requestId = crypto.randomUUID();
 const unsub = pi.events.on(`subagents:rpc:ping:reply:${requestId}`, (reply) => {
   unsub();
-  if (reply.success) console.log("Protocol version:", reply.data.version);
+  if (reply.success) console.log("Protocol version:", reply.data.version, reply.data.policy);
 });
 pi.events.emit("subagents:rpc:ping", { requestId });
 ```
@@ -993,6 +1052,8 @@ pi.events.emit("subagents:rpc:spawn", {
   options: { description: "My task", isBackground: true },
 });
 ```
+
+The reply is `{ id, filtered? }`. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy. The registry `spawn` still returns the id and throws the same errors.
 
 `options` is the manager's spawn-option object, not the `agent` tool's parameter schema — the background flag is `isBackground`, and the tool's snake_case `run_in_background` is forwarded verbatim and ignored.
 
@@ -1150,6 +1211,7 @@ src/
     default-agents.ts # Embedded default agent configs (general-purpose, Explore, Plan)
     custom-agents.ts  # Load user-defined agents from .pi/agents/, .agents/agents/, global agents, and skill-embedded agents
     agent-types.ts    # Unified agent registry (defaults + user), tool name resolution
+    ephemeral-agent.ts # Build the one-off agent an `agent` call with no subagent_type runs
     agent-file-toggle.ts # Locate/edit an agent's .md: enabled: toggle, eject to frontmatter
 
   session/            # One child session: how it is built, run, and read
@@ -1187,6 +1249,7 @@ src/
     agent-call-resolution.ts # agent tool params -> resolved invocation (dispatch, model, scope, details base)
     invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
     tool-result.ts    # Tool result text shape and AgentDetails building
+    ephemeral-params.ts # Schema of the seven ephemeral-agent parameters, shared by the agent tool and the nested tool
     nested-tools.ts   # Delegation tools handed to subagents (nested spawn/collect/steer)
     abortable.ts      # Race a wait against Esc without cancelling the background child
     status-note.ts    # Honest status note + salvaged partial output for non-normal outcomes
@@ -1204,6 +1267,9 @@ src/
   config/             # How a run is configured: settings, defaults, model choice
     settings.ts       # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
     runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
+    settings-paths.ts # Paths of the global and project subagents.json
+    capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json
+    capability-policy.ts # checkCapabilityPolicy: match declared tools, extensions, and skills against the policy
     runner-defaults.ts # Process-wide run defaults: max turns, grace turns, rememberAgents
     model-resolver.ts # Model resolution: exact provider/modelId with fuzzy fallback
     enabled-models.ts # Read pi's enabledModels settings (project over global)

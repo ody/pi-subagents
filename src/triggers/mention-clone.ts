@@ -40,6 +40,14 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
   const cloneAgentTool: ToolDefinition = {
     ...agentTool,
     execute: (_cloneToolCallId, params, signal, onUpdate, _cloneCtx) => {
+      const requested = (params as { subagent_type?: unknown }).subagent_type;
+      if (typeof requested !== "string" || requested.trim().toLowerCase() !== type.toLowerCase()) {
+        return Promise.resolve({
+          content: [{ type: "text" as const, text: `This mention starts the "${type}" agent. Call again with subagent_type "${type}".` }],
+          details: undefined,
+          isError: true,
+        });
+      }
       if (spawned) {
         return Promise.resolve({
           content: [{ type: "text" as const, text: "Already started an agent for this mention. Stop here." }],

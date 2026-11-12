@@ -121,8 +121,8 @@ export class AgentWidget {
     this.finishedTurnAge.delete(agentId);
   }
 
-  private renderFinishedLine(a: { id: string; type: SubagentType; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string; lifetimeUsage?: LifetimeUsage }, theme: Theme): string {
-    const modeLabel = getPromptModeLabel(a.type);
+  private renderFinishedLine(a: { id: string; type: SubagentType; displayName?: string; promptMode?: "replace" | "append"; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string; lifetimeUsage?: LifetimeUsage }, theme: Theme): string {
+    const modeLabel = getPromptModeLabel(a);
     const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
 
     let icon: string;
@@ -154,7 +154,7 @@ export class AgentWidget {
     parts.push(duration);
 
     const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
-    return `${icon} ${renderAgentName(a.type, theme, { fallbackColor: "dim" })}${modeTag}  ${theme.fg("dim", a.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(" · "))}${statusText}`;
+    return `${icon} ${renderAgentName(a, theme, { fallbackColor: "dim" })}${modeTag}  ${theme.fg("dim", a.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(" · "))}${statusText}`;
   }
 
   private renderWidget(tui: any, theme: Theme): string[] {
@@ -204,7 +204,7 @@ export class AgentWidget {
 
   private runningRowLines(a: AgentRecord, depth: number, theme: Theme, frame: string): [string, string] {
     const indent = "   ".repeat(depth);
-    const modeLabel = getPromptModeLabel(a.type);
+    const modeLabel = getPromptModeLabel(a);
     const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
     const elapsed = formatMs(Date.now() - a.startedAt);
 
@@ -232,7 +232,7 @@ export class AgentWidget {
     const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
     return [
-      theme.fg("dim", `${indent}├─`) + ` ${theme.fg("accent", frame)} ${renderAgentName(a.type, theme, { bold: true })}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${fgPreservingNestedStyles(theme, "dim", statsText)}`,
+      theme.fg("dim", `${indent}├─`) + ` ${theme.fg("accent", frame)} ${renderAgentName(a, theme, { bold: true })}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${fgPreservingNestedStyles(theme, "dim", statsText)}`,
       theme.fg("dim", `${indent}│  `) + theme.fg("dim", `  ⎿  ${activity}`),
     ];
   }

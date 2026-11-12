@@ -20,6 +20,7 @@ import { runForegroundAgent } from "./agent-tool-foreground.js";
 import { renderAgentCall, renderAgentResult } from "./agent-tool-render.js";
 import { resumeAgentCall } from "./agent-tool-resume.js";
 import { scheduleAgentCall } from "./agent-tool-schedule.js";
+import { ephemeralParamShape } from "./ephemeral-params.js";
 import { FORCED_BACKGROUND, isolationParam } from "./invocation-config.js";
 import { textResult } from "./tool-result.js";
 
@@ -86,9 +87,12 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
             'Optional memorable name for this agent, e.g. "auth-audit", so it can be addressed as `@name` at the prompt and by steer_subagent / get_subagent_result. Letters, digits, `_` and `-`. Worth setting when several agents of the same type run at once; omit for one-off work. The agent stays reachable by its type either way.',
         }),
       ),
-      subagent_type: Type.String({
-        description: `The type of specialized agent to use. Available types: ${getAvailableTypes().join(", ")}. Custom agents from .pi/agents/*.md (project) or ${getAgentDir()}/agents/*.md (global) are also available.`,
-      }),
+      subagent_type: Type.Optional(
+        Type.String({
+          description: `The type of specialized agent to use. Available types: ${getAvailableTypes().join(", ")}. Custom agents from .pi/agents/*.md (project) or ${getAgentDir()}/agents/*.md (global) are also available. Omit it to build a one-off agent from the tools, disallowed_tools, extensions, exclude_extensions, skills, allowed_subagents, and prompt_mode parameters; those apply only when this is omitted.`,
+        }),
+      ),
+      ...ephemeralParamShape,
       model: Type.Optional(
         Type.String({
           description:

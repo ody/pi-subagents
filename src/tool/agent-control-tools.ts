@@ -108,7 +108,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
 
       let output =
         `Agent: ${record.id}\n` +
-        `Type: ${getDisplayName(record.type)} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${formatResultStats(record, settings.showCost)}\n` +
+        `Type: ${getDisplayName(record)} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${formatResultStats(record, settings.showCost)}\n` +
         `Description: ${record.description}\n\n${resultBody(record)}`;
 
       if (record.status !== "running" && record.status !== "queued") {
@@ -197,7 +197,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       }
 
       const wasRunning = record.status === "running";
-      const displayName = getDisplayName(record.type);
+      const displayName = getDisplayName(record);
       record.stoppedBy = "agent";
       manager.abort(record.id);
 

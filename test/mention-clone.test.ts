@@ -226,7 +226,7 @@ describe("attributing the spawn to the real session", () => {
     const tool = agentTool();
     cloneSession(callsAgent({ subagent_type: "Plan", prompt: "sketch the migration" }));
 
-    await runMentionClone(opts({ agentTool: tool }));
+    await runMentionClone(opts({ agentTool: tool, type: "Plan" }));
 
     expect(tool.execute.mock.calls[0][1]).toEqual({
       subagent_type: "Plan",
@@ -323,6 +323,40 @@ describe("attributing the spawn to the real session", () => {
 
     expect(captured[0].isError).toBe(true);
     expect(captured[0].content[0].text).toContain("Already started an agent");
+  });
+});
+
+describe("a call for another agent than the one mentioned", () => {
+  it.each([
+    ["omits subagent_type", { prompt: "go" }],
+    ["names a different type", { subagent_type: "Plan", prompt: "go" }],
+    ["sends a blank type", { subagent_type: "  ", prompt: "go" }],
+  ])("is refused when it %s", async (_label, params) => {
+    const tool = agentTool();
+    const captured: any[] = [];
+    cloneSession(async (t) => {
+      captured.push(await t.execute("c1", params, undefined, undefined, {}));
+    });
+
+    const result = await runMentionClone(opts({ agentTool: tool }));
+
+    expect(tool.execute).not.toHaveBeenCalled();
+    expect(captured[0].isError).toBe(true);
+    expect(captured[0].content[0].text).toContain('subagent_type "Explore"');
+    expect(result.spawned).toBe(false);
+  });
+
+  it("does not use up the one spawn, so a corrected call still starts the agent", async () => {
+    const tool = agentTool();
+    cloneSession(async (t) => {
+      await t.execute("c1", { prompt: "go" }, undefined, undefined, {});
+      await callsAgent({ subagent_type: "explore", prompt: "go" })(t);
+    });
+
+    const result = await runMentionClone(opts({ agentTool: tool }));
+
+    expect(tool.execute).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ spawned: true });
   });
 });
 

@@ -8,6 +8,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { ctx, flush, makePi, textOf } from "./helpers/boot-extension.js";
+import { grant } from "./helpers/capability.js";
 
 const FORCED_SETTLE_GRACE_MS = 5_000;
 const NUDGE_HOLD_MS = 200;
@@ -124,6 +125,7 @@ describe("stop_subagent", () => {
     await flush();
     const manager = rawManager();
     const childId = manager.spawn(pi, ctx(), "Explore", "nested", {
+      capability: grant(),
       description: "nested child",
       isBackground: true,
       parentAgentId: topId,

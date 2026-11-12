@@ -44,6 +44,8 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 **Silently overwritten** — `onToolActivity`, `onTextDelta`, `onTurnEnd`, `onSessionCreated` and `onAssistantUsage` are replaced by the activity tracker's own (`src/index.ts:693`). Every programmatic spawn passes through one funnel so none can supply half-wired callbacks; a half-wired tracker renders worse than none, which is the bug behind a row that reads `thinking…` for an agent's whole life.
 
+**Capability policy.** `spawnTopLevel` also deletes a `capability` verdict a caller supplies, then runs `checkCapabilityPolicy` itself. The RPC handler passes the raw `agentConfig` next to the normalized one, so a field the caller wrote is refused when it is outside the policy, and a field the boundary defaulted (`extensions`, `skills`) is filtered. The registry `spawn` never normalizes, so every field of its `agentConfig` counts as supplied. The spawn reply is `{ id, filtered? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
+
 Three things that are not obvious from the tables:
 
 - **Nothing is required at runtime.** `description` is non-optional in TypeScript and never validated. A spawn with no `options` at all is legal and is what `test/cross-extension-rpc.test.ts:81-94` pins.
@@ -57,7 +59,7 @@ Three things that are not obvious from the tables:
 The shape is `AgentConfig` from `src/types.ts`, using its field names rather than frontmatter spellings. The RPC boundary completes it:
 
 - `systemPrompt` is required.
-- `name` is always set to `type`, which names the run (handle, session name, record) and is never resolved, so `fallbackSubagent` does not apply.
+- `name` is always set to `type`, which names the run (handle, session name, record) and is never resolved against the registry.
 - `description` defaults to `options.description`, then `type`.
 - `extensions` and `skills` default to `true`, and `promptMode` to `"replace"`, like omitted frontmatter.
 - `builtinToolNames` omitted means all built-ins. `[]` means none.
@@ -85,7 +87,7 @@ pi.events.emit("subagents:rpc:spawn", {
 Three things to know:
 
 - **Sessions persist by default.** `rememberAgents` writes top-level agent sessions to disk. Set `persistSession: false` for a one-shot agent whose transcript nobody will reopen.
-- **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders as the fallback agent's name next to its `description`.
+- **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders under a generic name next to its `description`.
 - **An evicted inline agent cannot be reopened by `@handle`.** Reopening resolves the type against the registry and refuses when nothing is registered under that name. A registered agent with the same name would be reopened instead, so pick a type no agent file uses. A live record whose session still exists resumes normally, under the tools it was created with.
 
 ### Names that look right and are not
@@ -112,11 +114,12 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 | `Model override "<label>" provided but ctx.modelRegistry is unavailable` | `src/triggers/cross-extension-rpc.ts:149` |
 | `Inline agentConfig requires a systemPrompt string` | `src/triggers/cross-extension-rpc.ts:79` — `agentConfig` is not an object, or has no string `systemPrompt` |
 | `Inline agentConfig requires a type to name the run` | `src/triggers/cross-extension-rpc.ts:76` — `agentConfig` set with an empty or non-string `type` |
+| `Capability policy: <value and list>` | `src/config/capability-policy.ts` — a tool, extension, or skill in `agentConfig` is outside the [capability policy](../README.md#capability-policy), or the policy is malformed. Nothing spawns |
+| `Capability policy: a spawn needs a verdict from checkCapabilityPolicy.` | `src/manager/agent-spawn.ts` — a spawn reached the manager without a verdict. Not reachable from the bus or the registry |
 | `Model not found: "<input>".` + available models | `src/config/model-resolver.ts:125` |
 | `Model not in scope: "<input>".` + allowed models | `src/config/model-scope.ts:62` — only with `scopeModels` on, and checked against the *resolved* model |
-| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts:187` — only under `fallbackSubagent: none` |
-| `No agent type given. Available: <list>.` | `src/agents/agent-types.ts:187-194` — same condition |
-| `<reason> The configured fallbackSubagent "<x>" is itself unknown or disabled. Available: <list>.` | `src/agents/agent-types.ts:205-207` |
+| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts` — `type` does not resolve to exactly one enabled agent, and no `agentConfig` was given |
+| `No agent type given. Available: <list>.` | `src/agents/agent-types.ts` — `type` is empty and no `agentConfig` was given |
 | `SpawnOptions.cwd must be an absolute path: "<value>"` | `src/manager/agent-manager-rules.ts:38` |
 | `SpawnOptions.cwd does not exist: "<cwd>"` | `src/manager/agent-manager-rules.ts:44` |
 | `SpawnOptions.cwd is not a directory: "<cwd>"` | `src/manager/agent-manager-rules.ts:47` |
@@ -194,7 +197,9 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 ## Protocol versions
 
-`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION }`, currently `2` (`src/triggers/cross-extension-rpc.ts:33`). The constant was introduced already equal to `2` in 0.5.0; "v1" is a retroactive name for the pre-envelope contract, where spawn replied with a bare `{ id }` or `{ error }`, stop replied `{ success: boolean }` with no message, and each handler caught its own errors.
+`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION, policy }`, currently `2` (`src/triggers/cross-extension-rpc.ts:33`). The constant was introduced already equal to `2` in 0.5.0; "v1" is a retroactive name for the pre-envelope contract, where spawn replied with a bare `{ id }` or `{ error }`, stop replied `{ success: boolean }` with no message, and each handler caught its own errors.
+
+`policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. It is read from disk on every ping, so it is the only copy that is always current, and it carries a `malformed` list of problems when the policy is malformed and every spawn is denied. `subagents:settings_loaded` and `subagents:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 
 Everything added since shipped **without a bump**, because all of it is additive: stop's ownership refusal, string-`model` resolution, `scopeModels` enforcement, and the whole `consume` channel.
 

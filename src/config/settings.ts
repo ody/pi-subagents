@@ -1,10 +1,10 @@
 // Size: the SubagentsSettings interface documents every field (about half the file); sanitize, load/save and apply all change together whenever a setting is added.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { NO_FALLBACK } from "../agents/agent-types.js";
+import { dirname } from "node:path";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
+import { policyEventPayload, readProjectPolicyRaw } from "./capability-policy-config.js";
+import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
 
 export interface SubagentsSettings {
   maxConcurrent?: number;
@@ -16,7 +16,6 @@ export interface SubagentsSettings {
   schedulingEnabled?: boolean;
   scopeModels?: boolean;
   strictAgentFiles?: boolean;
-  disableDefaultAgents?: boolean;
   toolDescriptionMode?: ToolDescriptionMode;
   fleetView?: boolean;
   agentMentions?: AgentMentionMode;
@@ -25,7 +24,6 @@ export interface SubagentsSettings {
   outputTranscript?: boolean;
   worktreeIsolation?: boolean;
   maxSubagentDepth?: number;
-  fallbackSubagent?: string;
   reportUsage?: boolean;
   showCost?: boolean;
 
@@ -45,7 +43,6 @@ export interface SettingsAppliers {
   setSchedulingEnabled: (b: boolean) => void;
   setScopeModels: (enabled: boolean) => void;
   setStrictAgentFiles: (b: boolean) => void;
-  setDisableDefaultAgents: (b: boolean) => void;
   setToolDescriptionMode: (mode: ToolDescriptionMode) => void;
   setFleetView: (b: boolean) => void;
   setAgentMentions: (mode: AgentMentionMode) => void;
@@ -54,7 +51,6 @@ export interface SettingsAppliers {
   setOutputTranscript: (b: boolean) => void;
   setWorktreeIsolation: (b: boolean) => void;
   setMaxSubagentDepth: (n: number) => void;
-  setFallbackSubagent: (v: string | undefined) => void;
   setReportUsage: (b: boolean) => void;
   setShowCost: (b: boolean) => void;
   setShowModel: (b: boolean) => void;
@@ -129,9 +125,6 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (typeof r.strictAgentFiles === "boolean") {
     out.strictAgentFiles = r.strictAgentFiles;
   }
-  if (typeof r.disableDefaultAgents === "boolean") {
-    out.disableDefaultAgents = r.disableDefaultAgents;
-  }
   if (typeof r.toolDescriptionMode === "string" && VALID_TOOL_DESCRIPTION_MODES.has(r.toolDescriptionMode)) {
     out.toolDescriptionMode = r.toolDescriptionMode as ToolDescriptionMode;
   }
@@ -167,20 +160,7 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (typeof r.viewerMarkdown === "string" && VALID_VIEWER_MARKDOWN_MODES.has(r.viewerMarkdown)) {
     out.viewerMarkdown = r.viewerMarkdown as ViewerMarkdownMode;
   }
-  if (r.fallbackSubagent === false) {
-    out.fallbackSubagent = NO_FALLBACK;
-  } else if (typeof r.fallbackSubagent === "string" && r.fallbackSubagent.trim()) {
-    out.fallbackSubagent = r.fallbackSubagent.trim();
-  }
   return out;
-}
-
-function globalPath(): string {
-  return join(getAgentDir(), "subagents.json");
-}
-
-function projectPath(cwd: string): string {
-  return join(cwd, ".pi", "subagents.json");
 }
 
 function readSettingsFile(path: string): SubagentsSettings {
@@ -195,14 +175,20 @@ function readSettingsFile(path: string): SubagentsSettings {
 }
 
 export function loadSettings(cwd: string = process.cwd()): SubagentsSettings {
-  return { ...readSettingsFile(globalPath()), ...readSettingsFile(projectPath(cwd)) };
+  return { ...readSettingsFile(globalSettingsPath()), ...readSettingsFile(projectSettingsPath(cwd)) };
 }
 
 export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
-  const path = projectPath(cwd);
+  const path = projectSettingsPath(cwd);
+  const existing = readProjectPolicyRaw(cwd);
+  if (!existing.ok) {
+    console.warn(`[pi-subagents] Not saving settings: ${existing.reason}. Fix the file so its policy is not lost.`);
+    return false;
+  }
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(s, null, 2), "utf-8");
+    const body = existing.policy === undefined ? s : { ...s, policy: existing.policy };
+    writeFileSync(path, JSON.stringify(body, null, 2), "utf-8");
     return true;
   } catch {
     return false;
@@ -217,13 +203,11 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (typeof s.defaultMaxTurns === "number") appliers.setDefaultMaxTurns(s.defaultMaxTurns);
   if (typeof s.graceTurns === "number") appliers.setGraceTurns(s.graceTurns);
   if (typeof s.maxSubagentDepth === "number") appliers.setMaxSubagentDepth(s.maxSubagentDepth);
-  if (typeof s.fallbackSubagent === "string") appliers.setFallbackSubagent(s.fallbackSubagent);
   if (s.defaultJoinMode) appliers.setDefaultJoinMode(s.defaultJoinMode);
   if (typeof s.backgroundByDefault === "boolean") appliers.setBackgroundByDefault(s.backgroundByDefault);
   if (typeof s.schedulingEnabled === "boolean") appliers.setSchedulingEnabled(s.schedulingEnabled);
   if (typeof s.scopeModels === "boolean") appliers.setScopeModels(s.scopeModels);
   if (typeof s.strictAgentFiles === "boolean") appliers.setStrictAgentFiles(s.strictAgentFiles);
-  if (typeof s.disableDefaultAgents === "boolean") appliers.setDisableDefaultAgents(s.disableDefaultAgents);
   if (s.toolDescriptionMode) appliers.setToolDescriptionMode(s.toolDescriptionMode);
   if (typeof s.fleetView === "boolean") appliers.setFleetView(s.fleetView);
   if (s.agentMentions) appliers.setAgentMentions(s.agentMentions);
@@ -253,7 +237,9 @@ export function applyAndEmitLoaded(
 ): SubagentsSettings {
   const settings = loadSettings(cwd);
   applySettings(settings, appliers);
-  emit("subagents:settings_loaded", { settings });
+  const policy = policyEventPayload(cwd);
+  for (const problem of policy.malformed ?? []) console.warn(`[pi-subagents] Capability policy: ${problem}. Every spawn is denied until it is fixed.`);
+  emit("subagents:settings_loaded", { settings, policy });
   return settings;
 }
 
@@ -264,6 +250,6 @@ export function saveAndEmitChanged(
   cwd: string = process.cwd(),
 ): { message: string; level: "info" | "warning" } {
   const persisted = saveSettings(snapshot, cwd);
-  emit("subagents:settings_changed", { settings: snapshot, persisted });
+  emit("subagents:settings_changed", { settings: snapshot, persisted, policy: policyEventPayload(cwd) });
   return persistToastFor(successMsg, persisted);
 }

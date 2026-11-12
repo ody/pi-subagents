@@ -2,7 +2,6 @@
 
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
-import { getAvailableTypes, getFallbackSubagent, isDefaultsDisabled, NO_FALLBACK, setFallbackSubagent } from "../agents/agent-types.js";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../config/model-scope.js";
 import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../config/runner-defaults.js";
 import type { RuntimeSettings, SettingsPersistence } from "../config/runtime-settings.js";
@@ -22,7 +21,6 @@ export interface SettingsMenuDeps {
     | "setBackgroundByDefault"
     | "setSchedulingEnabled"
     | "setStrictAgentFiles"
-    | "setDisableDefaultAgents"
     | "setToolDescriptionMode"
     | "setFleetView"
     | "setAgentMentions"
@@ -66,7 +64,7 @@ function readNumericSetting(id: NumericSettingId, manager: SettingsMenuDeps["man
 type SettingId =
   | "maxConcurrent" | "maxConcurrentForeground" | "defaultMaxTurns" | "graceTurns" | "maxSubagentDepth"
   | "joinMode" | "backgroundByDefault" | "schedulingEnabled" | "scopeModels" | "strictAgentFiles"
-  | "disableDefaultAgents" | "fallbackSubagent" | "outputTranscript" | "worktreeIsolation"
+  | "outputTranscript" | "worktreeIsolation"
   | "toolDescriptionMode" | "reportUsage" | "showCost" | "showModel" | "viewerMarkdown"
   | "fleetView" | "agentMentions" | "rememberAgents" | "widgetMode";
 
@@ -155,20 +153,6 @@ function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): 
       appliers.setStrictAgentFiles(enabled);
       settingsPersist.notifyApplied(ctx, `Strict agent files ${enabled ? "enabled" : "disabled"}. Takes effect on next pi session.`);
     },
-    disableDefaultAgents: (value) => {
-      const enabled = value === "on";
-      appliers.setDisableDefaultAgents(enabled);
-      settingsPersist.notifyApplied(ctx, `Default agents ${enabled ? "disabled" : "enabled"}. Tool spec change takes effect on next pi session.`);
-    },
-    fallbackSubagent: (value) => {
-      setFallbackSubagent(value);
-      settingsPersist.notifyApplied(
-        ctx,
-        value === NO_FALLBACK
-          ? "Unknown or disabled agent types will now be rejected"
-          : `Unknown agent types will fall back to ${value}`,
-      );
-    },
     outputTranscript: (value) => {
       const enabled = value === "on";
       setOutputTranscriptDefault(enabled);
@@ -253,8 +237,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
     const dmt = readNumericSetting("defaultMaxTurns", manager);
     const gt = readNumericSetting("graceTurns", manager);
     const msd = readNumericSetting("maxSubagentDepth", manager);
-    const fallbackValue = getFallbackSubagent() ?? "general-purpose";
-    const fallbackValues = [...new Set([...getAvailableTypes(), NO_FALLBACK])];
 
     return [
       {
@@ -326,20 +308,6 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
         description: "Fail startup on an unreadable/unparseable agent .md instead of skipping it with a warning",
         currentValue: isStrictAgentFiles() ? "on" : "off",
         values: ["on", "off"],
-      },
-      {
-        id: "disableDefaultAgents",
-        label: "Disable defaults",
-        description: "Hide built-in agents (general-purpose, Explore, Plan) — custom agents are unaffected",
-        currentValue: isDefaultsDisabled() ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "fallbackSubagent",
-        label: "Fallback agent",
-        description: `Agent used when subagent_type is unknown, disabled, or ambiguous; "${NO_FALLBACK}" rejects the call instead (strict dispatch)`,
-        currentValue: fallbackValue,
-        values: fallbackValues,
       },
       {
         id: "outputTranscript",

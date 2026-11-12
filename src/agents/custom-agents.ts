@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, IsolationMode, ThinkingLevel } from "../types.js";
 import { BUILTIN_TOOL_NAMES } from "./agent-types.js";
+import { EPHEMERAL_TYPE_PREFIX } from "./ephemeral-agent.js";
 
 const RESERVED_IN_TYPE = ":";
 
@@ -97,6 +98,12 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       continue;
     }
     const name = declared || filenameType;
+    if (name.startsWith(EPHEMERAL_TYPE_PREFIX)) {
+      warnIfNew(
+        `Agent file ${path} is named "${name}", which starts with "${EPHEMERAL_TYPE_PREFIX}" — reserved for agents the \`agent\` tool builds from its parameters. Rename it. Skipping.`,
+      );
+      continue;
+    }
 
     const { builtinToolNames, extSelectors } = parseToolsField(fm.tools);
 

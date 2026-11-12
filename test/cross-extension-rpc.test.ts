@@ -46,7 +46,7 @@ describe("cross-extension RPC", () => {
       events.emit("subagents:rpc:ping", { requestId: "req-1" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: PROTOCOL_VERSION } });
+      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: PROTOCOL_VERSION, policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
     });
 
     it("scopes replies — other requestIds do not receive it", async () => {
@@ -134,6 +134,11 @@ describe("cross-extension RPC", () => {
           skills: false,
           promptMode: "replace",
         },
+      }, {
+        systemPrompt: "You are the advisor.",
+        builtinToolNames: [],
+        extensions: false,
+        skills: false,
       });
     });
 

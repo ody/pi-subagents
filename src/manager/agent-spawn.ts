@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { EPHEMERAL_DISPLAY_NAME } from "../agents/ephemeral-agent.js";
+import { type GrantedCapability, isMintedVerdict } from "../config/capability-policy.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
@@ -21,6 +23,8 @@ export interface SpawnOptions {
   resumeSessionFile?: string;
   reclaim?: { handle: string; alias?: string };
   agentConfig?: AgentConfig;
+  ephemeral?: { handleSeed: string };
+  capability?: GrantedCapability;
   model?: Model<any>;
   maxTurns?: number;
   isolated?: boolean;
@@ -76,6 +80,9 @@ export function spawnAgent(
   options: SpawnOptions,
 ): string {
   assertValidSpawnCwd(options.cwd);
+  if (!isMintedVerdict(options.capability)) {
+    throw new Error("Capability policy: a spawn needs a verdict from checkCapabilityPolicy.");
+  }
 
   const id = randomUUID().slice(0, 17);
   const abortController = new AbortController();
@@ -84,7 +91,9 @@ export function spawnAgent(
     type,
     handle: !isTopLevelAgent(options)
       ? undefined
-      : options.reclaim?.handle ?? assignHandle(handleBase(type), deps.takenHandles()),
+      : options.reclaim?.handle ?? assignHandle(handleBase(options.ephemeral?.handleSeed ?? type), deps.takenHandles()),
+    displayName: options.ephemeral ? EPHEMERAL_DISPLAY_NAME : undefined,
+    promptMode: options.ephemeral ? options.agentConfig?.promptMode : undefined,
     description: options.description,
     alias: isTopLevelAgent(options) ? options.reclaim?.alias : undefined,
     status: options.isBackground ? "queued" : "running",
@@ -100,6 +109,8 @@ export function spawnAgent(
     parentAgentId: options.parentAgentId,
     maxSubagentDepth: options.maxSubagentDepth,
     rootSessionId: options.rootSessionId,
+    filtered: options.capability.filtered.length > 0 ? options.capability.filtered : undefined,
+    capabilities: options.capability.capabilities,
   };
   deps.agents.set(id, record);
   deps.activities.set(id, {
