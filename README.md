@@ -358,7 +358,7 @@ All fields are optional — sensible defaults for everything.
 | `output_transcript` | `true` (or `subagents.json` `outputTranscript`) | Write this subagent's `.output` transcript; when set, overrides the `subagents.json` `outputTranscript` default. Set `false` to write no transcript file or path. Governs only the transcript — independent of `persist_session` and `isolation: worktree` |
 | `session_dir` | pi default | Optional session directory when `persist_session: true`; omitted uses pi's normal session location, and relative paths resolve from the agent cwd. A session outside the parent's session directory (this override, or `isolation: worktree`) is listed separately, so it shows as a root instead of nesting |
 | `allowed_subagents` | none | Opt in to scoped nested `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools. Omitted / empty / `none` / `false` = no nesting. `all` (or `"*"` / `true`) = any enabled agent. Comma-separated list = only those agent types |
-| `prompt_mode` | `replace` | `replace`: body is the full system prompt (no AGENTS.md / CLAUDE.md inheritance). `append`: body appended to parent's prompt (agent acts as a "parent twin" — inherits parent's AGENTS.md / CLAUDE.md) |
+| `prompt_mode` | `replace` | `replace`: body is the full system prompt (no AGENTS.md / CLAUDE.md inheritance). `append`: body appended to parent's prompt (inherits parent's AGENTS.md / CLAUDE.md). A `replace` agent is tagged `(bare)` in the widget, viewer, and tool result |
 | `inherit_context` | `false` | Fork parent conversation into agent |
 | `run_in_background` | — | Default this agent to background (`true`) or foreground (`false`); a caller value overrides it. Omit to follow `backgroundByDefault` |
 | `isolated` | `false` | Hermetic specialist mode: forces `extensions: false` + `skills: false` + drops `ext:` selectors. Only built-in tools. Distinct from `isolation: worktree` (filesystem) |
@@ -539,7 +539,7 @@ A call with no `subagent_type` runs an agent built from its parameters, and the 
 - There is no system prompt parameter. `prompt` is the task. `append` reuses the session's system prompt, and `replace` gives the sub-agent preamble and an environment block.
 - The defaults are all built-in tools, `extensions: true`, `skills: true`, `allowed_subagents: []`, the session's model, `inherit_context: false`, `isolated: false`, and no worktree. `max_turns` follows `defaultMaxTurns`, and `run_in_background` follows `backgroundByDefault`.
 - The type is minted as `ephemeral-<8 hex>`, and an agent file whose name starts with `ephemeral-` is skipped with a warning. Lifecycle events carry the minted type.
-- The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge reads `Agent`.
+- The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge is `name`, else the first three words of `description`, title-cased, else `Agent`.
 - The session is not persisted. The agent is steerable and resumable while its record is in memory, and it cannot be reopened once evicted.
 - Every value is checked against the [capability policy](#capability-policy).
 - The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. A nested ephemeral child is allowed only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn, and ephemeral defaults are narrowed.

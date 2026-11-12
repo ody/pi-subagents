@@ -8,13 +8,15 @@ import {
   buildInvocationTags,
   describeActivity,
   ERROR_STATUSES,
-  fgPreservingNestedStyles,
   formatCost,
   formatMs,
   formatSessionTokens,
   formatTurns,
   getPromptModeLabel,
+  renderModeTag,
+  renderStats,
   SPINNER,
+  type Stat,
   type Theme,
 } from "./agent-format.js";
 import { layoutWidgetBody } from "./widget-layout.js";
@@ -145,16 +147,15 @@ export class AgentWidget {
       statusText = theme.fg("warning", " aborted");
     }
 
-    const parts: string[] = [];
+    const parts: Stat[] = [];
     const activity = this.manager.getActivity(a.id);
-    if (activity) parts.push(formatTurns(activity.turnCount, activity.maxTurns));
-    if (a.toolUses > 0) parts.push(`${a.toolUses} tool use${a.toolUses === 1 ? "" : "s"}`);
+    if (activity) parts.push({ kind: "turns", text: formatTurns(activity.turnCount, activity.maxTurns) });
+    if (a.toolUses > 0) parts.push({ kind: "tools", text: `${a.toolUses} tool use${a.toolUses === 1 ? "" : "s"}` });
     const costText = this.showCost() ? formatCost(getLifetimeCost(a.lifetimeUsage)) : "";
-    if (costText) parts.push(costText);
-    parts.push(duration);
+    if (costText) parts.push({ kind: "cost", text: costText });
+    parts.push({ kind: "time", text: duration });
 
-    const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
-    return `${icon} ${renderAgentName(a, theme, { fallbackColor: "dim" })}${modeTag}  ${theme.fg("dim", a.description)} ${theme.fg("dim", "·")} ${theme.fg("dim", parts.join(" · "))}${statusText}`;
+    return `${icon} ${renderAgentName(a, theme, { fallbackColor: "dim" })}${renderModeTag(theme, modeLabel)}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${renderStats(theme, parts)}${statusText}`;
   }
 
   private renderWidget(tui: any, theme: Theme): string[] {
@@ -205,7 +206,6 @@ export class AgentWidget {
   private runningRowLines(a: AgentRecord, depth: number, theme: Theme, frame: string): [string, string] {
     const indent = "   ".repeat(depth);
     const modeLabel = getPromptModeLabel(a);
-    const modeTag = modeLabel ? ` ${theme.fg("dim", `(${modeLabel})`)}` : "";
     const elapsed = formatMs(Date.now() - a.startedAt);
 
     const bg = this.manager.getActivity(a.id);
@@ -215,24 +215,24 @@ export class AgentWidget {
     const tokenText = tokens > 0 ? formatSessionTokens(tokens, contextPercent, theme, a.compactionCount) : "";
     const costText = this.showCost() ? formatCost(getLifetimeCost(a.lifetimeUsage)) : "";
 
-    const parts: string[] = [];
+    const parts: Stat[] = [];
     if (this.showModel()) {
       const { modelName, tags } = buildInvocationTags(a.invocation);
-      if (modelName) parts.push(modelName);
+      if (modelName) parts.push({ kind: "model", text: modelName });
       const thinkingTag = tags.find(tag => tag.startsWith("thinking: "));
-      if (thinkingTag) parts.push(thinkingTag);
+      if (thinkingTag) parts.push({ kind: "thinking", text: thinkingTag });
     }
-    if (bg) parts.push(formatTurns(bg.turnCount, bg.maxTurns));
-    if (toolUses > 0) parts.push(`${toolUses} tool use${toolUses === 1 ? "" : "s"}`);
-    if (tokenText) parts.push(tokenText);
-    if (costText) parts.push(costText);
-    parts.push(elapsed);
-    const statsText = parts.join(" · ");
+    if (bg) parts.push({ kind: "turns", text: formatTurns(bg.turnCount, bg.maxTurns) });
+    if (toolUses > 0) parts.push({ kind: "tools", text: `${toolUses} tool use${toolUses === 1 ? "" : "s"}` });
+    if (tokenText) parts.push({ kind: "tokens", text: tokenText });
+    if (costText) parts.push({ kind: "cost", text: costText });
+    parts.push({ kind: "time", text: elapsed });
+    const statsText = renderStats(theme, parts);
 
     const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
     return [
-      theme.fg("dim", `${indent}├─`) + ` ${theme.fg("accent", frame)} ${renderAgentName(a, theme, { bold: true })}${modeTag}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${fgPreservingNestedStyles(theme, "dim", statsText)}`,
+      theme.fg("dim", `${indent}├─`) + ` ${theme.fg("accent", frame)} ${renderAgentName(a, theme, { bold: true })}${renderModeTag(theme, modeLabel)}  ${theme.fg("text", a.description)} ${theme.fg("dim", "·")} ${statsText}`,
       theme.fg("dim", `${indent}│  `) + theme.fg("dim", `  ⎿  ${activity}`),
     ];
   }

@@ -60,7 +60,7 @@ describe("an omitted subagent_type", () => {
     expect(prompt).toBe("go");
     expect(options.agentConfig).toMatchObject({
       name: type,
-      displayName: "Agent",
+      displayName: "Find Auth Files",
       description: "find auth files",
       systemPrompt: "",
       promptMode: "append",
@@ -224,11 +224,16 @@ describe("identity", () => {
     await flush();
     const twin = registry().getRecord(append);
     const plain = registry().getRecord(replace);
-    expect(twin).toMatchObject({ displayName: "Agent", promptMode: "append" });
-    expect(plain).toMatchObject({ displayName: "Agent", promptMode: "replace" });
-    expect(getDisplayName(twin)).toBe("Agent");
-    expect(getPromptModeLabel(twin)).toBe("twin");
-    expect(getPromptModeLabel(plain)).toBeUndefined();
+    expect(twin).toMatchObject({ displayName: "Find Auth Files", promptMode: "append" });
+    expect(plain).toMatchObject({ displayName: "Find Auth Files", promptMode: "replace" });
+    expect(getDisplayName(twin)).toBe("Find Auth Files");
+    const named = idOf(await run(tool, { name: "auth-audit", description: "Find the auth files in src" }));
+    const described = idOf(await run(tool, { description: "Fix tests after schedule removal" }));
+    await flush();
+    expect(getDisplayName(registry().getRecord(named))).toBe("Auth Audit");
+    expect(getDisplayName(registry().getRecord(described))).toBe("Fix Tests After");
+    expect(getPromptModeLabel(twin)).toBeUndefined();
+    expect(getPromptModeLabel(plain)).toBe("bare");
   });
 
   it("carries the minted type on the record", async () => {
@@ -298,7 +303,7 @@ describe("a nested ephemeral spawn", () => {
     const calls = vi.mocked(runAgent).mock.calls as any[][];
     expect(calls).toHaveLength(2);
     expect(calls[1][1]).toMatch(/^ephemeral-[0-9a-f]{8}$/);
-    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Agent", persistSession: false, systemPrompt: "" });
+    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Inner Helper", persistSession: false, systemPrompt: "" });
     expect(calls[1][3].capability.capabilities.builtinToolNames).toEqual(["read"]);
     expect(calls[1][3].maxTurns).toBe(0);
     expect(calls[1][3].thinkingLevel).toBe("high");

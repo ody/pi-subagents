@@ -105,7 +105,35 @@ export function getDisplayName(agent: SubagentType | AgentLabelSource): string {
 
 export function getPromptModeLabel(agent: SubagentType | AgentLabelSource): string | undefined {
   const promptMode = typeof agent === "string" ? getConfig(agent).promptMode : (agent.promptMode ?? getConfig(agent.type).promptMode);
-  return promptMode === "append" ? "twin" : undefined;
+  return promptMode === "replace" ? "bare" : undefined;
+}
+
+export function renderModeTag(theme: Theme, label: string | undefined): string {
+  return label ? ` ${theme.fg("warning", `(${label})`)}` : "";
+}
+
+export interface Stat {
+  kind: "model" | "thinking" | "turns" | "tools" | "tokens" | "cost" | "time";
+  text: string;
+}
+
+const STAT_COLORS: Record<Exclude<Stat["kind"], "thinking">, string> = {
+  model: "mdLink",
+  turns: "syntaxNumber",
+  tools: "toolTitle",
+  tokens: "mdCode",
+  cost: "syntaxString",
+  time: "muted",
+};
+
+function statColor(stat: Stat): string {
+  if (stat.kind !== "thinking") return STAT_COLORS[stat.kind];
+  const level = /^thinking: (\w+)/.exec(stat.text)?.[1] ?? "medium";
+  return `thinking${level[0].toUpperCase()}${level.slice(1)}`;
+}
+
+export function renderStats(theme: Theme, stats: Stat[]): string {
+  return stats.map(stat => fgPreservingNestedStyles(theme, statColor(stat), stat.text)).join(theme.fg("dim", " · "));
 }
 
 export function buildInvocationTags(

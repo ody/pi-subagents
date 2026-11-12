@@ -35,7 +35,7 @@ Identity and lifecycle:
 
 - The tool mints the type as `ephemeral-<8 hex>` before the spawn. The `ephemeral-` prefix is a stable marker that extensions may match on, so an agent file whose name starts with `ephemeral-` is skipped with a warning, like a name containing `:`.
 - The handle base is `name` if given, else a slug of `description`, else `agent`, capped at the handle length limit. Handles normally read like `@find-auth-files`. No alias is set.
-- The spawn stores `promptMode` and `displayName: "Agent"` on the `AgentRecord`, and every surface that looks up `getConfig(record.type)` reads the record first. The name badge shows `Agent`, and the description shows beside it as for registered agents.
+- The spawn stores `promptMode` and the `displayName` on the `AgentRecord`, and every surface that looks up `getConfig(record.type)` reads the record first. The name badge is `name`, else the first three words of `description`, title-cased, else `Agent`, and the description shows beside it as for registered agents.
 - An ephemeral agent is non-persistent: `persistSession` is `false`. It is steerable and resumable while its record is in memory, and a resume follows the resume rule of ADR 0014. It cannot be reopened once evicted.
 - Lifecycle events and `subagents:record` carry the minted type.
 - Every value is checked against the capability policy, and a nested ephemeral agent also against the delegation ceiling.
