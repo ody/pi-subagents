@@ -7,6 +7,7 @@ import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import { setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { encodeCwd } from "../src/platform/output-file.js";
 import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/tool/nested-tools.js";
+import { grant } from "./helpers/capability.js";
 
 let cwd: string;
 let manager: NestedAgentManager;
@@ -79,7 +80,15 @@ beforeEach(() => {
     spawn,
     spawnAndWait,
     awaitStartup: vi.fn(async () => {}),
-    getRecord: (id: string) => records.get(id),
+    getRecord: (id: string) => {
+      const record = records.get(id);
+      if (id !== "parent-1") return record;
+      if (record) {
+        record.capabilities ??= grant().capabilities;
+        return record;
+      }
+      return { id, capabilities: grant().capabilities };
+    },
     resume: vi.fn(),
     abort: vi.fn((id: string) => {
       const record = records.get(id);

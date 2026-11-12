@@ -15,7 +15,7 @@ import {
   resolveTypeIn,
 } from "../agents/agent-types.js";
 import { loadCustomAgents } from "../agents/custom-agents.js";
-import { filteredNote, type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
+import { type GrantedCapability, nestedFilteredNote, parentBound, resolveCapability } from "../config/capability-policy.js";
 import { resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import {
@@ -248,6 +248,10 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       });
       if (scopeVerdict.kind === "error") return textResult(scopeVerdict.message, true);
 
+      const parentCapabilities = context.manager.getRecord(context.parentAgentId)?.capabilities;
+      if (!parentCapabilities) {
+        return textResult("Nested agent refused: the parent agent has no recorded capability set.", true);
+      }
       let capability: GrantedCapability;
       try {
         capability = resolveCapability({
@@ -255,12 +259,13 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           cwd: context.configCwd,
           config,
           isolated: invocation.isolated,
+          extraBounds: [parentBound(parentCapabilities, context.configCwd)],
           notify: (message, level) => ctx.ui?.notify(message, level),
         });
       } catch (err) {
         return textResult(err instanceof Error ? err.message : String(err), true);
       }
-      const note = filteredNote(capability);
+      const note = nestedFilteredNote(capability);
 
       const rootSessionId = context.manager.getRecord(context.parentAgentId)?.rootSessionId;
       const childDepth = context.depth + 1;

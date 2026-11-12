@@ -13,7 +13,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
   - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings)).
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally, with YAML frontmatter: custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
-- **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `Agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. The allowlist is a privilege boundary — a child runs with its own tools, so pick it as carefully as `tools:` itself
+- **Nested subagents** — opt-in, default-off delegation: a custom agent that sets `allowed_subagents` gets its own ownership-scoped `Agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools, depth-capped from the main session (default 2). It can control only its own children, they are stopped when it finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
 - **Agent mentions** — subagents are first-class: type `@explore also check the RPC path` at the prompt and it goes to that agent instead of the main model, without a word of it entering the chat. Toggle via `/agents → Settings → Agent mentions`.
   - One syntax covers the whole lifecycle: message it while it runs, resume it once it has finished, reopen its session from disk long after that, or start it if it never ran.
   - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation, so it gets Claude Code's context-written prompt and a real `Agent` tool call without a word of it reaching the chat. `direct` mode starts it here from your text instead, with no model call at all.
@@ -455,7 +455,16 @@ allowed_subagents: support-file-finder, support-callsite-tracer   # or `all`
 ---
 ```
 
-**The allowlist is a privilege boundary, not just a routing hint.** A child runs with *its own* `tools:`, `extensions:`, and `isolated:` — the parent's restrictions are not inherited — so delegation grants the parent the union of what the listed agents can do. The read-only agent above can write and run commands through any listed agent that can, and `all` reaches every enabled agent including `general-purpose`. Choose the list as carefully as you would choose `tools:` itself; that is the main reason this is default-off.
+**A nested child never exceeds its parent.** The parent's tools, extensions, and skills, after the [capability policy](#capability-policy) and its own ceiling, are recorded on its record when its session is built, so the bound is transitive.
+
+- A child's values are compared with the parent's using the policy's expansion rules. Wildcards, `true`, and whole-extension selectors expand and are narrowed, and a child's `skills: true` under a parent list narrows to that list.
+- The parent's `disallowed_tools` and `exclude_extensions` apply to the child.
+- A file value or default that exceeds the parent is narrowed, with a warning to the user and a note in the nested tool result.
+- A nested spawn whose parent record has no recorded set is refused.
+- Extension tools that register after spawn are filtered by the same set.
+- Top-level, `@handle`, RPC, and scheduler spawns have no parent and are bounded by the policy alone.
+
+The read-only agent above therefore cannot obtain writes through its children, but `allowed_subagents` still decides which types it may start.
 
 `allowed_subagents` is runtime-enforced, and takes three forms:
 

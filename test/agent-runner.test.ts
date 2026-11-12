@@ -1240,6 +1240,38 @@ describe("agent-runner async extension tool registration", () => {
     expect(session.getActiveToolNames()).not.toContain("drop_me");
   });
 
+  it("a verdict that denies an extension keeps its late tools out", async () => {
+    setup({});
+    withExtensions({ "/ext/foo.ts": [], "/ext/bar.ts": [] });
+    const { session, listeners } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+    const policy = { global: { tools: { deny: ["ext:foo"] } }, project: {}, ephemeralNesting: true, problems: [] };
+
+    await runAgent(ctx, "Explore", "go", { pi, capability: grant({ builtinToolNames: ["read"] }, { policy }) });
+
+    registerLate("/ext/foo.ts", "foo_late");
+    registerLate("/ext/bar.ts", "bar_late");
+    for (const l of listeners) l({ type: "turn_end" });
+
+    expect(session.getActiveToolNames()).toContain("bar_late");
+    expect(session.getActiveToolNames()).not.toContain("foo_late");
+  });
+
+  it("a verdict with no extension tools keeps every late extension tool out", async () => {
+    setup({});
+    withExtensions({ "/ext/foo.ts": [] });
+    const { session, listeners } = createSession("OK");
+    createAgentSession.mockResolvedValue({ session });
+    const policy = { global: { tools: { allow: ["read"] } }, project: {}, ephemeralNesting: true, problems: [] };
+
+    await runAgent(ctx, "Explore", "go", { pi, capability: grant({ builtinToolNames: ["read"] }, { policy }) });
+
+    registerLate("/ext/foo.ts", "foo_late");
+    for (const l of listeners) l({ type: "turn_end" });
+
+    expect(session.getActiveToolNames()).not.toContain("foo_late");
+  });
+
   it("beforeToolCall blocks an out-of-scope tool and delegates otherwise", async () => {
     setup({ extSelectors: ["ext:foo"] });
     withExtensions({ "/ext/foo.ts": ["foo_tool"], "/ext/bar.ts": ["bar_tool"] });
