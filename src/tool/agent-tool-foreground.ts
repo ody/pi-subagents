@@ -1,4 +1,5 @@
 import type { AgentToolUpdateCallback, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { filteredNote } from "../config/capability-policy.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { streamToOutputFile } from "../platform/output-file.js";
@@ -34,7 +35,8 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
   const { ctx, params, signal, onUpdate, call, attachTranscript } = input;
   const {
     subagentType,
-    fallbackNote,
+    fallbackNote: typeFallbackNote,
+    capability,
     model,
     thinking,
     inheritContext,
@@ -45,6 +47,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     detailBase,
   } = call;
 
+  const fallbackNote = typeFallbackNote + (capability ? filteredNote(capability) : "");
   let spinnerFrame = 0;
   const startedAt = Date.now();
   let fgId: string | undefined;
@@ -116,6 +119,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     const fgResult = await manager.spawnAndWait(pi, ctx, subagentType, params.prompt, {
       description: params.description,
       name: params.name as string | undefined,
+      capability,
       model,
       maxTurns: effectiveMaxTurns,
       isolated,

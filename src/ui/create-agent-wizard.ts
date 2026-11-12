@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { buildNewAgentFile, personalAgentsDir, projectAgentsDir } from "../agents/agent-file-toggle.js";
 import { BUILTIN_TOOL_NAMES } from "../agents/agent-types.js";
+import { resolveCapability } from "../config/capability-policy.js";
 import { THINKING_LEVELS } from "../config/thinking-levels.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
@@ -98,6 +99,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
 
   const { record } = await manager.spawnAndWait(pi, ctx, "general-purpose", generatePrompt, {
     description: `Generate ${name} agent`,
+    capability: resolveCapability({ type: "general-purpose", cwd: ctx.cwd }),
     maxTurns: 5,
     bypassQueue: true,
   });

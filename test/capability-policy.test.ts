@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { BUILTIN_TOOL_NAMES } from "../src/agents/agent-types.js";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
+  return { ...actual, runAgent: vi.fn(), resumeAgent: vi.fn() };
+});
+
+import { BUILTIN_TOOL_NAMES, registerAgents } from "../src/agents/agent-types.js";
 import {
   type CapabilityDeclaration,
   type CapabilityField,
@@ -8,6 +16,14 @@ import {
   isMintedVerdict,
 } from "../src/config/capability-policy.js";
 import type { LoadedPolicy, PolicyScope } from "../src/config/capability-policy-config.js";
+import subagentsExtension from "../src/index.js";
+import { AgentManager } from "../src/manager/agent-manager.js";
+import { runAgent } from "../src/session/agent-runner.js";
+import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
+import { SubagentScheduler } from "../src/triggers/schedule.js";
+import { ScheduleStore } from "../src/triggers/schedule-store.js";
+import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 
 const OPEN: CapabilityDeclaration = { extensions: true, skills: true };
 
@@ -245,5 +261,230 @@ describe("checkCapabilityPolicy", () => {
       const off = policyOf({}, {}, false);
       expect(granted(check({ allowedSubagents: "all" }, off)).capabilities.allowedSubagents).toBe("all");
     });
+  });
+});
+
+describe("capability policy at every spawn path", () => {
+  let hermetic: Hermetic;
+  let booted: Map<string, any> | undefined;
+
+  const writePolicy = (policy: unknown) =>
+    writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, policy }));
+
+  beforeEach(() => {
+    hermetic = hermeticDir({
+      settings: { schedulingEnabled: false, outputTranscript: false },
+      agentFiles: { scout: "---\ndescription: scouts\ntools: read, bash\n---\nbody" },
+    });
+    vi.mocked(runAgent).mockReset();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
+  });
+
+  afterEach(async () => {
+    await booted?.get("session_shutdown")?.();
+    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    booted = undefined;
+    registerAgents(new Map());
+    hermetic.restore();
+  });
+
+  const inlineConfig = (tools: string[]) => ({ systemPrompt: "p", builtinToolNames: tools, extensions: false, skills: false });
+
+  function rpcHarness({ manager, spawnTopLevel }: ReturnType<typeof funnel>) {
+    const handlers = new Map<string, (raw: any) => unknown>();
+    const replies: Array<{ channel: string; data: any }> = [];
+    registerRpcHandlers({
+      events: {
+        on: (channel: string, fn: (raw: any) => unknown) => {
+          handlers.set(channel, fn);
+          return () => {};
+        },
+        emit: (channel: string, data: unknown) => replies.push({ channel, data }),
+      },
+      pi: {},
+      getCtx: () => ctx(),
+      manager: {
+        spawn: spawnTopLevel,
+        awaitStartup: id => manager.awaitStartup(id),
+        getRecord: id => manager.getRecord(id),
+        abort: id => manager.abort(id),
+        consumeResult: () => false,
+      },
+    });
+    return { handlers, replies };
+  }
+
+  function funnel() {
+    const manager = new AgentManager();
+    return { manager, ...createSpawnFunnel({ manager, reloadCustomAgents: () => {} }) };
+  }
+
+  it("refuses a caller-supplied denied tool through the registry spawn", () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    const { spawnTopLevel } = funnel();
+    const spawnViaRegistry = () =>
+      spawnTopLevel({}, ctx(), "adhoc", "go", { description: "d", agentConfig: inlineConfig(["read", "bash"]) });
+    expect(spawnViaRegistry).toThrow(/^Capability policy: tool "bash"/);
+    expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a caller-supplied denied tool through subagents:rpc:spawn", async () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    const { handlers, replies } = rpcHarness(funnel());
+    const request = (requestId: string, tools: string[]) =>
+      handlers.get("subagents:rpc:spawn")?.({
+        requestId,
+        type: "adhoc",
+        prompt: "go",
+        options: { description: "d", agentConfig: inlineConfig(tools) },
+      });
+
+    await request("denied", ["bash"]);
+    const refused = replies.find(r => r.channel === "subagents:rpc:spawn:reply:denied");
+    expect(refused?.data.success).toBe(false);
+    expect(refused?.data.error).toMatch(/^Capability policy: tool "bash"/);
+
+    await request("allowed", ["read"]);
+    const accepted = replies.find(r => r.channel === "subagents:rpc:spawn:reply:allowed");
+    expect(accepted?.data).toEqual({ success: true, data: { id: expect.any(String) } });
+  });
+
+  it("reports what an RPC spawn had filtered out", async () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    const { handlers, replies } = rpcHarness(funnel());
+    registerAgents(new Map([["scout", { name: "scout", description: "s", builtinToolNames: ["read", "bash"], extensions: false, skills: false, systemPrompt: "p", promptMode: "replace" }]]));
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "f", type: "scout", prompt: "go", options: { description: "d" } });
+    const reply = replies.find(r => r.channel === "subagents:rpc:spawn:reply:f");
+    expect(reply?.data).toEqual({ success: true, data: { id: expect.any(String), filtered: ["tool bash"] } });
+  });
+
+  it("filters an agent file's value when a scheduled job fires", () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    registerAgents(new Map([["scout", { name: "scout", description: "s", builtinToolNames: ["read", "bash"], extensions: false, skills: false, systemPrompt: "p", promptMode: "replace" }]]));
+    vi.useFakeTimers();
+    const scheduler = new SubagentScheduler();
+    const spawn = vi.fn(() => "agent-1");
+    const manager: any = { spawn, awaitStartup: vi.fn(async () => {}), getRecord: vi.fn(() => ({ promise: Promise.resolve("done") })) };
+    const notify = vi.fn();
+    const firing = { ...ctx(), ui: { notify } };
+    try {
+      scheduler.start({ events: { emit: vi.fn() } } as any, firing, manager, new ScheduleStore(join(hermetic.dir, "jobs.json")));
+      scheduler.addJob({ name: "tick", description: "tick", schedule: "+1s", subagent_type: "scout", prompt: "go" });
+      vi.advanceTimersByTime(2_000);
+    } finally {
+      scheduler.stop();
+      vi.useRealTimers();
+    }
+    const options = (spawn.mock.calls as any[][])[0][4];
+    expect(options.capability.capabilities.builtinToolNames).toEqual(["read"]);
+    expect(options.capability.filtered).toEqual(["tool bash"]);
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("tool bash"), "warning");
+  });
+
+  it("filters an agent file's value on a direct mention", async () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
+    const { pi, lifecycle } = makePi();
+    subagentsExtension(pi);
+    booted = lifecycle;
+    const uiCtx = ctx();
+    await lifecycle.get("input")({ type: "input", text: "@scout look around", source: "interactive" }, uiCtx);
+    await flush();
+    const options = vi.mocked(runAgent).mock.calls[0][3] as any;
+    expect(options.capability.capabilities.builtinToolNames).toEqual(["read"]);
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("tool bash"), "warning");
+  });
+
+  describe("reopening a tombstone", () => {
+    beforeEach(() => vi.useFakeTimers({ toFake: ["setInterval", "Date"] }));
+    afterEach(() => vi.useRealTimers());
+
+    it("checks the policy again instead of reusing the first verdict", async () => {
+      writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, agentMentions: "direct" }));
+      const { pi, lifecycle } = makePi();
+      subagentsExtension(pi);
+      booted = lifecycle;
+      vi.mocked(runAgent).mockResolvedValue({ responseText: "done", session: { dispose: vi.fn(), messages: [], subscribe: vi.fn(() => () => {}), getActiveToolNames: vi.fn(() => []) } as any, aborted: false, steered: false } as any);
+      await lifecycle.get("input")({ type: "input", text: "@scout first", source: "interactive" }, ctx());
+      await flush();
+      const first = vi.mocked(runAgent).mock.calls[0][3] as any;
+      expect(first.capability.capabilities.builtinToolNames).toEqual(["read", "bash"]);
+
+      const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
+      const record = manager.getRecord(first.agentId);
+      record.sessionFile = join(hermetic.dir, "scout-session.jsonl");
+      writeFileSync(record.sessionFile, "");
+      record.completedAt = Date.now() - 11 * 60_000;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(manager.getRecord(first.agentId)).toBeUndefined();
+
+      writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ schedulingEnabled: false, outputTranscript: false, agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
+      vi.mocked(runAgent).mockClear();
+      const uiCtx = ctx();
+      await lifecycle.get("input")({ type: "input", text: "@scout again", source: "interactive" }, uiCtx);
+      await flush();
+      const reopened = vi.mocked(runAgent).mock.calls[0][3] as any;
+      expect(reopened.resumeSessionFile).toBe(record.sessionFile);
+      expect(reopened.capability.capabilities.builtinToolNames).toEqual(["read"]);
+      expect(uiCtx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("tool bash"), "warning");
+    });
+  });
+
+  it("puts a note in the agent tool result and stores the filtered values on the record", async () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    const { pi, tools, lifecycle } = makePi();
+    subagentsExtension(pi);
+    booted = lifecycle;
+    const agentTool = tools.get("Agent") ?? tools.get("agent");
+    const result = await agentTool.execute(
+      "tc-1",
+      { prompt: "go", description: "look", subagent_type: "scout", run_in_background: true },
+      undefined,
+      undefined,
+      ctx(),
+    );
+    expect(textOf(result)).toContain("the capability policy removed tool bash");
+    const id = /Agent ID: (\S+)/.exec(textOf(result))?.[1] ?? "";
+    const registry = (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    await flush();
+    expect(registry.getRecord(id).filtered).toEqual(["tool bash"]);
+  });
+
+  it("refuses a malformed policy through the agent tool", async () => {
+    mkdirSync(join(hermetic.dir, ".pi"), { recursive: true });
+    writePolicy({ tools: { deny: ["*"] } });
+    const { pi, tools, lifecycle } = makePi();
+    subagentsExtension(pi);
+    booted = lifecycle;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const agentTool = tools.get("Agent") ?? tools.get("agent");
+    const result = await agentTool.execute(
+      "tc-1",
+      { prompt: "go", description: "look", subagent_type: "scout", run_in_background: true },
+      undefined,
+      undefined,
+      ctx(),
+    );
+    expect(textOf(result)).toMatch(/^Capability policy: the policy is malformed/);
+    expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it("makes spawnAgent throw without a verdict", () => {
+    const manager = new AgentManager();
+    expect(() => manager.spawn({} as any, ctx(), "scout", "go", { description: "d" })).toThrow(/^Capability policy: a spawn needs a verdict/);
+    const forged = { kind: "ok", capabilities: {}, filtered: [] } as any;
+    expect(() => manager.spawn({} as any, ctx(), "scout", "go", { description: "d", capability: forged })).toThrow(/needs a verdict/);
+    expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it("strips a verdict a registry caller supplies", () => {
+    const { spawnTopLevel, manager } = funnel();
+    const spawn = vi.spyOn(manager, "spawn");
+    registerAgents(new Map([["scout", { name: "scout", description: "s", builtinToolNames: ["read"], extensions: false, skills: false, systemPrompt: "p", promptMode: "replace" }]]));
+    const forged = { kind: "ok", capabilities: {}, filtered: [] };
+    spawnTopLevel({}, ctx(), "scout", "go", { description: "d", capability: forged });
+    const passed = (spawn.mock.calls[0][4] as any).capability;
+    expect(passed).not.toBe(forged);
+    expect(passed.capabilities.builtinToolNames).toEqual(["read"]);
   });
 });

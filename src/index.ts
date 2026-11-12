@@ -118,7 +118,7 @@ export default function (pi: ExtensionAPI) {
   const registryEntry = {
     waitForAll: () => manager.waitForAll(),
     hasRunning: () => manager.hasRunning(),
-    spawn: spawnTopLevel,
+    spawn: (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => spawnTopLevel(piRef, ctxRef, type, prompt, options),
     getRecord: (id: string) => {
       const record = manager.getRecord(id);
       return record !== undefined && isTopLevelAgent(record) ? record : undefined;

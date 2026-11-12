@@ -8,6 +8,7 @@ import { getAgentConfig, registerAgents } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { resolveAgentInvocationConfig } from "../src/tool/invocation-config.js";
+import { registeredCapability } from "./helpers/capability.js";
 import { registerFauxProvider } from "./helpers/pi-ai.js";
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -85,6 +86,7 @@ describe("ext: / tools: scoping — template-driven e2e (real pi-mono, headless)
     try {
       await runAgent(ctx, agentName, "go", {
         pi,
+        capability: registeredCapability(agentName, resolved.isolated),
         model,
         cwd: FIXTURES_DIR,
         isolated: resolved.isolated,

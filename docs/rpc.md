@@ -44,6 +44,8 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 **Silently overwritten** — `onToolActivity`, `onTextDelta`, `onTurnEnd`, `onSessionCreated` and `onAssistantUsage` are replaced by the activity tracker's own (`src/index.ts:693`). Every programmatic spawn passes through one funnel so none can supply half-wired callbacks; a half-wired tracker renders worse than none, which is the bug behind a row that reads `thinking…` for an agent's whole life.
 
+**Capability policy.** `spawnTopLevel` also deletes a `capability` verdict a caller supplies, then runs `checkCapabilityPolicy` itself. The RPC handler passes the raw `agentConfig` next to the normalized one, so a field the caller wrote is refused when it is outside the policy, and a field the boundary defaulted (`extensions`, `skills`) is filtered. The registry `spawn` never normalizes, so every field of its `agentConfig` counts as supplied. The spawn reply is `{ id, filtered? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
+
 Three things that are not obvious from the tables:
 
 - **Nothing is required at runtime.** `description` is non-optional in TypeScript and never validated. A spawn with no `options` at all is legal and is what `test/cross-extension-rpc.test.ts:81-94` pins.
@@ -112,6 +114,8 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 | `Model override "<label>" provided but ctx.modelRegistry is unavailable` | `src/triggers/cross-extension-rpc.ts:149` |
 | `Inline agentConfig requires a systemPrompt string` | `src/triggers/cross-extension-rpc.ts:79` — `agentConfig` is not an object, or has no string `systemPrompt` |
 | `Inline agentConfig requires a type to name the run` | `src/triggers/cross-extension-rpc.ts:76` — `agentConfig` set with an empty or non-string `type` |
+| `Capability policy: <value and list>` | `src/config/capability-policy.ts` — a tool, extension, or skill in `agentConfig` is outside the [capability policy](../README.md#capability-policy), or the policy is malformed. Nothing spawns |
+| `Capability policy: a spawn needs a verdict from checkCapabilityPolicy.` | `src/manager/agent-spawn.ts` — a spawn reached the manager without a verdict. Not reachable from the bus or the registry |
 | `Model not found: "<input>".` + available models | `src/config/model-resolver.ts:125` |
 | `Model not in scope: "<input>".` + allowed models | `src/config/model-scope.ts:62` — only with `scopeModels` on, and checked against the *resolved* model |
 | `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts:187` — only under `fallbackSubagent: none` |

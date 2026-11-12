@@ -133,6 +133,7 @@ export async function startAgent(
     pi,
     agentId: id,
     agentConfig: options.agentConfig,
+    capability: options.capability!,
     model: options.model,
     maxTurns: options.maxTurns,
     isolated: options.isolated,
