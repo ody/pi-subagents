@@ -1,5 +1,5 @@
-import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { SubagentScheduler } from "../triggers/schedule.js";
+import type { ThinkingLevel } from "../types.js";
 import type { AgentCallResolution } from "./agent-call-resolution.js";
 import { textResult } from "./tool-result.js";
 
@@ -14,6 +14,8 @@ export interface ScheduleAgentInput {
     description: string;
     schedule?: unknown;
     model?: string;
+    thinking?: string;
+    max_turns?: number;
     resume?: string;
     inherit_context?: boolean;
     run_in_background?: boolean;
@@ -46,7 +48,7 @@ export function scheduleConflict(
 export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentInput) {
   const { scheduler, settings } = deps;
   const { params, call } = input;
-  const { requestedType, fallbackNote, thinking, effectiveMaxTurns, isolated, isolation } = call;
+  const { requestedType, fallbackNote, isolated, isolation } = call;
 
   const conflict = scheduleConflict(params, {
     schedulingEnabled: settings.schedulingEnabled,
@@ -62,8 +64,9 @@ export function scheduleAgentCall(deps: ScheduleAgentDeps, input: ScheduleAgentI
       subagent_type: requestedType,
       prompt: params.prompt,
       model: params.model,
-      thinking,
-      max_turns: normalizeMaxTurns(effectiveMaxTurns),
+      thinking: params.thinking as ThinkingLevel | undefined,
+      max_turns: params.max_turns,
+      run_in_background: params.run_in_background,
       isolated,
       isolation,
     });

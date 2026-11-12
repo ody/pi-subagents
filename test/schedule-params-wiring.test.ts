@@ -5,7 +5,6 @@ vi.mock("../src/session/agent-runner.js", async () => {
   return { ...actual, runAgent: vi.fn() };
 });
 
-import { getDefaultMaxTurns, normalizeMaxTurns } from "../src/config/runner-defaults.js";
 import subagentsExtension from "../src/index.js";
 import { resolveStorePath, ScheduleStore } from "../src/triggers/schedule-store.js";
 import type { ScheduledSubagent } from "../src/types.js";
@@ -65,22 +64,23 @@ describe("agent tool → persisted scheduled job", () => {
     }
   });
 
-  it("persists the normalized turn limit, not the raw parameter", async () => {
+  it("persists the caller's raw turn limit as a version 2 job", async () => {
     const { job, restore } = await scheduleAndReadBack({
       subagent_type: "general-purpose",
       max_turns: 0,
     });
     try {
-      expect(job.max_turns).toBe(normalizeMaxTurns(0));
+      expect(job.max_turns).toBe(0);
+      expect(job.version).toBe(2);
     } finally {
       restore();
     }
   });
 
-  it("falls back to the configured default turn limit when the call omits one", async () => {
+  it("leaves the turn limit unset when the call omits one, to resolve when the job fires", async () => {
     const { job, restore } = await scheduleAndReadBack({ subagent_type: "general-purpose" });
     try {
-      expect(job.max_turns).toBe(normalizeMaxTurns(getDefaultMaxTurns()));
+      expect(job.max_turns).toBeUndefined();
     } finally {
       restore();
     }

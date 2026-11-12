@@ -319,6 +319,123 @@ describe("SubagentScheduler — fire path", () => {
     expect(manager.spawn.mock.calls[0][4].invocation.maxTurns).toBeUndefined();
   });
 
+  describe("caller overrides (version 2) and legacy jobs (version 1)", () => {
+    const MODELS = [
+      { provider: "anthropic", id: "claude-opus-4-6", name: "Claude Opus 4.6" },
+      { provider: "anthropic", id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
+    ];
+
+    beforeEach(() => {
+      registerAgents(new Map([["tuned", {
+        name: "tuned",
+        description: "tuned",
+        builtinToolNames: ["read"],
+        extensions: false,
+        skills: false,
+        systemPrompt: "x",
+        promptMode: "replace",
+        inheritContext: false,
+        model: "anthropic/claude-haiku-4-5",
+        thinking: "low",
+        maxTurns: 20,
+        runInBackground: false,
+      } as any]]));
+      ctx.modelRegistry = {
+        find: (provider: string, id: string) => MODELS.find(m => m.provider === provider && m.id === id),
+        getAll: () => MODELS,
+        getAvailable: () => MODELS,
+      };
+    });
+
+    function fire(job: Record<string, unknown>) {
+      store.add({
+        id: "j1", name: "j1", description: "x", schedule: "1s", scheduleType: "interval", intervalMs: 1000,
+        subagent_type: "tuned", prompt: "x", enabled: true, createdAt: new Date().toISOString(), runCount: 0,
+        ...job,
+      } as any);
+      scheduler.stop();
+      scheduler.start(pi, ctx, manager, store);
+      vi.advanceTimersByTime(1_000);
+    }
+
+    it("stores new jobs as version 2 with the caller's raw values", () => {
+      const job = scheduler.addJob({
+        name: "raw", description: "x", schedule: "1h", subagent_type: "tuned", prompt: "x",
+        model: "opus", thinking: "high", max_turns: 0, run_in_background: true,
+      });
+
+      expect(job).toMatchObject({
+        version: 2, model: "opus", thinking: "high", max_turns: 0, run_in_background: true,
+      });
+    });
+
+    it("resolves a version 2 job's overrides over the file when it fires, and discloses them", () => {
+      fire({ version: 2, model: "anthropic/claude-opus-4-6", thinking: "high", max_turns: 5, run_in_background: true });
+
+      const opts = manager.spawn.mock.calls[0][4];
+      expect(opts.model).toMatchObject({ id: "claude-opus-4-6" });
+      expect(opts.thinkingLevel).toBe("high");
+      expect(opts.maxTurns).toBe(5);
+      expect(opts.invocation).toMatchObject({
+        thinking: "high",
+        maxTurns: 5,
+        runInBackground: true,
+        pinnedModel: "anthropic/claude-haiku-4-5",
+        pinnedThinking: "low",
+        pinnedMaxTurns: 20,
+        pinnedRunInBackground: false,
+      });
+    });
+
+    it("fires a version 2 job with an explicit unlimited as unlimited, not the file's limit", () => {
+      fire({ version: 2, max_turns: 0 });
+
+      const opts = manager.spawn.mock.calls[0][4];
+      expect(opts.maxTurns).toBe(0);
+      expect(opts.invocation.maxTurns).toBeUndefined();
+    });
+
+    it("ignores a version 1 job's thinking and max_turns and resolves them from the file", () => {
+      fire({ thinking: "high", max_turns: 5 });
+
+      const opts = manager.spawn.mock.calls[0][4];
+      expect(opts.thinkingLevel).toBe("low");
+      expect(opts.maxTurns).toBe(20);
+    });
+
+    it("resolves a version 1 job's thinking and max_turns from the fallbacks when the file is silent", () => {
+      registerAgents(new Map());
+      fire({ subagent_type: "general-purpose", thinking: "high", max_turns: 5 });
+
+      const opts = manager.spawn.mock.calls[0][4];
+      expect(opts.thinkingLevel).toBeUndefined();
+      expect(opts.maxTurns).toBeUndefined();
+    });
+
+    it("still honours a version 1 job's model", () => {
+      fire({ model: "anthropic/claude-opus-4-6" });
+
+      expect(manager.spawn.mock.calls[0][4].model).toMatchObject({ id: "claude-opus-4-6" });
+    });
+
+    it("fails the firing without spawning when the stored model no longer resolves", () => {
+      fire({ version: 2, model: "gone/vanished" });
+
+      expect(manager.spawn).not.toHaveBeenCalled();
+      expect(store.get("j1")?.lastStatus).toBe("error");
+      expect(pi.events.emit).toHaveBeenCalledWith(
+        "subagents:scheduled",
+        expect.objectContaining({ type: "error", jobId: "j1" }),
+      );
+    });
+
+    it("does not fall back to the agent's pin when the stored model no longer resolves", () => {
+      fire({ model: "gone/vanished" });
+
+      expect(manager.spawn).not.toHaveBeenCalled();
+    });
+  });
+
   it("disabled jobs do not fire", () => {
     const job = scheduler.addJob({
       name: "off", description: "x", schedule: "1s",

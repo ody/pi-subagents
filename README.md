@@ -108,6 +108,8 @@ Schedules are **session-scoped**: they reset on `/new` and restore on `/resume`.
 
 **Disable the feature entirely**: `/agents → Settings → Scheduling → disabled` removes `schedule` from the `agent` tool spec (no LLM-context cost), hides the menu entry, and stops any active scheduler. The schema-level removal takes effect on the next pi session; the runtime kill is immediate. Re-enable from the same menu.
 
+A job stores the caller's raw `model`, `thinking`, `max_turns`, and `run_in_background` with `version: 2`, and resolves them each time it fires, disclosing overrides like the `Agent` tool. A stored `model` that no longer resolves fails that firing without spawning, and the job records `lastStatus: error`. In a job without `version: 2`, `thinking` and `max_turns` are ignored at fire time and resolve from the agent file, then the defaults.
+
 Restrictions:
 
 - `schedule` cannot be combined with `inherit_context` (no parent conversation exists at fire time) or `resume` (schedules create fresh agents).

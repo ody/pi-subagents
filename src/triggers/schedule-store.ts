@@ -66,7 +66,7 @@ export class ScheduleStore {
   }
 
   private save(): void {
-    const data: ScheduleStoreData = { version: 1, jobs: [...this.jobs.values()] };
+    const data: ScheduleStoreData = { version: 2, jobs: [...this.jobs.values()] };
     const tmp = this.filePath + ".tmp";
     writeFileSync(tmp, JSON.stringify(data, null, 2));
     renameSync(tmp, this.filePath);

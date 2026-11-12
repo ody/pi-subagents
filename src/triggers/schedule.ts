@@ -1,10 +1,12 @@
+import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Cron } from "croner";
 import { nanoid } from "nanoid";
-import { resolveSpawnType } from "../agents/agent-types.js";
+import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import { resolveModel } from "../config/model-resolver.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
+import { describeOverrides, resolveAgentInvocationConfig } from "../tool/invocation-config.js";
 import type { IsolationMode, ScheduledSubagent, SubagentType, ThinkingLevel } from "../types.js";
 import type { ScheduleStore } from "./schedule-store.js";
 
@@ -24,6 +26,7 @@ export interface NewJobInput {
   model?: string;
   thinking?: ThinkingLevel;
   max_turns?: number;
+  run_in_background?: boolean;
   isolated?: boolean;
   isolation?: IsolationMode;
 }
@@ -69,6 +72,7 @@ export class SubagentScheduler {
   buildJob(input: NewJobInput): ScheduledSubagent {
     const detected = SubagentScheduler.detectSchedule(input.schedule);
     return {
+      version: 2,
       id: nanoid(10),
       name: input.name,
       description: input.description,
@@ -80,6 +84,7 @@ export class SubagentScheduler {
       model: input.model,
       thinking: input.thinking,
       max_turns: input.max_turns,
+      run_in_background: input.run_in_background,
       isolated: input.isolated,
       isolation: input.isolation,
       enabled: true,
@@ -188,31 +193,40 @@ export class SubagentScheduler {
 
     store.update(id, { lastStatus: "running" });
 
-    let resolvedModel: any | undefined;
-    if (job.model) {
-      const r = resolveModel(job.model, ctx.modelRegistry);
-      if (typeof r !== "string") resolvedModel = r;
-    }
-
     let agentId: string;
     try {
       const dispatch = resolveSpawnType(job.subagent_type);
       if (!dispatch.ok) throw new Error(dispatch.message);
+      const resolved = resolveAgentInvocationConfig(getAgentConfig(dispatch.type), {
+        model: job.model,
+        thinking: job.version === 2 ? job.thinking : undefined,
+        max_turns: job.version === 2 ? job.max_turns : undefined,
+        run_in_background: job.run_in_background,
+        isolated: job.isolated,
+        isolation: job.isolation,
+      });
+      let resolvedModel: Model<any> | undefined;
+      if (resolved.modelFromParams && resolved.modelInput) {
+        const r = resolveModel(resolved.modelInput, ctx.modelRegistry);
+        if (typeof r === "string") throw new Error(r);
+        resolvedModel = r;
+      }
       agentId = manager.spawn(pi, ctx, dispatch.type, job.prompt, {
         description: job.description,
         isBackground: true,
         bypassQueue: true,
         model: resolvedModel,
-        maxTurns: job.max_turns,
-        isolated: job.isolated,
-        thinkingLevel: job.thinking,
-        isolation: job.isolation,
+        maxTurns: resolved.maxTurns,
+        isolated: resolved.isolated,
+        thinkingLevel: resolved.thinking,
+        isolation: resolved.isolation,
         invocation: {
-          thinking: job.thinking,
-          maxTurns: normalizeMaxTurns(job.max_turns),
-          isolated: job.isolated,
+          thinking: resolved.thinking,
+          maxTurns: normalizeMaxTurns(resolved.maxTurns),
+          isolated: resolved.isolated,
           runInBackground: true,
-          isolation: job.isolation,
+          isolation: resolved.isolation,
+          ...describeOverrides(resolved.overridden, resolvedModel, ctx.modelRegistry),
         },
       });
     } catch (err) {

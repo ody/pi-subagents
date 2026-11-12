@@ -152,6 +152,7 @@ export interface EnvInfo {
 }
 
 export interface ScheduledSubagent {
+  version?: 2;
   id: string;
   name: string;
   description: string;
@@ -164,6 +165,7 @@ export interface ScheduledSubagent {
   model?: string;
   thinking?: ThinkingLevel;
   max_turns?: number;
+  run_in_background?: boolean;
   isolated?: boolean;
   isolation?: IsolationMode;
 
@@ -176,6 +178,6 @@ export interface ScheduledSubagent {
 }
 
 export interface ScheduleStoreData {
-  version: 1;
+  version: 2;
   jobs: ScheduledSubagent[];
 }

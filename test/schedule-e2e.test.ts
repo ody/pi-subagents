@@ -156,7 +156,7 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     expect(reloadedStore.list()[0].name).toBe("persistent");
   });
 
-  it("on-disk file shape: version=1 plus jobs array", async () => {
+  it("on-disk file shape: version=2 plus jobs array", async () => {
     const manager = makeFaithfulManager("completed");
     const pi = makePi();
     scheduler.start(pi, makeCtx(), manager, store);
@@ -170,7 +170,8 @@ describe("SubagentScheduler — end-to-end with real timers", () => {
     });
 
     const onDisk = JSON.parse(readFileSync(join(tmp, "schedules.json"), "utf-8"));
-    expect(onDisk.version).toBe(1);
+    expect(onDisk.version).toBe(2);
+    expect(onDisk.jobs[0].version).toBe(2);
     expect(onDisk.jobs).toHaveLength(1);
     expect(onDisk.jobs[0]).toMatchObject({
       name: "shape-test",
