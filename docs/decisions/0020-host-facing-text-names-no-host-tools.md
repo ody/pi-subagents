@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Text injected into the host session never prescribes host tools
+# 0020. Text injected into the host session never prescribes host tools
 
 ## Context
 

@@ -1,17 +1,15 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The extension ships no default agents
+# 0017. The extension ships no default agents
 
 ## Context
 
 `src/agents/default-agents.ts` ships `general-purpose`, `Explore`, and `Plan`, generic agents the user is better placed to provide. The defaults are woven in:
 
-- The registry overlays them first, and ADR 0009 ranks them last. The skill agents ADR replaces 0009, and the two are accepted together.
+- The registry overlays them first, below every user and skill agent, and ADR 0018 states the precedence without them.
 - `resolveSpawnType` falls back to `general-purpose`, and `getConfig` takes labels from it for unregistered types.
 - The wizard spawns it, and `agent-runner.ts` reads it as a last resort.
 - `fallbackSubagent` and `disableDefaultAgents` exist only because of them.
 
-An empty registry is workable only with ephemeral agents, so this builds on the ephemeral agents ADR.
+An empty registry is workable only with ephemeral agents, so this builds on ADR 0015 (ephemeral agents).
 
 ## Decision
 

@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A capability policy bounds the tools, extensions, and skills of every new agent
+# 0011. A capability policy bounds the tools, extensions, and skills of every new agent
 
 ## Context
 
@@ -10,18 +8,18 @@ Nothing bounds which tools, extensions, or skills a new agent gets. Agent files 
 
 No single funnel exists. The `agent` tool, the nested tool, the scheduler, and the creation wizard call `AgentManager.spawn` or `spawnAndWait` directly. RPC, the registry entry, and mentions go through `spawnResolved`. Every new session ends in `spawnAgent`, and `runAgent` re-reads the agent's config by type when it launches.
 
-Today the `agent` tools take no tools, extensions, or skills parameters, so a call from them carries no caller-supplied capability values until the ephemeral agents ADR adds them. This is accepted together with the delegation ceiling and ephemeral agents ADRs, and the no-shipped-default-agents ADR removes the wizard spawn site.
+Today the `agent` tools take no tools, extensions, or skills parameters, so a call from them carries no caller-supplied capability values until ADR 0015 (ephemeral agents) adds them. This is accepted together with ADR 0013 (delegation ceiling) and ADR 0015, and ADR 0017 (no shipped default agents) removes the wizard spawn site.
 
 ## Decision
 
-A policy allows or denies tools, extensions, and skills for every new agent. Its file format and merge rules are the policy configuration ADR's. No policy allows everything.
+A policy allows or denies tools, extensions, and skills for every new agent. Its file format and merge rules are ADR 0012's. No policy allows everything.
 
 Matching:
 
 - Built-in tool names match exactly. A bare name in a deny list that is not a built-in matches any tool of that name. `ext:<extension>` and `ext:<extension>/<tool>` select extension tools.
 - An extension matches if any of its canonical names matches, case-insensitively. A skill matches by the name pi's skill loader assigns, which is the frontmatter `name` or else the directory name, case-insensitively.
 - A deny entry beats an allow entry. `ext:<extension>` in a deny list denies all of that extension's tools. `*` is valid only in an allow list.
-- `*` in `tools.allow` allows all built-in and all extension tools, and a `tools` allow list with no `ext:` entry and no `*` permits no extension tools. The delegation tools, `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent`, are governed by `allowed_subagents` and the delegation ceiling ADR, not by `policy.tools`.
+- `*` in `tools.allow` allows all built-in and all extension tools, and a `tools` allow list with no `ext:` entry and no `*` permits no extension tools. The delegation tools, `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent`, are governed by `allowed_subagents` and ADR 0013, not by `policy.tools`.
 - Wildcards, `extensions: true`, and whole-extension selectors expand first and are then narrowed, without refusal. A caller-supplied `ext:<extension>` whose extension is denied by `policy.extensions` refuses the spawn, and a tool-level deny only narrows. A path-form `extensions` entry matches by its canonical name, and a caller-supplied path is refused whenever `policy.extensions` has an allow list.
 
 Ephemeral nesting:
@@ -49,7 +47,7 @@ Done check: `npx vitest run test/capability-policy.test.ts` passes. It asserts r
 ## Consequences
 
 - With no policy a fresh install behaves as it does today.
-- An inline definition that names a denied value is refused, so that extension's spawn fails. An extension can read the effective policy first, per the configuration ADR.
+- An inline definition that names a denied value is refused, so that extension's spawn fails. An extension can read the effective policy first, per ADR 0012.
 - A filtered file default leaves an agent with fewer tools than its author wrote, and the filter notice is the only signal.
 - Rejected: enforcing only in `spawnAgent`, which cannot tell caller values from file values. Rejected: refusing file values, which would make one restrictive policy break every shipped skill agent.
 - Revisit if policy needs per-agent rules, or if extension denial must stop load-time code.

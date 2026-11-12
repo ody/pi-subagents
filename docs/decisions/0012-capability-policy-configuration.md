@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The capability policy lives in subagents.json and a project can only narrow it
+# 0012. The capability policy lives in subagents.json and a project can only narrow it
 
 ## Context
 
@@ -12,7 +10,7 @@ Settings load from the global `~/.pi/agent/subagents.json` and the project `.pi/
 
 ## Decision
 
-`subagents.json` carries an optional `policy` with `allow` and `deny` string lists for each of `tools`, `extensions`, and `skills`. The matching rules are the capability policy ADR's. `policy` also carries `ephemeralNesting`, a boolean that defaults to `true`.
+`subagents.json` carries an optional `policy` with `allow` and `deny` string lists for each of `tools`, `extensions`, and `skills`. The matching rules are ADR 0011's. `policy` also carries `ephemeralNesting`, a boolean that defaults to `true`.
 
 - Global and project policy are evaluated separately. A value is allowed only if each allows it, and deny entries from either apply. A project can only narrow, so `ephemeralNesting: false` in either file turns ephemeral nesting off. `policy` is the exception to per-field project-over-global precedence.
 - An omitted list allows everything, and no `policy` allows everything.

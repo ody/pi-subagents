@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A nested agent never exceeds its parent's capabilities
+# 0013. A nested agent never exceeds its parent's capabilities
 
 ## Context
 
@@ -8,7 +6,7 @@ README documents that a child runs with its own `tools:`, `extensions:`, and `is
 
 A nested child's `allowed_subagents` comes from its own file, and nothing compares it with its parent's. `AgentRecord` stores no tools, extensions, or skills, and `NestedToolContext` carries only the parent's `allowedSubagents`.
 
-This builds on the capability policy and ephemeral agents ADRs, and the three are accepted together. It uses the capability policy's expansion rules.
+This builds on ADR 0011 (capability policy) and ADR 0015 (ephemeral agents), and the three are accepted together. It uses ADR 0011's expansion rules.
 
 ## Decision
 

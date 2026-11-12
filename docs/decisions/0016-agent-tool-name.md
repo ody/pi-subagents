@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The delegation tool is named agent
+# 0016. The delegation tool is named agent
 
 ## Context
 

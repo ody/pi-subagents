@@ -1,8 +1,6 @@
-> DRAFT: not accepted, not current truth.
+# 0018. Skills ship agents that rank below every user agent
 
-# NNNN. Skills ship agents that rank below every user agent
-
-Replaces: 0009-skills-ship-agents-below-user-agents, last present in e40fb38
+Replaces: 0009-skills-ship-agents-below-user-agents, last present in 95413b7
 
 ## Context
 
@@ -12,7 +10,7 @@ Skill directories are often read-only package-manager or Nix store paths, and ar
 
 `loadSkillAgents` in `src/agents/custom-agents.ts` scans only `$PI_CODING_AGENT_DIR/skills/`. Project skill directories and skills pi loads from packages are not scanned.
 
-This builds on the no-shipped-default-agents ADR, so the registry has no built-in tier, and the two are accepted together.
+This builds on ADR 0017 (no shipped default agents), so the registry has no built-in tier, and the two are accepted together.
 
 ## Decision
 
