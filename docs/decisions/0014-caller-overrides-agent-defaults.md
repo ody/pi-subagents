@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The caller tunes a named agent's run, and the user is told
+# 0014. The caller tunes a named agent's run, and the user is told
 
 ## Context
 

@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Extensions pass agent definitions inline on subagents:rpc:spawn
+# 0019. Extensions pass agent definitions inline on subagents:rpc:spawn
 
 ## Context
 
