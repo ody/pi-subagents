@@ -253,3 +253,71 @@ describe("the bound is transitive and needs a recorded set", () => {
     expect(capabilitiesOf(options)).toMatchObject({ builtinToolNames: ["read", "bash"], extensions: ["web"], skills: ["review"] });
   });
 });
+
+describe("a nested child's allowed_subagents never exceeds its parent's", () => {
+  it("narrows a child's list to a subset of the parent's, with a warning", async () => {
+    writeAgent("child", "tools: read\nallowed_subagents: a, b, c\n");
+    load();
+    parentOf({ allowedSubagents: ["a", "B"] });
+    const { options, result, uiCtx } = await spawnChild("child");
+    expect(capabilitiesOf(options).allowedSubagents).toEqual(["a", "b"]);
+    expect(options.capability.filtered).toEqual(["allowed_subagents c"]);
+    expect(textOf(result)).toContain("allowed_subagents c");
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("allowed_subagents c"), "warning");
+  });
+
+  it("keeps a list that is already a subset, whatever the case", async () => {
+    writeAgent("child", "tools: read\nallowed_subagents: A\n");
+    load();
+    parentOf({ allowedSubagents: ["a", "b"] });
+    const { options } = await spawnChild("child");
+    expect(capabilitiesOf(options).allowedSubagents).toEqual(["A"]);
+    expect(options.capability.filtered).toEqual([]);
+  });
+
+  it("allows all only when the parent has all", async () => {
+    writeAgent("child", "tools: read\nallowed_subagents: all\n");
+    load();
+    parentOf({ allowedSubagents: "all" });
+    expect(capabilitiesOf((await spawnChild("child")).options).allowedSubagents).toBe("all");
+
+    spawnAndWait.mockClear();
+    parentOf({ allowedSubagents: ["a", "b"] });
+    const { options } = await spawnChild("child");
+    expect(capabilitiesOf(options).allowedSubagents).toEqual(["a", "b"]);
+    expect(options.capability.filtered).toEqual(["allowed_subagents all"]);
+  });
+
+  it("keeps any list under a parent with all", async () => {
+    writeAgent("child", "tools: read\nallowed_subagents: x, y\n");
+    load();
+    parentOf({ allowedSubagents: "all" });
+    expect(capabilitiesOf((await spawnChild("child")).options).allowedSubagents).toEqual(["x", "y"]);
+  });
+
+  it("leaves a child with no nesting without nesting", async () => {
+    writeAgent("child", "tools: read\n");
+    load();
+    parentOf({ allowedSubagents: ["a"] });
+    expect(capabilitiesOf((await spawnChild("child")).options).allowedSubagents).toBeUndefined();
+  });
+
+  it("treats the main session as all, so a top-level agent keeps its file value", () => {
+    const topLevel = grant({ allowedSubagents: "all" });
+    expect(topLevel.capabilities.allowedSubagents).toBe("all");
+    const listed = grant({ allowedSubagents: ["a"] });
+    expect(listed.capabilities.allowedSubagents).toEqual(["a"]);
+  });
+
+  it("transmits the narrowed list to the next generation", async () => {
+    writeAgent("child", "tools: read\nallowed_subagents: a, b\n");
+    writeAgent("grandchild", "tools: read\nallowed_subagents: all\n");
+    load();
+    parentOf({ allowedSubagents: ["a"] });
+    const first = await spawnChild("child");
+    spawnAndWait.mockClear();
+    parent = { id: "parent-1", capabilities: capabilitiesOf(first.options) };
+    const second = await spawnChild("grandchild");
+    expect(capabilitiesOf(second.options).allowedSubagents).toEqual(["a"]);
+  });
+});

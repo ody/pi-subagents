@@ -460,6 +460,7 @@ allowed_subagents: support-file-finder, support-callsite-tracer   # or `all`
 - A child's values are compared with the parent's using the policy's expansion rules. Wildcards, `true`, and whole-extension selectors expand and are narrowed, and a child's `skills: true` under a parent list narrows to that list.
 - The parent's `disallowed_tools` and `exclude_extensions` apply to the child.
 - A file value or default that exceeds the parent is narrowed, with a warning to the user and a note in the nested tool result.
+- A child's `allowed_subagents` is a subset of its parent's, and `all` only when the parent has `all`. A file value is narrowed with a warning, and the main session counts as `all`.
 - A nested spawn whose parent record has no recorded set is refused.
 - Extension tools that register after spawn are filtered by the same set.
 - Top-level, `@handle`, RPC, and scheduler spawns have no parent and are bounded by the policy alone.

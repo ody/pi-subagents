@@ -260,6 +260,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           config,
           isolated: invocation.isolated,
           extraBounds: [parentBound(parentCapabilities, context.configCwd)],
+          parent: { allowedSubagents: parentCapabilities.allowedSubagents },
           notify: (message, level) => ctx.ui?.notify(message, level),
         });
       } catch (err) {
