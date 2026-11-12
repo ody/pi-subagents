@@ -109,6 +109,7 @@ export function spawnAgent(
     maxSubagentDepth: options.maxSubagentDepth,
     rootSessionId: options.rootSessionId,
     filtered: options.capability.filtered.length > 0 ? options.capability.filtered : undefined,
+    capabilities: options.capability.capabilities,
   };
   deps.agents.set(id, record);
   deps.activities.set(id, {

@@ -109,7 +109,7 @@ function toolRefusal(bounds: CapabilityBound[], name: string): string | undefine
 
 function extAllowOf(list: PolicyList | undefined): ExtAllow | undefined {
   const allow = restrictingAllow(list);
-  if (!allow) return undefined;
+  if (!allow || allow.includes("ext:*")) return undefined;
   const map: ExtAllow = new Map();
   for (const entry of allow) {
     if (!entry.startsWith("ext:")) continue;
@@ -370,8 +370,36 @@ export function checkCapabilityPolicy(request: CapabilityRequest): CapabilityVer
   }
 }
 
-export function filteredNote(grant: Pick<GrantedCapability, "filtered">): string {
-  return grant.filtered.length === 0 ? "" : `Note: the capability policy removed ${grant.filtered.join(", ")} from this agent.\n\n`;
+const POLICY_SOURCE = "the capability policy";
+const PARENT_SOURCE = "the capability policy or the parent agent's capabilities";
+
+export function filteredNote(grant: Pick<GrantedCapability, "filtered">, source = POLICY_SOURCE): string {
+  return grant.filtered.length === 0 ? "" : `Note: ${source} removed ${grant.filtered.join(", ")} from this agent.\n\n`;
+}
+
+export function nestedFilteredNote(grant: Pick<GrantedCapability, "filtered">): string {
+  return filteredNote(grant, PARENT_SOURCE);
+}
+
+function lowerNames(entries: string[], cwd: string): string[] {
+  return entries.flatMap(entry => (entry === "*" ? [entry] : [...parseExtensionsSpec([entry], cwd).names]));
+}
+
+export function parentBound(parent: EffectiveCapabilities, cwd: string): CapabilityBound {
+  const extensionTools = parent.noExtensionTools ? [] : parent.extSelectors.length > 0 ? parent.extSelectors : ["ext:*"];
+  const extensions = parent.extensions === true ? undefined : parent.extensions === false ? [] : lowerNames(parent.extensions, cwd);
+  const skills = parent.skills === true ? parent.skillScope.allow : parent.skills === false ? [] : parent.skills;
+  return {
+    label: "parent",
+    scope: {
+      tools: {
+        allow: [...parent.builtinToolNames, ...extensionTools],
+        deny: [...parent.disallowedTools, ...parent.deniedExtensionNames.map(name => `ext:${name}`)],
+      },
+      extensions: { allow: extensions, deny: parent.excludeExtensions },
+      skills: { allow: skills, deny: parent.skillScope.deny },
+    },
+  };
 }
 
 export function callerFieldsOf(raw: Partial<AgentConfig> | undefined): Set<CapabilityField> {
@@ -392,6 +420,7 @@ export interface ResolveCapabilityArgs {
   explicitTools?: readonly string[];
   ephemeral?: boolean;
   isolated?: boolean;
+  extraBounds?: CapabilityBound[];
   notify?: (message: string, level: "warning") => void;
 }
 
@@ -404,10 +433,12 @@ export function resolveCapability(args: ResolveCapabilityArgs): GrantedCapabilit
     ephemeral: args.ephemeral === true,
     cwd: args.cwd,
     isolated: args.isolated,
+    extraBounds: args.extraBounds,
   });
   if (verdict.kind === "error") throw new Error(verdict.message);
   if (verdict.filtered.length > 0) {
-    args.notify?.(`The capability policy removed ${verdict.filtered.join(", ")} from ${args.type}.`, "warning");
+    const source = args.extraBounds ? PARENT_SOURCE : POLICY_SOURCE;
+    args.notify?.(`${source[0].toUpperCase()}${source.slice(1)} removed ${verdict.filtered.join(", ")} from ${args.type}.`, "warning");
   }
   return verdict;
 }
