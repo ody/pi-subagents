@@ -744,6 +744,11 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - Each of `tools`, `extensions`, and `skills` takes optional `allow` and `deny` string lists. An omitted list, or no `policy`, allows everything. `ephemeralNesting` defaults to `true`.
 - The global and project files are evaluated separately. A value must pass both, deny entries from either apply, and `ephemeralNesting: false` in either file turns it off. A project can only narrow.
 - `*` is valid only in an allow list.
+- Built-in tool names match exactly. `ext:<extension>` and `ext:<extension>/<tool>` select extension tools. A bare name in a deny list that is not a built-in matches any tool of that name. The delegation tools are not governed by `policy.tools`.
+- An `allow` list for `tools` with no `ext:` entry and no `*` permits no extension tools.
+- Extensions match by canonical name and skills by the name pi assigns, both case-insensitively. A deny entry beats an allow entry.
+- A value outside the policy that the caller supplied refuses the spawn with an error that starts `Capability policy:`. A value from an agent file is filtered instead. Filtering an explicit tool list to empty refuses.
+- `ephemeralNesting: false` forces `allowed_subagents: []` on an ephemeral agent and refuses any other caller value.
 - The policy is read at each spawn, so an edit applies without a restart.
 - A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. Every spawn is denied and a warning names the file and entry. A well-formed entry that names nothing known only warns.
 - Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
@@ -1214,6 +1219,7 @@ src/
     runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
     settings-paths.ts # Paths of the global and project subagents.json
     capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json
+    capability-policy.ts # checkCapabilityPolicy: match declared tools, extensions, and skills against the policy
     runner-defaults.ts # Process-wide run defaults: max turns, grace turns, rememberAgents
     model-resolver.ts # Model resolution: exact provider/modelId with fuzzy fallback
     enabled-models.ts # Read pi's enabledModels settings (project over global)
