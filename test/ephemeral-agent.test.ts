@@ -11,6 +11,7 @@ import { BUILTIN_TOOL_NAMES, getAllTypes, getAvailableTypes } from "../src/agent
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
+import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { getDisplayName, getPromptModeLabel } from "../src/ui/agent-format.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
 
@@ -267,6 +268,38 @@ describe("identity", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("a nested ephemeral spawn", () => {
+  it("runs under a parent whose allowed_subagents is all, narrowed to the parent's tools", async () => {
+    const { tool } = boot();
+    const finished = { responseText: "done", session: { dispose: vi.fn(), messages: [] }, aborted: false, steered: false } as any;
+    let nested: any;
+    vi.mocked(runAgent).mockImplementation((async (_ctx: any, _type: string, _prompt: string, opts: any) => {
+      if (opts.nestedRuntime.depth === 1) {
+        const [nestedAgent] = createNestedSubagentTools({
+          manager: opts.nestedRuntime.manager,
+          pi: opts.pi,
+          parentAgentId: opts.nestedRuntime.parentAgentId,
+          depth: 1,
+          maxSubagentDepth: 2,
+          allowedSubagents: "all",
+          configCwd: process.cwd(),
+        }) as any[];
+        nested = await nestedAgent.execute("n1", { description: "inner helper", prompt: "inner", run_in_background: false }, undefined, undefined, ctx());
+      }
+      return finished;
+    }) as any);
+
+    await run(tool, { run_in_background: false, tools: ["read"], allowed_subagents: "all" });
+
+    expect(nested.isError).toBe(false);
+    const calls = vi.mocked(runAgent).mock.calls as any[][];
+    expect(calls).toHaveLength(2);
+    expect(calls[1][1]).toMatch(/^ephemeral-[0-9a-f]{8}$/);
+    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Agent", persistSession: false, systemPrompt: "" });
+    expect(calls[1][3].capability.capabilities.builtinToolNames).toEqual(["read"]);
   });
 });
 

@@ -586,6 +586,8 @@ A call with no `subagent_type` runs an agent built from its parameters, and the 
 - The session is not persisted. The agent is steerable and resumable while its record is in memory, and it cannot be reopened once evicted.
 - A scheduled call with no `subagent_type` is an error.
 - Every value is checked against the [capability policy](#capability-policy).
+- The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. A nested ephemeral child is allowed only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn, and ephemeral defaults are narrowed.
+- In `agentMentions: "model"` mode, the conversation clone's `agent` call is refused when it omits `subagent_type` or names a different type than the mention.
 
 ### `get_subagent_result`
 
@@ -1238,6 +1240,7 @@ src/
     agent-call-resolution.ts # Agent tool params -> resolved invocation (dispatch, model, scope, details base)
     invocation-config.ts # Shared tool-parameter schemas (isolation, join, thinking, ...)
     tool-result.ts    # Tool result text shape and AgentDetails building
+    ephemeral-params.ts # Schema of the seven ephemeral-agent parameters, shared by the agent tool and the nested tool
     nested-tools.ts   # Delegation tools handed to subagents (nested spawn/collect/steer)
     abortable.ts      # Race a wait against Esc without cancelling the background child
     status-note.ts    # Honest status note + salvaged partial output for non-normal outcomes

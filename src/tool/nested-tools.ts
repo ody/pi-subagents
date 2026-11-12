@@ -15,6 +15,13 @@ import {
   resolveTypeIn,
 } from "../agents/agent-types.js";
 import { loadCustomAgents } from "../agents/custom-agents.js";
+import {
+  type BuiltEphemeralAgent,
+  buildEphemeralAgent,
+  type EphemeralParams,
+  ephemeralIsolationConflict,
+  namedAgentParamConflict,
+} from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, nestedFilteredNote, parentBound, resolveCapability } from "../config/capability-policy.js";
 import { resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
@@ -34,6 +41,7 @@ import type {
 } from "../types.js";
 import { addUsage } from "../usage.js";
 import { abortable } from "./abortable.js";
+import { ephemeralParamShape } from "./ephemeral-params.js";
 import { isolationParam, resolveAgentInvocationConfig } from "./invocation-config.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
 
@@ -46,6 +54,8 @@ const NESTED_TOOL_NAMES = ["Agent", "get_subagent_result", "steer_subagent", "st
 
 interface NestedSpawnOptions {
   description: string;
+  agentConfig?: AgentConfig;
+  ephemeral?: { handleSeed: string };
   capability: GrantedCapability;
   model?: Model<any>;
   maxTurns?: number;
@@ -138,6 +148,69 @@ async function resumeOwned(
     : textResult(`Failed to resume nested agent "${id}".`, true);
 }
 
+function grantNestedCapability(
+  context: NestedToolContext,
+  args: {
+    type: string;
+    config: AgentConfig | undefined;
+    built: BuiltEphemeralAgent | undefined;
+    isolated: boolean;
+    notify: (message: string, level: "warning") => void;
+  },
+): { capability: GrantedCapability } | { error: string } {
+  const parentCapabilities = context.manager.getRecord(context.parentAgentId)?.capabilities;
+  if (!parentCapabilities) return { error: "Nested agent refused: the parent agent has no recorded capability set." };
+  const { built } = args;
+  try {
+    const capability = resolveCapability({
+      type: args.type,
+      cwd: context.configCwd,
+      config: args.config,
+      raw: built?.supplied,
+      explicitTools: built?.explicitTools,
+      ephemeral: built !== undefined,
+      isolated: args.isolated,
+      extraBounds: [parentBound(parentCapabilities, context.configCwd)],
+      parent: { allowedSubagents: parentCapabilities.allowedSubagents },
+      notify: args.notify,
+    });
+    return { capability };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+type NestedTarget =
+  | { error: string }
+  | { type: string; config: AgentConfig | undefined; built: BuiltEphemeralAgent | undefined };
+
+interface NestedTargetParams extends Partial<Omit<EphemeralParams, "description">> {
+  subagent_type?: string;
+  description: string;
+}
+
+function resolveNestedTarget(
+  params: NestedTargetParams,
+  registry: Map<string, AgentConfig>,
+  parentAllowed: "all" | string[],
+  allowed: Set<string> | undefined,
+): NestedTarget {
+  if ((params.subagent_type ?? "").trim() !== "") {
+    const conflict = namedAgentParamConflict(params);
+    if (conflict) return { error: conflict };
+    const typeResult = resolveNestedType(registry, params.subagent_type ?? "", allowed);
+    if ("error" in typeResult) return typeResult;
+    return { type: typeResult.type, config: getAgentConfigIn(registry, typeResult.type), built: undefined };
+  }
+  const conflict = ephemeralIsolationConflict(params);
+  if (conflict) return { error: conflict };
+  if (parentAllowed !== "all") {
+    return { error: "A nested ephemeral agent is allowed only when this agent's allowed_subagents is all. Name one of the allowed types in subagent_type." };
+  }
+  const built = buildEphemeralAgent(params);
+  return { type: built.type, config: undefined, built };
+}
+
 export function resolveNestedType(
   registry: Map<string, AgentConfig>,
   rawType: string,
@@ -198,7 +271,12 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
     parameters: Type.Object({
       prompt: Type.String({ description: "Self-contained task for the nested agent." }),
       description: Type.String({ description: "Short 3-5 word task description." }),
-      subagent_type: Type.String({ description: `Allowed nested agent type. Available: ${availableIn(loadRegistry()).join(", ") || "none"}.` }),
+      subagent_type: Type.Optional(
+        Type.String({
+          description: `Allowed nested agent type. Available: ${availableIn(loadRegistry()).join(", ") || "none"}. Omit it to build a one-off agent from the tools, disallowed_tools, extensions, exclude_extensions, skills, allowed_subagents, and prompt_mode parameters. That is allowed only when this agent's allowed_subagents is all.`,
+        }),
+      ),
+      ...ephemeralParamShape,
       model: Type.Optional(Type.String({ description: "Optional provider/model override." })),
       thinking: Type.Optional(Type.String({ description: "Optional thinking level." })),
       max_turns: Type.Optional(Type.Number({ minimum: 1 })),
@@ -225,11 +303,9 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       }
 
       const registry = loadRegistry();
-      const typeResult = resolveNestedType(registry, params.subagent_type, allowedTypesIn(registry));
-      if ("error" in typeResult) return textResult(typeResult.error, true);
-      const resolvedType = typeResult.type;
-
-      const config = getAgentConfigIn(registry, resolvedType);
+      const target = resolveNestedTarget(params, registry, context.allowedSubagents, allowedTypesIn(registry));
+      if ("error" in target) return textResult(target.error, true);
+      const { type: resolvedType, config, built } = target;
       const invocation = resolveAgentInvocationConfig(config, params, {
         worktreeAllowed: isWorktreeIsolationEnabled(),
         defaultRunInBackground: false,
@@ -248,24 +324,15 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       });
       if (scopeVerdict.kind === "error") return textResult(scopeVerdict.message, true);
 
-      const parentCapabilities = context.manager.getRecord(context.parentAgentId)?.capabilities;
-      if (!parentCapabilities) {
-        return textResult("Nested agent refused: the parent agent has no recorded capability set.", true);
-      }
-      let capability: GrantedCapability;
-      try {
-        capability = resolveCapability({
-          type: resolvedType,
-          cwd: context.configCwd,
-          config,
-          isolated: invocation.isolated,
-          extraBounds: [parentBound(parentCapabilities, context.configCwd)],
-          parent: { allowedSubagents: parentCapabilities.allowedSubagents },
-          notify: (message, level) => ctx.ui?.notify(message, level),
-        });
-      } catch (err) {
-        return textResult(err instanceof Error ? err.message : String(err), true);
-      }
+      const granted = grantNestedCapability(context, {
+        type: resolvedType,
+        config: built?.config ?? config,
+        built,
+        isolated: invocation.isolated,
+        notify: (message, level) => ctx.ui?.notify(message, level),
+      });
+      if ("error" in granted) return textResult(granted.error, true);
+      const { capability } = granted;
       const note = nestedFilteredNote(capability);
 
       const rootSessionId = context.manager.getRecord(context.parentAgentId)?.rootSessionId;
@@ -273,6 +340,8 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       const options: NestedSpawnOptions = {
         description: params.description,
         capability,
+        agentConfig: built?.config,
+        ephemeral: built ? { handleSeed: params.description } : undefined,
         model,
         maxTurns: invocation.maxTurns,
         isolated: invocation.isolated,

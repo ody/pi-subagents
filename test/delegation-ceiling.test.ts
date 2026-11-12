@@ -30,19 +30,24 @@ function ctx() {
   return { cwd, model: undefined, modelRegistry: { find: vi.fn(), getAvailable: () => [], getAll: () => [] }, ui: { notify } } as any;
 }
 
-async function spawnChild(type: string, params: Record<string, unknown> = {}, uiCtx = ctx()) {
+async function spawnChild(
+  type: string | undefined,
+  params: Record<string, unknown> = {},
+  uiCtx = ctx(),
+  allowedSubagents: "all" | string[] = "all",
+) {
   const [agent] = createNestedSubagentTools({
     manager,
     pi: {} as any,
     parentAgentId: "parent-1",
     depth: 1,
     maxSubagentDepth: 3,
-    allowedSubagents: "all",
+    allowedSubagents,
     configCwd: cwd,
   });
   const result = await (agent as any).execute(
     "call-1",
-    { subagent_type: type, description: "child", prompt: "go", ...params },
+    { ...(type === undefined ? {} : { subagent_type: type }), description: "child", prompt: "go", ...params },
     undefined,
     undefined,
     uiCtx,
@@ -251,6 +256,95 @@ describe("the bound is transitive and needs a recorded set", () => {
     const { options } = await spawnChild("child");
     expect(options.capability.filtered).toEqual([]);
     expect(capabilitiesOf(options)).toMatchObject({ builtinToolNames: ["read", "bash"], extensions: ["web"], skills: ["review"] });
+  });
+});
+
+describe("a nested ephemeral child", () => {
+  it("is allowed when the parent's allowed_subagents is all, and runs in the foreground", async () => {
+    parentOf({ allowedSubagents: "all" });
+    const { options, result } = await spawnChild(undefined);
+    expect(result.isError).toBe(false);
+    expect(spawnAndWait).toHaveBeenCalledTimes(1);
+    expect(options.agentConfig).toMatchObject({ name: expect.stringMatching(/^ephemeral-[0-9a-f]{8}$/), systemPrompt: "", persistSession: false });
+    expect(options.ephemeral).toEqual({ handleSeed: "child" });
+    expect(capabilitiesOf(options).allowedSubagents).toEqual([]);
+  });
+
+  it("is refused when the parent's allowed_subagents is a list", async () => {
+    parentOf({ allowedSubagents: ["a"] });
+    const { result } = await spawnChild(undefined, {}, ctx(), ["a"]);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("allowed only when this agent's allowed_subagents is all");
+    expect(spawnAndWait).not.toHaveBeenCalled();
+  });
+
+  it("narrows its defaults to the parent's set, with a warning and a note", async () => {
+    parentOf({ builtinToolNames: ["read"], extensions: ["web"], skills: ["review"], allowedSubagents: "all" });
+    const { options, result, uiCtx } = await spawnChild(undefined);
+    expect(capabilitiesOf(options)).toMatchObject({ extensions: ["web"], skills: true });
+    expect(capabilitiesOf(options).builtinToolNames).toEqual(["read"]);
+    expect(capabilitiesOf(options).skillScope.allow).toEqual(["review"]);
+    expect(options.capability.filtered).toEqual(expect.arrayContaining(["tool bash"]));
+    expect(textOf(result)).toContain("removed");
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("tool bash"), "warning");
+  });
+
+  it("passes the ephemeral parameters through when they fit the parent", async () => {
+    parentOf({ allowedSubagents: "all" });
+    const { options } = await spawnChild(undefined, {
+      tools: ["read", "grep"],
+      extensions: false,
+      skills: ["review"],
+      prompt_mode: "replace",
+    });
+    expect(options.agentConfig).toMatchObject({ builtinToolNames: ["read", "grep"], promptMode: "replace" });
+    expect(capabilitiesOf(options)).toMatchObject({ builtinToolNames: ["read", "grep"], extensions: false, skills: ["review"] });
+  });
+
+  it.each([
+    ["a tool", { tools: ["read", "bash"] }, "tool \"bash\""],
+    ["an extension", { extensions: ["db"] }, "extension \"db\""],
+    ["a skill", { skills: ["secret"] }, "skill \"secret\""],
+    ["allowed_subagents", { allowed_subagents: ["x"] }, "allowed_subagents \"x\""],
+  ])("refuses a caller-supplied %s outside the parent's set", async (_label, params, fragment) => {
+    parentOf({ builtinToolNames: ["read", "grep"], extensions: ["web"], skills: ["review"], allowedSubagents: ["a"] });
+    parent!.capabilities = { ...parent!.capabilities!, allowedSubagents: ["a"] };
+    const { result } = await spawnChild(undefined, params);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/^Capability policy: /);
+    expect(textOf(result)).toContain(fragment);
+    expect(spawnAndWait).not.toHaveBeenCalled();
+  });
+
+  it("narrows a wildcard tool list instead of refusing it", async () => {
+    parentOf({ builtinToolNames: ["read"], allowedSubagents: "all" });
+    const { options, result } = await spawnChild(undefined, { tools: ["*"] });
+    expect(result.isError).toBe(false);
+    expect(capabilitiesOf(options).builtinToolNames).toEqual(["read"]);
+  });
+
+  it("refuses isolated: true with extensions", async () => {
+    parentOf({ allowedSubagents: "all" });
+    const { result } = await spawnChild(undefined, { isolated: true, extensions: ["web"] });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain("isolated: true");
+  });
+
+  it("refuses ephemeral parameters on a named agent", async () => {
+    writeAgent("child", "tools: read\n");
+    load();
+    parentOf({ allowedSubagents: "all" });
+    const { result } = await spawnChild("child", { skills: false });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('"skills"');
+    expect(spawnAndWait).not.toHaveBeenCalled();
+  });
+
+  it("starts a detached child when run_in_background is set", async () => {
+    parentOf({ allowedSubagents: "all" });
+    const result = (await spawnChild(undefined, { run_in_background: true })).result;
+    expect(textOf(result)).toContain("started in background");
+    expect(manager.spawn).toHaveBeenCalledTimes(1);
   });
 });
 

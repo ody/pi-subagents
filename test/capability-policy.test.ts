@@ -19,11 +19,13 @@ import type { LoadedPolicy, PolicyScope } from "../src/config/capability-policy-
 import subagentsExtension from "../src/index.js";
 import { AgentManager } from "../src/manager/agent-manager.js";
 import { runAgent } from "../src/session/agent-runner.js";
+import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 import { SubagentScheduler } from "../src/triggers/schedule.js";
 import { ScheduleStore } from "../src/triggers/schedule-store.js";
 import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
+import { grant } from "./helpers/capability.js";
 
 const OPEN: CapabilityDeclaration = { extensions: true, skills: true };
 
@@ -467,6 +469,56 @@ describe("capability policy at every spawn path", () => {
     );
     expect(textOf(result)).toMatch(/^Capability policy: the policy is malformed/);
     expect(runAgent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a caller-supplied denied tool through an ephemeral agent call", async () => {
+    writePolicy({ tools: { deny: ["bash"] } });
+    const { pi, tools, lifecycle } = makePi();
+    subagentsExtension(pi);
+    booted = lifecycle;
+    const agentTool = tools.get("Agent") ?? tools.get("agent");
+    const call = (params: Record<string, unknown>) =>
+      agentTool.execute("tc", { prompt: "go", description: "look", run_in_background: true, ...params }, undefined, undefined, ctx());
+
+    const refused = await call({ tools: ["read", "bash"] });
+    expect(textOf(refused)).toMatch(/^Capability policy: tool "bash"/);
+    expect(runAgent).not.toHaveBeenCalled();
+
+    const narrowed = await call({ tools: ["*"] });
+    expect(textOf(narrowed)).toContain("started in background");
+    const options = vi.mocked(runAgent).mock.calls[0][3] as any;
+    expect(options.capability.capabilities.builtinToolNames).not.toContain("bash");
+  });
+
+  it("refuses ephemeral values outside the policy through the nested tool", async () => {
+    writePolicy({ tools: { deny: ["bash"] }, extensions: { deny: ["risky"] }, skills: { deny: ["secret"] }, ephemeralNesting: false });
+    const spawnAndWait = vi.fn();
+    const manager: any = {
+      spawn: vi.fn(),
+      spawnAndWait,
+      awaitStartup: vi.fn(),
+      getRecord: (id: string) => (id === "parent-1" ? { id, capabilities: grant().capabilities } : undefined),
+      resume: vi.fn(),
+      abort: vi.fn(),
+    };
+    const [nestedAgent] = createNestedSubagentTools({
+      manager,
+      pi: {} as any,
+      parentAgentId: "parent-1",
+      depth: 1,
+      maxSubagentDepth: 2,
+      allowedSubagents: "all",
+      configCwd: hermetic.dir,
+    }) as any[];
+    const nestedCtx = { ...ctx(), cwd: hermetic.dir };
+    const call = (params: Record<string, unknown>) =>
+      nestedAgent.execute("n", { description: "d", prompt: "go", ...params }, undefined, undefined, nestedCtx);
+
+    expect(textOf(await call({ tools: ["bash"] }))).toMatch(/^Capability policy: tool "bash"/);
+    expect(textOf(await call({ extensions: ["risky"] }))).toMatch(/^Capability policy: extension "risky"/);
+    expect(textOf(await call({ skills: ["secret"] }))).toMatch(/^Capability policy: skill "secret"/);
+    expect(textOf(await call({ allowed_subagents: "all" }))).toMatch(/^Capability policy: allowed_subagents/);
+    expect(spawnAndWait).not.toHaveBeenCalled();
   });
 
   it("makes spawnAgent throw without a verdict", () => {
