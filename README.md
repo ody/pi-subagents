@@ -7,7 +7,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
 - **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`agent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent), `background` (default — hides foreground runs, which already render inline as the `agent` tool result), or `off`
-- **FleetView** — Claude Code-style navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in, `↑`/`↓` move the selection, `←`/`→` collapse and expand a row that owns children, `Enter` opens the selected agent's live conversation, `Esc` returns. Toggle via `/agents → Settings → Fleet view`
+- **FleetView** — navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in, `↑`/`↓` move the selection, `←`/`→` collapse and expand a row that owns children, `Enter` opens the selected agent's live conversation, `Esc` returns. Toggle via `/agents → Settings → Fleet view`
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too.
   - Steer a running agent inline by pressing `Enter` to open a composer, typing, then `Enter` to send (`Esc` or an empty submit returns) — the message appears as a user message and redirects the agent after its current tool.
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
@@ -591,7 +591,7 @@ The `/agents` command opens an interactive menu:
 ```text
 Agents (4) — 2 running, 2 done              ← the whole tree, nested included
 Agent types (6)                             ← unified list of registered agents
-Settings                                    ← max concurrency (background + foreground), max turns, grace turns, join mode
+Settings                                    ← every persistent setting (see Persistent Settings)
 ```
 
 - **Agents** — the whole hierarchy, indented, with nested children under their spawner. An agent whose owner is gone is marked `detached`. Select an agent to open its live conversation viewer, where:
@@ -604,14 +604,14 @@ Settings                                    ← max concurrency (background + fo
   - **Disabled agents**: Enable, Edit, Delete
 - **Eject** — copies a skill agent's `.md` file to a project or personal location, so you can customize it
 - **Disable/Enable** — toggle agent availability. Disabled agents stay visible in the list (marked `✕`) and can be re-enabled
-- **Settings** — configure max concurrency (background and foreground), default max turns, grace turns, and join mode at runtime
+- **Settings** — change any [persistent setting](#persistent-settings) at runtime
 
 ## Graceful Max Turns
 
 Instead of hard-aborting at the turn limit, agents get a graceful shutdown:
 
 1. At `max_turns` — steering message: *"Wrap up immediately — provide your final answer now."*
-2. Up to 5 grace turns to finish cleanly
+2. Up to `graceTurns` (default 5) grace turns to finish cleanly
 3. Hard abort only after the grace period
 
 | Status | Meaning | Icon |
@@ -649,7 +649,7 @@ When background agents complete, they notify the main agent. The **join mode** c
 
 **Configuration:**
 
-- Configure join mode in `/agents` → Settings → Join mode
+- `defaultJoinMode` in `subagents.json`, or `/agents` → Settings → Join mode
 
 ## Model Scope
 
@@ -678,15 +678,28 @@ When on, each subagent spawn's effective model is validated against pi's own `en
 
 Runtime tuning values set via `/agents` → Settings persist across pi restarts:
 
-- max concurrency, max foreground concurrency
-- default max turns, grace turns
-- nested depth, default join mode
-- scope models on/off
-- strict agent files on/off, agent mentions on/off, output transcript on/off
-- tool description full/compact/custom
-- widget all/background/off
-- usage reporting on/off, cost display on/off, model display on/off
-- viewer markdown off/assistant/all
+| Key | Values | Default |
+| --- | --- | --- |
+| `maxConcurrent` | 1–1024 | `10` |
+| `maxConcurrentForeground` | 0–1024, `0` = unlimited | `0` |
+| `defaultMaxTurns` | 0–10000, `0` = unlimited | `0` |
+| `graceTurns` | 1–1000 | `5` |
+| `maxSubagentDepth` | 0–16 | `2` |
+| `defaultJoinMode` | `smart` / `async` / `group` | `smart` |
+| `backgroundByDefault` | boolean | `true` |
+| `scopeModels` | boolean | `false` |
+| `strictAgentFiles` | boolean | `false` |
+| `outputTranscript` | boolean | `true` |
+| `worktreeIsolation` | boolean | `true` |
+| `reportUsage` | boolean | `false` |
+| `showCost` | boolean | `false` |
+| `showModel` | boolean | `false` |
+| `viewerMarkdown` | `off` / `assistant` / `all` | `assistant` |
+| `fleetView` | boolean | `true` |
+| `agentMentions` | `model` / `direct` / `off` | `model` |
+| `rememberAgents` | boolean | `true` |
+| `widgetMode` | `all` / `background` / `off` | `all` |
+| `toolDescriptionMode` | `full` / `compact` / `custom` | `full` |
 
 Two files, merged on load:
 
@@ -754,13 +767,13 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - `"direct"`: this extension starts it, immediately and with no model call.
 - `"off"`: gates all three actions plus the suggestion list, so `@` means only "attach a file" again and every `@…` prompt reaches the main model verbatim.
 
-`"model"` and `"direct"` differ only in [who starts an agent that isn't running](#starting-a-new-agent). Messaging and resuming are direct in both. The booleans this setting used to take are still read — `true` as `"model"`, `false` as `"off"`.
+`"model"` and `"direct"` differ only in [who starts an agent that isn't running](#starting-a-new-agent). Messaging and resuming are direct in both.
 
 ### Background by default
 
 `backgroundByDefault`, default `true`: what an `agent` call that doesn't say means. Toggle via `/agents → Settings → Background by default`; applied live.
 
-- On, following Claude Code: the agent runs detached, the call returns its ID immediately, and a completion notification carries a preview of the result (`get_subagent_result` for the full text).
+- On: the agent runs detached, the call returns its ID immediately, and a completion notification carries a preview of the result (`get_subagent_result` for the full text).
 - `false`: restores the previous behaviour, where an unqualified spawn blocked the turn and returned its output inline.
 - An explicit `run_in_background` on the call, or in an agent file's frontmatter, overrides this in both directions. The setting only decides what "unspecified" means.
 - **Top-level only.** A nested spawn (an agent spawning its own) always defaults to foreground, because a detached child is stopped when its parent settles and has no notification path of its own.
@@ -878,7 +891,7 @@ Applied live. Also settable from `/agents → Settings → Viewer markdown`.
 
 ### Tool description
 
-`toolDescriptionMode`, default `"full"`: which agent tool description the LLM sees. `"full"` is the rich Claude Code-style prompt; `"compact"` is ~75% smaller — one-line agent type list, terse usage notes — for small/local models where tool-spec tokens are expensive. Per-option details stay in the parameter descriptions in every mode (the parameter schema is never customizable). Applies on the next pi session.
+`toolDescriptionMode`, default `"full"`: which agent tool description the LLM sees. `"full"` is the rich prompt; `"compact"` is ~75% smaller — one-line agent type list, terse usage notes — for small/local models where tool-spec tokens are expensive. Per-option details stay in the parameter descriptions in every mode (the parameter schema is never customizable). Applies on the next pi session.
 
 `"custom"` registers your own description from `<cwd>/.pi/agent-tool-description.md` (project) or `<agentDir>/agent-tool-description.md` (global; project wins). The file is read once at tool registration, so edits also apply on the next pi session. Dynamic parts stay live via placeholders — a static agent list would go stale the moment you add a custom agent:
 
@@ -899,6 +912,18 @@ Placeholders:
 Unknown placeholders are left verbatim with a stderr warning. A missing or empty file falls back to `"full"` with a warning.
 
 Note the usual trust umbrella: a project-level file shapes the orchestrator's prompt, same as project agents and extensions do.
+
+### Fleet view
+
+`fleetView`, default `true`: whether the [FleetView](#fleetview) tree renders below the editor. Toggle via `/agents → Settings → Fleet view`; applied live.
+
+### Widget
+
+`widgetMode`, default `"all"`: which agents the above-editor widget shows. Toggle via `/agents → Settings → Widget`; applied live.
+
+- `"all"`: every agent.
+- `"background"`: hides foreground agents, which already render inline.
+- `"off"`: hides the widget.
 
 ### Example — global defaults for a beefy machine
 

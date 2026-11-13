@@ -126,9 +126,7 @@ function sanitize(raw: unknown): SubagentsSettings {
   if (typeof r.fleetView === "boolean") {
     out.fleetView = r.fleetView;
   }
-  if (typeof r.agentMentions === "boolean") {
-    out.agentMentions = r.agentMentions ? "model" : "off";
-  } else if (typeof r.agentMentions === "string" && VALID_AGENT_MENTION_MODES.has(r.agentMentions)) {
+  if (typeof r.agentMentions === "string" && VALID_AGENT_MENTION_MODES.has(r.agentMentions)) {
     out.agentMentions = r.agentMentions as AgentMentionMode;
   }
   if (typeof r.rememberAgents === "boolean") {
