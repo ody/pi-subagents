@@ -38,7 +38,7 @@ async function spawnBackground(
 ): Promise<string> {
   const r = await tools.get("agent").execute(
     "tc-spawn",
-    { prompt: "go", description: "stop wiring agent", subagent_type: "Explore", run_in_background: true, ...params },
+    { prompt: "go", description: "stop wiring agent", subagent_type: "general-purpose", run_in_background: true, ...params },
     undefined,
     undefined,
     ctx(),
@@ -124,7 +124,7 @@ describe("stop_subagent", () => {
     const topId = await spawnBackground(tools);
     await flush();
     const manager = rawManager();
-    const childId = manager.spawn(pi, ctx(), "Explore", "nested", {
+    const childId = manager.spawn(pi, ctx(), "general-purpose", "nested", {
       capability: grant(),
       description: "nested child",
       isBackground: true,
@@ -148,7 +148,7 @@ describe("stop_subagent", () => {
 
     await spawnBackground(tools);
     await flush();
-    const byHandle = await stop(tools, "explore");
+    const byHandle = await stop(tools, "general-purpose");
     expect(textOf(byHandle)).toContain("stopped");
 
     heldRun();
