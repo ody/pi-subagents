@@ -314,11 +314,6 @@ export default function (pi: ExtensionAPI) {
     reloadCustomAgents,
     settings,
     chooseViewerMarkdown,
-    showSettings: (ctx) => showSettings(ctx, {
-      settings,
-      manager,
-      settingsPersist,
-      isStrictAgentFiles: () => strictAgentFiles,
-    }),
+    showSettings: (ctx) => showSettings(ctx, { cwd: process.cwd(), settingsPersist }),
   });
 }

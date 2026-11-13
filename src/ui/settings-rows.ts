@@ -1,5 +1,8 @@
+import type { SettingItem } from "@earendil-works/pi-tui";
+import type { SubagentsSettings } from "../config/settings.js";
+
 export interface SettingRowDef {
-  id: string;
+  id: keyof SubagentsSettings;
   label: string;
   description: string;
   values?: readonly string[];
@@ -34,7 +37,7 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
     description: "Hard cap on nested delegation — main is 0, its subagents 1 (0/1 = nesting off, Enter to type)",
   },
   {
-    id: "joinMode",
+    id: "defaultJoinMode",
     label: "Join mode",
     description: "Default join mode for background agents",
     values: ["smart", "async", "group"],
@@ -134,3 +137,20 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
     values: ["full", "compact", "custom"],
   },
 ];
+
+export function displayValue(value: string | number | boolean): string {
+  return typeof value === "boolean" ? (value ? "on" : "off") : String(value);
+}
+
+export function buildItems(values: Required<SubagentsSettings>): SettingItem[] {
+  return SETTING_ROWS.map((row) => {
+    const currentValue = displayValue(values[row.id]);
+    return {
+      id: row.id,
+      label: row.label,
+      description: row.description,
+      currentValue,
+      values: row.values ? [...row.values] : [currentValue],
+    };
+  });
+}
