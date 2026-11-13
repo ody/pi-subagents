@@ -108,37 +108,47 @@ export class FleetList {
     this.ui = undefined;
   }
 
+  canOpen(): boolean {
+    return this.enabled && !!this.ui && !this.active && this.nodes().length > 1;
+  }
+
+  onAgentsWidgetRegistered(tui: unknown): void {
+    this.tui ??= tui;
+    if (this.ui && this.active && this.widgetRegistered) this.registerWidget(this.ui);
+  }
+
   update(): void {
     if (!this.ui) return;
-    const hasRows = this.enabled && this.nodes().length > 1;
+    if (!this.enabled || this.nodes().length <= 1) this.active = false;
 
-    if (!hasRows) {
-      if (this.widgetRegistered) {
-        this.ui.setWidget(FLEET_KEY, undefined);
-        this.widgetRegistered = false;
-        this.tui = undefined;
-      }
-      if (this.timer) { clearInterval(this.timer); this.timer = undefined; }
-      this.active = false;
+    if (!this.active) {
       this.selectedKey = MAIN_KEY;
+      this.unregisterWidget();
       return;
     }
 
     this.reconcileSelection();
     this.ensureTimer();
 
-    if (!this.widgetRegistered) {
-      this.ui.setWidget(FLEET_KEY, (tui, theme) => {
-        this.tui = tui;
-        return {
-          render: (w: number) => this.renderBar(w, theme),
-          invalidate: () => { this.widgetRegistered = false; this.tui = undefined; },
-        };
-      }, { placement: "belowEditor" });
-      this.widgetRegistered = true;
-    } else {
-      this.tui?.requestRender();
-    }
+    if (!this.widgetRegistered) this.registerWidget(this.ui);
+    else this.tui?.requestRender();
+  }
+
+  private registerWidget(ui: FleetUICtx): void {
+    ui.setWidget(FLEET_KEY, (tui, theme) => {
+      this.tui = tui;
+      return {
+        render: (w: number) => this.renderBar(w, theme),
+        invalidate: () => { this.widgetRegistered = false; this.tui = undefined; },
+      };
+    }, { placement: "aboveEditor" });
+    this.widgetRegistered = true;
+  }
+
+  private unregisterWidget(): void {
+    if (this.widgetRegistered) this.ui?.setWidget(FLEET_KEY, undefined);
+    this.widgetRegistered = false;
+    if (this.timer) { clearInterval(this.timer); this.timer = undefined; }
   }
 
   private isEligible(record: AgentRecord, now: number): boolean {
@@ -191,8 +201,7 @@ export class FleetList {
   }
 
   private tryActivate(data: string): boolean {
-    const isActivator = matchesKey(data, "down") || matchesKey(data, "left");
-    if (!isActivator || this.nodes().length <= 1 || this.ui?.getEditorText() !== "") return false;
+    if (!matchesKey(data, "down") || this.nodes().length <= 1 || this.ui?.getEditorText() !== "") return false;
     this.active = true;
     this.selectedKey = MAIN_KEY;
     this.update();
@@ -202,11 +211,8 @@ export class FleetList {
   private moveSelection(down: boolean): void {
     const nodes = this.nodes();
     const index = nodes.findIndex(n => n.key === this.selectedKey);
-    if (!down && index <= 0) {
-      this.deactivate();
-      return;
-    }
-    const target = nodes[down ? Math.min(nodes.length - 1, index + 1) : index - 1];
+    const next = down ? (index + 1) % nodes.length : index <= 0 ? nodes.length - 1 : index - 1;
+    const target = nodes[next];
     if (target) this.selectedKey = target.key;
     this.update();
   }
@@ -296,9 +302,7 @@ export class FleetList {
     const selected = this.selectedKey;
     const canCollapse = rows.some(row => row.hasChildren);
     this.showGlyphs = canCollapse || rows.some(row => row.kind === "agent" && row.orphan);
-    const hint = this.active
-      ? canCollapse ? "↑↓ select · ←→ collapse · enter view · esc back" : "↑↓ select · enter view · esc back"
-      : "esc to interrupt · ← for agents · ↓ to manage";
+    const hint = canCollapse ? "↑↓ select · ←→ collapse · enter view · esc back" : "↑↓ select · enter view · esc back";
     const lines: string[] = [];
     lines.push(truncateToWidth("  " + theme.fg("dim", hint), width));
     lines.push("");

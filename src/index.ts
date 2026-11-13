@@ -231,7 +231,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   function getWidgetMode(): WidgetMode { return settings.widgetMode; }
-  const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled);
+  const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled,
+    () => fleet.canOpen(), tui => fleet.onAgentsWidgetRegistered(tui));
   function setWidgetMode(m: WidgetMode): void { settings.setWidgetModeFlag(m); }
 
   const fleet = new FleetList(manager, isShowCostEnabled, getViewerMarkdown,

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderRunningAgentStatus } from "../src/tool/agent-tool-render.js";
 import type { AgentActivity, WidgetMode } from "../src/types.js";
 import { fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../src/ui/agent-format.js";
@@ -145,6 +145,46 @@ describe("AgentWidget", () => {
       ],
     };
     expect(renderLines(manager, "parent", () => "all")).not.toContain("child description");
+  });
+
+  describe("fleet hint", () => {
+    const manager = { listAgents: () => [makeRecord("a", { isBackground: true })] };
+
+    function heading(showHint: () => boolean): string {
+      const widget = new AgentWidget(withActivity(manager as any, new Map([["a", makeActivity()]])), undefined, () => false, () => false, showHint);
+      let factory: any;
+      widget.setUICtx({ setStatus: () => {}, setWidget: (_key, content) => { factory = content; } });
+      widget.update();
+      return factory({ terminal: { columns: 120 }, requestRender: () => {} }, theme).render()[0];
+    }
+
+    it("appends '↓ to manage' while the fleet can open", () => {
+      expect(heading(() => true)).toBe("● Agents ↓ to manage");
+    });
+
+    it("drops the hint while the fleet is open or disabled", () => {
+      expect(heading(() => false)).toBe("● Agents");
+    });
+
+    it("re-reads the condition on every render", () => {
+      let canOpen = true;
+      const widget = new AgentWidget(withActivity(manager as any, new Map([["a", makeActivity()]])), undefined, () => false, () => false, () => canOpen);
+      let factory: any;
+      widget.setUICtx({ setStatus: () => {}, setWidget: (_key, content) => { factory = content; } });
+      widget.update();
+      const component = factory({ terminal: { columns: 120 }, requestRender: () => {} }, theme);
+      expect(component.render()[0]).toContain("↓ to manage");
+      canOpen = false;
+      expect(component.render()[0]).not.toContain("↓ to manage");
+    });
+
+    it("tells the fleet when the widget registers", () => {
+      const registered = vi.fn();
+      const widget = new AgentWidget(withActivity(manager as any, new Map([["a", makeActivity()]])), undefined, () => false, () => false, () => false, registered);
+      widget.setUICtx({ setStatus: () => {}, setWidget: () => {} });
+      widget.update();
+      expect(registered).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("excludes foreground agents in 'background' mode", () => {

@@ -80,6 +80,7 @@ interface Harness {
   overlayClosed: () => boolean;
   closeOverlay: () => Promise<void>;
   widgetTui: { requestRender(): void; focusedComponent?: unknown };
+  widgetCalls: { key: string; registered: boolean; placement?: string }[];
 }
 
 function harness(
@@ -97,9 +98,13 @@ function harness(
   let overlayDone: ((r: undefined) => void) | undefined;
   let overlayComponent: { handleInput(data: string): void } | undefined;
   const fakeTui = { requestRender: () => {}, terminal: { columns: 120, rows: 40 } };
+  const widgetCalls: Harness["widgetCalls"] = [];
 
   const ui: FleetUICtx = {
-    setWidget: (_key, content) => { widgetFactory = content as any; },
+    setWidget: (key, content, options) => {
+      widgetFactory = content as any;
+      widgetCalls.push({ key, registered: content !== undefined, placement: options?.placement });
+    },
     onTerminalInput: (h) => { inputHandler = h; return () => { inputHandler = undefined; }; },
     getEditorText: () => editorText,
     notify: () => {},
@@ -130,6 +135,7 @@ function harness(
     overlayClosed: () => closed,
     closeOverlay: async () => { overlayDone?.(undefined); await Promise.resolve(); },
     widgetTui: fakeTui,
+    widgetCalls,
   };
 }
 
@@ -159,11 +165,50 @@ describe("FleetList navigation", () => {
     expect(h.render()).toEqual([]);
   });
 
+  it("never registers the fleet widget while closed", () => {
+    const h = harness([makeRecord()]);
+    h.fleet.update();
+    expect(h.widgetCalls.filter(c => c.registered)).toEqual([]);
+    expect(h.render()).toEqual([]);
+  });
+
+  it("registers aboveEditor on open and unregisters on close", () => {
+    const h = harness([makeRecord()]);
+    h.press(DOWN);
+    expect(h.widgetCalls.filter(c => c.registered)).toEqual([{ key: "fleet", registered: true, placement: "aboveEditor" }]);
+    h.press(ESC);
+    expect(h.widgetCalls.at(-1)).toEqual({ key: "fleet", registered: false, placement: undefined });
+    expect(h.render()).toEqual([]);
+  });
+
+  it("registers again on request so it stays below the Agents widget", () => {
+    const h = harness([makeRecord()]);
+    h.fleet.onAgentsWidgetRegistered(h.widgetTui);
+    expect(h.widgetCalls.filter(c => c.registered)).toEqual([]);
+    h.press(DOWN);
+    h.fleet.onAgentsWidgetRegistered(h.widgetTui);
+    expect(h.widgetCalls.filter(c => c.registered)).toHaveLength(2);
+    expect(h.widgetCalls.at(-1)?.placement).toBe("aboveEditor");
+  });
+
+  it("reports canOpen only while closed, enabled and an agent exists", () => {
+    const h = harness([makeRecord()]);
+    expect(h.fleet.canOpen()).toBe(true);
+    h.press(DOWN);
+    expect(h.fleet.canOpen()).toBe(false);
+    h.press(ESC);
+    expect(h.fleet.canOpen()).toBe(true);
+    h.fleet.setEnabled(false);
+    expect(h.fleet.canOpen()).toBe(false);
+    expect(harness([]).fleet.canOpen()).toBe(false);
+  });
+
   it("nests a child record under its parent, indented", () => {
     const h = harness([
       makeRecord({ id: "top", description: "top-level" }),
       makeRecord({ id: "nested", description: "nested-child", parentAgentId: "top" }),
     ]);
+    h.press(DOWN);
     const rows = h.render();
     const parent = rows.findIndex(l => l.includes("top-level"));
     const child = rows.findIndex(l => l.includes("nested-child"));
@@ -232,6 +277,7 @@ describe("FleetList navigation", () => {
 
   it("marks an agent whose parent is gone as detached", () => {
     const h = harness([makeRecord({ id: "orphan", description: "lost", parentAgentId: "evicted" })]);
+    h.press(DOWN);
     expect(h.render().find(l => l.includes("lost"))).toContain("↯");
   });
 
@@ -242,9 +288,10 @@ describe("FleetList navigation", () => {
     expect(h.render().some(l => l.includes("enter view"))).toBe(true);
   });
 
-  it("also activates on ← (matches the '← for agents' hint)", () => {
+  it("does not activate on ←", () => {
     const h = harness([makeRecord()]);
-    expect(h.press(LEFT)).toEqual({ consume: true });
+    expect(h.press(LEFT)).toBeUndefined();
+    expect(h.render()).toEqual([]);
   });
 
   it("does NOT activate when the prompt is non-empty (typing is preserved)", () => {
@@ -308,7 +355,7 @@ describe("FleetList navigation", () => {
     }
   });
 
-  it("moves selection down/up and clamps at the ends", () => {
+  it("moves selection down and wraps from the last row to main", () => {
     const agents = [
       makeRecord({ id: "a1", description: "one" }),
       makeRecord({ id: "a2", description: "two" }),
@@ -318,23 +365,41 @@ describe("FleetList navigation", () => {
     h.press(DOWN);
     expect(h.render().find(l => l.includes("one"))).toContain("●");
     h.press(DOWN);
-    h.press(DOWN);
     expect(h.render().find(l => l.includes("two"))).toContain("●");
     expect(h.render().find(l => l.includes("one"))).toContain("○");
+    expect(h.press(DOWN)).toEqual({ consume: true });
+    expect(h.render().find(l => l.includes("main"))).toContain("●");
+    expect(h.render().some(l => l.includes("enter view"))).toBe(true);
   });
 
-  it("↑ above 'main' deactivates (returns to the prompt)", () => {
-    const h = harness([makeRecord()]);
+  it("↑ on 'main' wraps to the last row and stays open", () => {
+    const h = harness([
+      makeRecord({ id: "a1", description: "one" }),
+      makeRecord({ id: "a2", description: "two" }),
+    ]);
     h.press(DOWN);
     expect(h.press(UP)).toEqual({ consume: true });
-    expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
+    expect(h.render().find(l => l.includes("two"))).toContain("●");
+    expect(h.render().find(l => l.includes("main"))).toContain("○");
+    expect(h.fleet.canOpen()).toBe(false);
   });
 
-  it("Esc deactivates", () => {
+  it("keeps a wrapped selection inside the window", () => {
+    const agents = Array.from({ length: 8 }, (_, i) => makeRecord({ id: `a${i}`, description: `report ${i}` }));
+    const h = harness(agents);
+    h.press(DOWN);
+    h.press(UP);
+    expect(h.render().find(l => l.includes("report 7"))).toContain("●");
+    h.press(DOWN);
+    expect(h.render().find(l => l.includes("main"))).toContain("●");
+    expect(h.render().some(l => l.includes("report 0"))).toBe(true);
+  });
+
+  it("Esc closes the view", () => {
     const h = harness([makeRecord()]);
     h.press(DOWN);
     expect(h.press(ESC)).toEqual({ consume: true });
-    expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
+    expect(h.render()).toEqual([]);
   });
 
   it("↑ from a lower row moves up one row and stays active", () => {
@@ -365,7 +430,7 @@ describe("FleetList navigation", () => {
     const h = harness([makeRecord()]);
     h.press(DOWN);
     expect(h.press("x")).toBeUndefined();
-    expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
+    expect(h.render()).toEqual([]);
   });
 
   it("ignores all input while disabled and hides the widget", () => {
@@ -387,8 +452,10 @@ describe("FleetList navigation", () => {
         notify: () => {}, custom: (() => new Promise<undefined>(() => {})) as FleetUICtx["custom"],
       });
       fleet.update();
+      fleet.handleKey(DOWN);
       fleet.setEnabled(false);
       fleet.setEnabled(true);
+      fleet.handleKey(DOWN);
       const before = listAgents.mock.calls.length;
       vi.advanceTimersByTime(250);
       expect(listAgents.mock.calls.length).toBeGreaterThan(before);
@@ -408,7 +475,7 @@ describe("FleetList vs other focused components (#123)", () => {
 
   function focusInHarness(h: Harness, focused: unknown): void {
     h.widgetTui.focusedComponent = focused;
-    h.render();
+    h.fleet.onAgentsWidgetRegistered(h.widgetTui);
   }
 
   it("does not steal ↓ from a focused selector (activation)", () => {
@@ -425,7 +492,7 @@ describe("FleetList vs other focused components (#123)", () => {
     expect(h.press(DOWN)).toBeUndefined();
     expect(h.press(ENTER)).toBeUndefined();
     expect(h.press(ESC)).toBeUndefined();
-    expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
+    expect(h.render().some(l => l.includes("enter view"))).toBe(false);
   });
 
   it("still activates when the prompt editor has focus", () => {
@@ -443,8 +510,9 @@ describe("FleetList vs other focused components (#123)", () => {
 describe("FleetList rendering", () => {
   it("renders main + agent rows with markers, type, description and right-aligned stats", () => {
     const h = harness([makeRecord({ description: "Sleep then report 1" })]);
+    h.press(DOWN);
     const lines = h.render(120);
-    expect(lines[0]).toContain("← for agents");
+    expect(lines[0]).toContain("enter view");
     expect(lines.find(l => l.includes("main"))).toContain("●");
     const agentLine = lines.find(l => l.includes("Sleep then report 1"))!;
     expect(agentLine).toContain("○");
@@ -458,7 +526,9 @@ describe("FleetList rendering", () => {
       makeRecord({ id: "new", description: "newest", startedAt: 2000 }),
       makeRecord({ id: "old", description: "oldest", startedAt: 1000 }),
     ];
-    const lines = harness(agents).render();
+    const h = harness(agents);
+    h.press(DOWN);
+    const lines = h.render();
     const oldIdx = lines.findIndex(l => l.includes("oldest"));
     const newIdx = lines.findIndex(l => l.includes("newest"));
     expect(oldIdx).toBeGreaterThanOrEqual(0);
@@ -470,7 +540,9 @@ describe("FleetList rendering", () => {
       makeRecord({ id: "live", description: "running one" }),
       makeRecord({ id: "pending", description: "queued one", status: "queued", session: undefined }),
     ];
-    const lines = harness(agents).render();
+    const h = harness(agents);
+    h.press(DOWN);
+    const lines = h.render();
     expect(lines.some(l => l.includes("running one"))).toBe(true);
     expect(lines.some(l => l.includes("queued one"))).toBe(false);
   });
@@ -479,6 +551,7 @@ describe("FleetList rendering", () => {
     const agents = Array.from({ length: 8 }, (_, i) =>
       makeRecord({ id: `a${i}`, description: `report ${i}` }));
     const h = harness(agents);
+    h.press(DOWN);
     const lines = h.render(120);
     expect(lines.some(l => l.includes("↓ 3 more"))).toBe(true);
   });
@@ -512,7 +585,7 @@ describe("FleetList overlay lifecycle", () => {
     h.press(DOWN);
     h.press(ENTER);
     expect(h.overlayOpened()).toBe(false);
-    expect(h.render().some(l => l.includes("← for agents"))).toBe(true);
+    expect(h.render()).toEqual([]);
   });
 
   it("keeps the cursor on the viewed agent after closing, even if the list reordered", async () => {
@@ -531,6 +604,28 @@ describe("FleetList overlay lifecycle", () => {
     await h.closeOverlay();
     expect(h.render().find(l => l.includes("two"))).toContain("●");
     expect(h.render().find(l => l.includes("three"))).toContain("○");
+  });
+
+  it("returns to the open view with the agent selected after the viewer closes", async () => {
+    const h = harness([makeRecord({ id: "a1", description: "one" })]);
+    h.press(DOWN);
+    h.press(DOWN);
+    h.press(ENTER);
+    expect(h.press(ESC)).toBeUndefined();
+    await h.closeOverlay();
+    expect(h.widgetCalls.at(-1)?.registered).toBe(true);
+    expect(h.fleet.canOpen()).toBe(false);
+    expect(h.render().find(l => l.includes("one"))).toContain("●");
+  });
+
+  it("Esc on an agent row closes the view, and reopening selects main", () => {
+    const h = harness([makeRecord({ id: "a1", description: "one" })]);
+    h.press(DOWN);
+    h.press(DOWN);
+    expect(h.press(ESC)).toEqual({ consume: true });
+    expect(h.render()).toEqual([]);
+    h.press(DOWN);
+    expect(h.render().find(l => l.includes("main"))).toContain("●");
   });
 
   it("wires the viewer's steer composer to manager.steer with the agent id", () => {
@@ -579,9 +674,13 @@ describe("FleetList overlay lifecycle", () => {
 
   it("lingers a finished agent in the list, then drops it after the window", () => {
     const recent = makeRecord({ id: "r", description: "recent done", status: "completed", completedAt: Date.now() });
-    expect(harness([recent]).render().some(l => l.includes("recent done"))).toBe(true);
+    const open = harness([recent]);
+    open.press(DOWN);
+    expect(open.render().some(l => l.includes("recent done"))).toBe(true);
     const old = makeRecord({ id: "o", description: "old done", status: "completed", completedAt: Date.now() - 60_000 });
-    expect(harness([old]).render().some(l => l.includes("old done"))).toBe(false);
+    const stale = harness([old]);
+    expect(stale.press(DOWN)).toBeUndefined();
+    expect(stale.render()).toEqual([]);
   });
 });
 
@@ -600,6 +699,7 @@ describe("FleetList cost display", () => {
       custom: (() => new Promise(() => {})) as any,
     } as any);
     fleet.update();
+    fleet.handleKey(DOWN);
     return factory({ requestRender: () => {}, terminal: { columns: 120, rows: 40 } }, theme).render(120).join("\n");
   }
 
