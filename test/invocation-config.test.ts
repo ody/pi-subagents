@@ -209,6 +209,27 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
     expect(resolved.overridden?.runInBackground).toBe(true);
   });
 
+  it("lets a caller run_in_background of true beat a file's false and a false default", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ runInBackground: false }),
+      { run_in_background: true },
+      { defaultRunInBackground: false },
+    );
+
+    expect(resolved.runInBackground).toBe(true);
+    expect(resolved.overridden?.runInBackground).toBe(false);
+  });
+
+  it("lets a file's run_in_background of false beat a true default", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ runInBackground: false }),
+      {},
+      { defaultRunInBackground: true },
+    );
+
+    expect(resolved.runInBackground).toBe(false);
+  });
+
   it("forces background without recording it as an override of the file's foreground", () => {
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ runInBackground: false }),
