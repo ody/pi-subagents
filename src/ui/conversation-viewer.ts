@@ -6,7 +6,7 @@ import type { AgentActivity, AgentRecord, ViewerMarkdownMode } from "../types.js
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
 import { renderAgentName } from "./agent-color.js";
 import type { Theme } from "./agent-format.js";
-import { renderModeTag, buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel } from "./agent-format.js";
+import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag } from "./agent-format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 
 const CHROME_LINES_BASE = 6;

@@ -75,7 +75,6 @@ describe("output-file streaming across a real compaction (#145)", () => {
       cwd,
       agentDir,
       model,
-      modelRegistry: backend.modelRegistry as never,
       modelRuntime: backend.modelRuntime as never,
       resourceLoader: loader,
       sessionManager: SessionManager.inMemory(cwd),

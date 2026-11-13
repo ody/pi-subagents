@@ -410,7 +410,7 @@ Any thinking.`);
     expect(result.get("anythink")!.thinking).toBe("turbo");
   });
 
-  it("loads thinking: max (pi 0.80's top level) unchanged (#147)", () => {
+  it("loads thinking: max unchanged (#147)", () => {
     writeAgent("deepthink", `---
 thinking: max
 ---

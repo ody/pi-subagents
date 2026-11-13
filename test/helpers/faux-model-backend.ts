@@ -19,6 +19,7 @@ export function fauxModelBackend(model: Model<string>): {
     modelRuntime: {
       getModel: () => model,
       getModels: () => [model],
+      getPhysicalModel: () => model,
       getProvider: () => undefined,
       getProviders: () => [],
       getAvailable: async () => [model],

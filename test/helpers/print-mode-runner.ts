@@ -79,6 +79,26 @@ export function agentCall(
   return fauxToolCall("agent", { subagent_type: "general-purpose", ...args }, opts);
 }
 
+export function contextToolNames(context: Pick<Context, "messages">): string[] {
+  const names = new Set<string>();
+  for (const message of context.messages) {
+    if (message.role !== "system") continue;
+    for (const tool of message.toolsAdded ?? []) names.add(tool.name);
+    for (const tool of message.toolsRemoved ?? []) names.delete(tool.name);
+  }
+  return [...names];
+}
+
+export function contextSystemPrompt(context: Pick<Context, "messages">): string {
+  const parts: string[] = [];
+  for (const message of context.messages) {
+    if (message.role !== "system") continue;
+    parts.push(typeof message.content === "string" ? message.content : message.content.map((block) => block.text).join(""));
+    for (const section of Object.values(message.sections ?? {})) if (section) parts.push(section);
+  }
+  return parts.join("\n");
+}
+
 function resolveReply(
   reply: FauxReply | ((ctx: Context) => FauxReply),
   ctx: Context,
@@ -92,7 +112,7 @@ export function routeBySession(routes: {
   subagent: FauxReply | ((ctx: Context) => FauxReply);
 }): FauxResponder {
   return (context) => {
-    const isParent = (context.tools ?? []).some((t) => t.name === "agent");
+    const isParent = contextToolNames(context).includes("agent");
     if (!isParent) return resolveReply(routes.subagent, context);
     const spawned = context.messages.some(
       (m) => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",
@@ -146,7 +166,6 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
 
   let faux: ReturnType<typeof registerFauxProvider> | undefined;
   let model: Model<string> | undefined;
-  let modelRegistry: unknown;
   let modelRuntime: unknown;
   if (live) {
     const pin = options.live || undefined;
@@ -160,7 +179,6 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
         );
       }
     }
-    modelRegistry = undefined;
     modelRuntime = undefined;
   } else {
     if (!options.steps && !options.respond) {
@@ -168,7 +186,7 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
     }
     faux = registerFauxProvider({ provider: "faux", models: [{ id: "faux-1", contextWindow: 200_000 }] });
     model = faux.getModel();
-    ({ modelRegistry, modelRuntime } = fauxModelBackend(model));
+    ({ modelRuntime } = fauxModelBackend(model));
 
     if (options.steps) {
       faux.setResponses(options.steps);
@@ -203,7 +221,6 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
     cwd,
     agentDir,
     model,
-    modelRegistry: modelRegistry as any,
     modelRuntime: modelRuntime as any,
     resourceLoader: loader,
     sessionManager: SessionManager.inMemory(cwd),

@@ -66,7 +66,7 @@ function visibleTools(opts: any): any[] {
 
 function cloneSession(turn?: (tool: any) => Promise<void> | void) {
   const session = {
-    agent: { state: { systemPrompt: "rebuilt-from-cwd", messages: [] as any[] } },
+    agent: { state: { messages: [] as any[] } },
     prompt: vi.fn(async () => {}),
     dispose: vi.fn(),
   } as any;
@@ -101,7 +101,7 @@ describe("cloning the conversation", () => {
 
     await runMentionClone(opts());
 
-    expect(session.agent.state.messages).toEqual([
+    expect(session.agent.state.messages.filter((message: any) => message.role !== "system")).toEqual([
       { role: "user", content: [{ type: "text", text: "hi" }] },
       { role: "assistant", content: [{ type: "text", text: "hello" }] },
     ]);
@@ -145,16 +145,17 @@ describe("cloning the conversation", () => {
     const result = await runMentionClone(o);
 
     expect(result).toEqual({ spawned: true });
-    expect(session.agent.state.messages).toEqual([]);
-    expect(session.agent.state.systemPrompt).toBe("the live system prompt");
+    expect(session.agent.state.messages).toEqual([
+      expect.objectContaining({ role: "system", content: "the live system prompt" }),
+    ]);
   });
 
-  it("carries the live system prompt rather than the one it rebuilt", async () => {
+  it("carries the live system prompt as a system message ahead of the conversation", async () => {
     const session = cloneSession(callsAgent());
 
     await runMentionClone(opts());
 
-    expect(session.agent.state.systemPrompt).toBe("the live system prompt");
+    expect(session.agent.state.messages[0]).toMatchObject({ role: "system", content: "the live system prompt" });
   });
 
   it("inherits the parent's model, thinking level and providers", async () => {
@@ -210,7 +211,7 @@ describe("attributing the spawn to the real session", () => {
     await runMentionClone(o);
 
     expect(tool.execute).toHaveBeenCalledTimes(1);
-    expect(tool.execute.mock.calls[0][4]).toBe(o.ctx);
+    expect(Object.getPrototypeOf(tool.execute.mock.calls[0][4])).toBe(o.ctx);
   });
 
   it("passes no tool-call id, since the real session issued none", async () => {
