@@ -5,7 +5,9 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSettingsPersistence } from "../src/config/runtime-settings.js";
 import type { SettingsAppliers } from "../src/config/settings.js";
+import { SETTING_KEYS, SETTING_SPECS } from "../src/config/settings-defaults.js";
 import { applySettingValue, initialLayer, resetSettingValue, type SettingsMenuDeps, showSettings } from "../src/ui/settings-menu.js";
+import { SETTING_ROWS } from "../src/ui/settings-rows.js";
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
@@ -417,6 +419,31 @@ describe("settings layers", () => {
     expect(readJson(projectFile())).toEqual({ maxConcurrent: 10, showCost: false });
   });
 
+  it("keeps a full-snapshot project file across tab switches and r removes its keys one at a time", async () => {
+    const snapshot = Object.fromEntries(SETTING_KEYS.map((key) => [key, SETTING_SPECS[key].default]));
+    writeGlobal({});
+    writeProject(snapshot);
+    const { shown, menu } = open(realDeps(), { layer: "global", selected: "graceTurns" });
+    menu().handleInput("\t");
+    await vi.waitFor(() => expect(menus).toHaveLength(2));
+    menu().handleInput("\t");
+    await vi.waitFor(() => expect(menus).toHaveLength(3));
+    menu().handleInput("\t");
+    await vi.waitFor(() => expect(menus).toHaveLength(4));
+    expect(readJson(projectFile())).toEqual(snapshot);
+    menu().handleInput("r");
+    await vi.waitFor(() => expect(menus).toHaveLength(5));
+    const { graceTurns: _grace, ...withoutGrace } = snapshot;
+    expect(readJson(projectFile())).toEqual(withoutGrace);
+    menu().handleInput("\x1b[B");
+    menu().handleInput("r");
+    await vi.waitFor(() => expect(menus).toHaveLength(6));
+    const { maxSubagentDepth: _depth, ...rest } = withoutGrace;
+    expect(readJson(projectFile())).toEqual(rest);
+    menu().handleInput("\x1b");
+    await shown;
+  });
+
   it("r does nothing on a read-only layer", () => {
     writeProject("{ broken");
     const { menu } = open(realDeps(), { layer: "project" });
@@ -523,5 +550,21 @@ describe("settings layers", () => {
     expect(readJson(projectFile())).toEqual({ graceTurns: 4 });
     applySettingValue(layerCtx, deps, "global", "maxConcurrent", "32");
     expect(calls[calls.length - 1]).toBe(32);
+  });
+});
+
+describe("settings rows match the setting specs", () => {
+  it.each(SETTING_KEYS)("%s row lists the values its spec allows", (key) => {
+    const spec = SETTING_SPECS[key];
+    const row = SETTING_ROWS.find((candidate) => candidate.id === key);
+    expect(row).toBeDefined();
+    if (spec.kind === "integer") expect(row?.values).toBeUndefined();
+    else if (spec.kind === "boolean") expect([...(row?.values ?? [])].sort()).toEqual(["off", "on"]);
+    else expect([...(row?.values ?? [])].sort()).toEqual([...spec.values].sort());
+  });
+
+  it("has no row outside the specs except ephemeralNesting", () => {
+    const extra = SETTING_ROWS.map((row) => row.id).filter((id) => !(SETTING_KEYS as string[]).includes(id));
+    expect(extra).toEqual(["ephemeralNesting"]);
   });
 });
