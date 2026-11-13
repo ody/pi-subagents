@@ -61,6 +61,14 @@ describe("buildAgentToolDescription", () => {
     expect(off).not.toContain("isolation:");
   });
 
+  it.each(["full", "compact"] as const)("states the type fit rule and never requires subagent_type in %s mode", (mode) => {
+    const text = buildAgentToolDescription({ ...base, mode });
+    expect(text).toContain("only when a listed type");
+    expect(text).toContain("omit");
+    expect(text).not.toMatch(/specify a subagent_type/i);
+    expect(text).not.toMatch(/match an available agent type/i);
+  });
+
   it("compact is shorter than full", () => {
     expect(buildAgentToolDescription({ ...base, mode: "compact" }).length).toBeLessThan(buildAgentToolDescription(base).length);
   });

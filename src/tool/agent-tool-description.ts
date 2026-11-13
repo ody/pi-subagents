@@ -56,6 +56,8 @@ export function buildAgentToolDescription(o: {
   const compactAgentToolDescription = `Launch an autonomous agent for complex, multi-step tasks. Agent types:
 ${buildCompactTypeListText()}
 
+Pass subagent_type only when a listed type's description matches the job. Otherwise omit it and set tools, disallowed_tools, and prompt_mode.
+
 Custom agents: .pi/agents/<name>.md (project) or ${getAgentDir()}/agents/<name>.md (global).
 
 Notes:
@@ -72,11 +74,11 @@ ${buildTypeListText()}
 
 Custom agents can be defined in .pi/agents/<name>.md (project) or ${getAgentDir()}/agents/<name>.md (global) — they are picked up automatically. Project-level agents override global ones.
 
-When using the agent tool, specify a subagent_type parameter to select which agent type to use.
+Pass subagent_type only when a listed type's description matches the job. When none matches, omit subagent_type and describe the agent with the tools, disallowed_tools, and prompt_mode parameters. Example: for a read-only audit, omit the type and restrict tools to what the audit needs.
 
 ## When not to use
 
-If the target is already known, handle it yourself. Reserve this tool for open-ended questions that span the codebase, or tasks that match an available agent type.
+If the target is already known, handle it yourself. Reserve this tool for open-ended questions that span the codebase, or for work that suits a separate agent.
 
 ## Usage notes
 
