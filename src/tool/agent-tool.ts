@@ -95,7 +95,9 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       ),
       run_in_background: Type.Optional(
         Type.Boolean({
-          description: "Defaults to true — the agent runs detached, returning its ID immediately, and you are notified on completion. Set false only when your very next action depends on the result; the call then blocks and returns the agent's full output inline.",
+          description: settings.backgroundByDefault
+            ? "Defaults to true — the agent runs detached, returning its ID immediately, and you are notified on completion. Set false only when your very next action depends on the result; the call then blocks and returns the agent's full output inline."
+            : "Defaults to false — the call blocks and returns the agent's full output inline. Set true to run the agent detached; the call then returns its ID immediately and you are notified on completion.",
         }),
       ),
       resume: Type.Optional(
