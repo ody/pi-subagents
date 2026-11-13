@@ -6,7 +6,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
 
 - **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`agent`, `get_subagent_result`, `steer_subagent`) — feels native
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
-- **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent), `background` (default — hides foreground runs, which already render inline as the `agent` tool result), or `off`
+- **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent, the default), `background` (hides foreground runs, which already render inline as the `agent` tool result), or `off`
 - **FleetView** — navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in. `↑`/`↓` move the selection. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` returns. Toggle via `/agents → Settings → Fleet view`
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too.
   - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
@@ -80,7 +80,7 @@ Agents run in the background by default. The call returns an ID immediately and 
 
 ## UI
 
-The extension renders a persistent widget above the editor showing active agents. By default it shows background runs only (`widgetMode: background`) — foreground agents already render inline as the `agent` tool result, so the widget would otherwise double-render them. Switch to `all` (every agent) or `off` (hide the widget) via `/agents → Settings → Widget`:
+The extension renders a persistent widget above the editor showing active agents. By default it shows every agent (`widgetMode: all`). Switch to `background` (hide foreground agents, which already render inline as the `agent` tool result) or `off` (hide the widget) via `/agents → Settings → Widget`:
 
 ```text
 ● Agents
@@ -706,7 +706,7 @@ A menu change writes one key to one file. It keeps every other key in that file,
 
 ### Precedence
 
-Project overrides global on any field present in both. A menu change never copies an inherited global value into the project file, so a later edit to the global file still applies. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`).
+Project overrides global on any field present in both. A menu change never copies an inherited global value into the project file, so a later edit to the global file still applies. Missing fields fall back to the defaults in the table above.
 
 ### Nested depth
 
@@ -1239,6 +1239,7 @@ src/
   config/             # How a run is configured: settings, defaults, model choice
     settings.ts       # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
     runtime-settings.ts # In-memory settings state and settings-write toasts
+    settings-defaults.ts # The one table of every setting's default and bounds
     settings-paths.ts # Paths of the global and project subagents.json
     settings-store.ts # Read and write one key of one subagents.json layer, keeping every other key
     capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json

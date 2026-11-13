@@ -3,6 +3,7 @@ import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Tex
 import { isScopeModelsEnabled } from "../config/model-scope.js";
 import { getDefaultMaxTurns, getGraceTurns, getRememberAgents } from "../config/runner-defaults.js";
 import type { RuntimeSettings, SettingsPersistence } from "../config/runtime-settings.js";
+import { describeRange, SETTING_SPECS } from "../config/settings-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
@@ -25,12 +26,16 @@ function isNumericSettingId(id: string | undefined): id is NumericSettingId {
 }
 
 const NUMERIC_PROMPT_LABELS: Record<NumericSettingId, string> = {
-  maxConcurrent: "Max concurrency (1+)",
-  maxConcurrentForeground: "Max foreground concurrency (0 = unlimited)",
-  defaultMaxTurns: "Default max turns (0 = unlimited)",
-  graceTurns: "Grace turns (1+)",
-  maxSubagentDepth: "Nested depth (0/1 = nesting off)",
+  maxConcurrent: "Max concurrency",
+  maxConcurrentForeground: "Max foreground concurrency, 0 = unlimited",
+  defaultMaxTurns: "Default max turns, 0 = unlimited",
+  graceTurns: "Grace turns",
+  maxSubagentDepth: "Nested depth, 0 or 1 = nesting off",
 };
+
+function promptLabel(id: NumericSettingId): string {
+  return `${NUMERIC_PROMPT_LABELS[id]} (${describeRange(SETTING_SPECS[id])})`;
+}
 
 function readNumericSetting(id: NumericSettingId, manager: SettingsMenuDeps["manager"]): string {
   switch (id) {
@@ -69,6 +74,10 @@ function readSetting(id: string, deps: SettingsMenuDeps): string {
 export function applySettingValue(ctx: ExtensionCommandContext, deps: SettingsMenuDeps, id: string, value: string): void {
   const parsed = parseSettingChange(id, value);
   if (!parsed) return;
+  if (!parsed.ok) {
+    ctx.ui.notify(parsed.message, "warning");
+    return;
+  }
   deps.settingsPersist.notifyApplied(ctx, parsed.message, { layer: "project", key: parsed.key, value: parsed.value });
 }
 
@@ -130,17 +139,18 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
 
   if (isNumericSettingId(result)) {
     const current = readNumericSetting(result, manager);
-    const label = NUMERIC_PROMPT_LABELS[result];
+    const label = promptLabel(result);
 
     let input: string | undefined = await ctx.ui.input(label, current);
     while (input != null) {
       const trimmed = input.trim();
-      const n = Number(trimmed);
-      if (trimmed !== "" && Number.isInteger(n)) {
-        applySettingValue(ctx, deps, result, String(n));
+      const parsed = parseSettingChange(result, trimmed);
+      if (parsed?.ok) {
+        applySettingValue(ctx, deps, result, trimmed);
         await showSettings(ctx, deps);
         return;
       }
+      if (parsed) ctx.ui.notify(parsed.message, "warning");
       input = await ctx.ui.input(label, trimmed);
     }
   }

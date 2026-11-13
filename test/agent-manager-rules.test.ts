@@ -3,19 +3,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   assertValidSpawnCwd,
-  DEFAULT_MAX_CONCURRENT,
-  DEFAULT_MAX_CONCURRENT_FOREGROUND,
   isTopLevelAgent,
   occupiesForegroundSlot,
   occupiesPoolSlot,
 } from "../src/manager/agent-manager-rules.js";
 
 describe("agent manager rules", () => {
-  it("keeps the concurrency defaults", () => {
-    expect(DEFAULT_MAX_CONCURRENT).toBe(10);
-    expect(DEFAULT_MAX_CONCURRENT_FOREGROUND).toBe(0);
-  });
-
   it("recognizes top-level agents", () => {
     expect(isTopLevelAgent({})).toBe(true);
     expect(isTopLevelAgent({ parentAgentId: "parent" })).toBe(false);

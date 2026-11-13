@@ -1,6 +1,7 @@
 import { isModelInScope, type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "./enabled-models.js";
+import { SETTING_SPECS } from "./settings-defaults.js";
 
-let scopeModelsEnabled = false;
+let scopeModelsEnabled = SETTING_SPECS.scopeModels.default;
 
 export function isScopeModelsEnabled(): boolean { return scopeModelsEnabled; }
 export function setScopeModelsEnabled(enabled: boolean): void { scopeModelsEnabled = enabled; }

@@ -1,44 +1,43 @@
 import type { SubagentsSettings } from "../config/settings.js";
+import { describeRange, isValidSettingValue, SETTING_SPECS } from "../config/settings-defaults.js";
 
-export interface ParsedChange {
-  key: keyof SubagentsSettings;
-  value: unknown;
-  message: string;
-}
+export type ParsedChange =
+  | { ok: true; key: keyof SubagentsSettings; value: unknown; message: string }
+  | { ok: false; message: string };
 
-type Parser = (value: string) => ParsedChange | undefined;
+type Parser = (value: string) => ParsedChange;
 
 function toggle(key: keyof SubagentsSettings, message: (enabled: boolean) => string): Parser {
-  return (value) => ({ key, value: value === "on", message: message(value === "on") });
+  return (value) => ({ ok: true, key, value: value === "on", message: message(value === "on") });
 }
 
 function choice(key: keyof SubagentsSettings, message: (value: string) => string): Parser {
-  return (value) => ({ key, value, message: message(value) });
+  return (value) => ({ ok: true, key, value, message: message(value) });
 }
 
-function integer(
-  key: keyof SubagentsSettings,
-  min: number,
-  message: (n: number) => string,
-): Parser {
+function integer(key: keyof SubagentsSettings, message: (n: number) => string): Parser {
+  const spec = SETTING_SPECS[key];
   return (value) => {
-    const n = parseInt(value, 10);
-    return n >= min ? { key, value: n, message: message(n) } : undefined;
+    const n = Number(value.trim());
+    if (value.trim() === "" || !isValidSettingValue(spec, n)) {
+      return { ok: false, message: `${key} must be a whole number from ${describeRange(spec)}` };
+    }
+    return { ok: true, key, value: n, message: message(n) };
   };
 }
 
 const enabledWord = (enabled: boolean): string => (enabled ? "enabled" : "disabled");
 
 const PARSERS: Record<string, Parser> = {
-  maxConcurrent: integer("maxConcurrent", 1, (n) => `Max concurrency set to ${n}`),
-  maxConcurrentForeground: integer("maxConcurrentForeground", 0, (n) =>
+  maxConcurrent: integer("maxConcurrent", (n) => `Max concurrency set to ${n}`),
+  maxConcurrentForeground: integer("maxConcurrentForeground", (n) =>
     n === 0 ? "Max foreground concurrency set to unlimited" : `Max foreground concurrency set to ${n}`,
   ),
-  defaultMaxTurns: integer("defaultMaxTurns", 0, (n) =>
+  defaultMaxTurns: integer("defaultMaxTurns", (n) =>
     n === 0 ? "Default max turns set to unlimited" : `Default max turns set to ${n}`,
   ),
-  graceTurns: integer("graceTurns", 1, (n) => `Grace turns set to ${n}`),
-  maxSubagentDepth: integer("maxSubagentDepth", 0, (n) =>
+  graceTurns: integer("graceTurns", (n) => `Grace turns set to ${n}`),
+  maxSubagentDepth: integer("maxSubagentDepth", (n) =>
     n <= 1 ? "Nested delegation disabled" : `Nested depth set to ${n}. Applies to agents started from now on.`,
   ),
   joinMode: choice("defaultJoinMode", (v) => `Default join mode set to ${v}`),
@@ -82,5 +81,5 @@ const PARSERS: Record<string, Parser> = {
 };
 
 export function parseSettingChange(id: string, value: string): ParsedChange | undefined {
-  return PARSERS[id]?.(value);
+  return Object.hasOwn(PARSERS, id) ? PARSERS[id](value) : undefined;
 }

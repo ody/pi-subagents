@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SETTING_KEYS, SETTING_SPECS, type SettingSpec } from "../src/config/settings-defaults.js";
 
 describe("documented defaults (README:441)", () => {
   beforeEach(() => {
@@ -53,5 +56,46 @@ describe("documented defaults (README:441)", () => {
   it("model scope is off by default", async () => {
     const { isScopeModelsEnabled } = await import("../src/config/model-scope.js");
     expect(isScopeModelsEnabled()).toBe(false);
+  });
+
+  it("runtime defaults equal the defaults table", async () => {
+    const { SETTING_SPECS } = await import("../src/config/settings-defaults.js");
+    const { getGraceTurns, getRememberAgents } = await import("../src/config/runner-defaults.js");
+    const { getMaxSubagentDepth } = await import("../src/tool/nested-tools.js");
+    const { getOutputTranscriptDefault } = await import("../src/platform/output-file.js");
+    const { isWorktreeIsolationEnabled } = await import("../src/platform/worktree.js");
+    expect(getGraceTurns()).toBe(SETTING_SPECS.graceTurns.default);
+    expect(getRememberAgents()).toBe(SETTING_SPECS.rememberAgents.default);
+    expect(getMaxSubagentDepth()).toBe(SETTING_SPECS.maxSubagentDepth.default);
+    expect(getOutputTranscriptDefault()).toBe(SETTING_SPECS.outputTranscript.default);
+    expect(isWorktreeIsolationEnabled()).toBe(SETTING_SPECS.worktreeIsolation.default);
+  }, HEAVY_REIMPORT_MS);
+});
+
+describe("README settings table", () => {
+  const readme = readFileSync(join(import.meta.dirname, "..", "README.md"), "utf8");
+  const section = readme.slice(readme.indexOf("## Persistent Settings"), readme.indexOf("Two files, merged on load"));
+  const rows = [...section.matchAll(/^\| `(\w+)` \| (.+?) \| `(.+?)` \|$/gm)].map((m) => ({
+    key: m[1],
+    values: m[2],
+    def: m[3],
+  }));
+
+  it("lists every settings key once", () => {
+    expect(rows.map((r) => r.key).sort()).toEqual([...SETTING_KEYS].sort());
+  });
+
+  it.each(SETTING_KEYS)("%s matches the table", (key) => {
+    const row = rows.find((r) => r.key === key);
+    const spec = SETTING_SPECS[key] as SettingSpec;
+    expect(row?.def).toBe(String(spec.default));
+    if (spec.kind === "integer") expect(row?.values).toContain(`${spec.min}–${spec.max}`);
+    if (spec.kind === "enum") for (const value of spec.values) expect(row?.values).toContain(`\`${value}\``);
+    if (spec.kind === "boolean") expect(row?.values).toBe("boolean");
+  });
+
+  it("states the widgetMode default once, as all", () => {
+    expect(readme).not.toContain("`background` (default");
+    expect(readme).not.toContain("(`widgetMode: background`)");
   });
 });

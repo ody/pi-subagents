@@ -1,12 +1,13 @@
 import { getAgentConfig } from "../agents/agent-types.js";
 import type { AgentConfig } from "../types.js";
-
-let defaultMaxTurns: number | undefined;
+import { SETTING_SPECS } from "./settings-defaults.js";
 
 export function normalizeMaxTurns(n: number | undefined): number | undefined {
   if (n == null || n === 0) return undefined;
   return Math.max(1, n);
 }
+
+let defaultMaxTurns = normalizeMaxTurns(SETTING_SPECS.defaultMaxTurns.default);
 
 export function getDefaultMaxTurns(): number | undefined { return defaultMaxTurns; }
 export function setDefaultMaxTurns(n: number | undefined): void { defaultMaxTurns = normalizeMaxTurns(n); }
@@ -19,12 +20,12 @@ export function resolveEffectiveMaxTurns(
   return normalizeMaxTurns(explicit ?? agentConfig?.maxTurns ?? defaultMaxTurns);
 }
 
-let rememberAgents = true;
+let rememberAgents = SETTING_SPECS.rememberAgents.default;
 
 export function getRememberAgents(): boolean { return rememberAgents; }
 export function setRememberAgents(b: boolean): void { rememberAgents = b; }
 
-let graceTurns = 5;
+let graceTurns = SETTING_SPECS.graceTurns.default;
 
 export function getGraceTurns(): number { return graceTurns; }
 export function setGraceTurns(n: number): void { graceTurns = Math.max(1, n); }
