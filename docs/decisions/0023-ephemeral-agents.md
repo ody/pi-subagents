@@ -48,7 +48,7 @@ Persistence and reopening:
 - A top-level ephemeral agent persists its session as any top-level agent does. `rememberAgents` decides, and no parameter overrides it. A nested ephemeral agent never persists.
 - The `AgentRecord` stores the built `AgentConfig`, and the agent's tombstone copies it. `@handle` then reopens an evicted ephemeral agent without a registry entry.
 - A reopen runs the stored config as a new session under the same minted type and reclaims the handle.
-- The capability policy treats the stored values as it treats an agent file's values. It filters what the policy now denies, notifies the user, and never refuses.
+- The capability policy treats the stored values as it treats an agent file's values. It filters what the policy now denies and notifies the user. It refuses only when filtering empties an explicit tool list, as ADR 0011 says for a file's values.
 - A live ephemeral agent is steerable and resumable, and a resume follows the resume rule of ADR 0014.
 
 Capability checks:
