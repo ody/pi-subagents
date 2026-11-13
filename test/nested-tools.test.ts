@@ -219,6 +219,39 @@ describe("child-safe nested agent tools", () => {
     expect(inScope.isError).toBe(false);
   });
 
+  it("replaces an out-of-scope agent file pin with the session model, notifies, and notes it", async () => {
+    writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/allowed"] }));
+    setScopeModelsEnabled(true);
+    writeAgent("pinned", "model: anthropic/blocked\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+    const notify = vi.fn();
+    const session = { provider: "anthropic", id: "allowed" };
+
+    const result = await agent.execute("call-1", { subagent_type: "pinned", description: "d", prompt: "p" }, undefined, undefined, { ...ctx(), model: session, ui: { notify } });
+
+    expect(result.isError).toBe(false);
+    expect(spawnAndWait.mock.calls[0][4].model).toBe(session);
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("anthropic/blocked"), "warning");
+    expect(result.content[0].text).toContain("model scope replaced out-of-scope model anthropic/blocked");
+  });
+
+  it("never checks the session model when a pin fails to resolve", async () => {
+    writeFileSync(join(cwd, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/allowed"] }));
+    setScopeModelsEnabled(true);
+    writeAgent("ghost", "model: nope/none\n");
+    registerAgents(loadCustomAgents(cwd));
+    const [agent] = tools();
+    const notify = vi.fn();
+    const session = { provider: "anthropic", id: "blocked" };
+
+    const result = await agent.execute("call-1", { subagent_type: "ghost", description: "d", prompt: "p" }, undefined, undefined, { ...ctx(), model: session, ui: { notify } });
+
+    expect(result.isError).toBe(false);
+    expect(spawnAndWait.mock.calls[0][4].model).toBe(session);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
   it("runs a caller's model over an agent file's pin", async () => {
     writeAgent("pinned", "model: anthropic/blocked\n");
     registerAgents(loadCustomAgents(cwd));
@@ -681,25 +714,24 @@ describe("setMaxSubagentDepth clamping", () => {
 
 describe("resolveNestedModel", () => {
   const registry = ctx().modelRegistry;
-  const fallback = { provider: "fallback", id: "model" } as any;
 
-  it("returns ctx model when no model input", () => {
-    expect(resolveNestedModel({ modelInput: undefined, modelFromParams: false }, fallback, registry)).toEqual({ model: fallback });
+  it("returns no pin when no model input", () => {
+    expect(resolveNestedModel({ modelInput: undefined, modelFromParams: false }, registry)).toEqual({ pinned: undefined });
   });
 
   it("resolves a known model", () => {
-    const r = resolveNestedModel({ modelInput: "anthropic/allowed", modelFromParams: true }, fallback, registry);
-    expect(r).toEqual({ model: { provider: "anthropic", id: "allowed" } });
+    const r = resolveNestedModel({ modelInput: "anthropic/allowed", modelFromParams: true }, registry);
+    expect(r).toEqual({ pinned: { provider: "anthropic", id: "allowed" } });
   });
 
   it("errors when an unresolved model came from params", () => {
-    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: true }, fallback, registry);
+    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: true }, registry);
     expect(r).toEqual({ error: expect.any(String) });
   });
 
-  it("falls back to ctx model when an unresolved model came from config", () => {
-    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: false }, fallback, registry);
-    expect(r).toEqual({ model: fallback });
+  it("returns no pin when an unresolved model came from config", () => {
+    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: false }, registry);
+    expect(r).toEqual({ pinned: undefined });
   });
 });
 

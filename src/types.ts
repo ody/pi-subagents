@@ -108,6 +108,7 @@ export interface AgentRecord {
   maxSubagentDepth?: number;
   rootSessionId?: string;
   filtered?: string[];
+  modelReplaced?: string;
   displayName?: string;
   promptMode?: "replace" | "append";
   capabilities?: EffectiveCapabilities;

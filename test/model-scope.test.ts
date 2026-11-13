@@ -1,9 +1,13 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAgents } from "../src/agents/agent-types.js";
 import type { ModelRegistryRef } from "../src/config/enabled-models.js";
-import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
+import { checkModelScope, isScopeModelsEnabled, scopeModel, setScopeModelsEnabled } from "../src/config/model-scope.js";
+import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
+import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
+import { testAgent } from "./helpers/test-agents.js";
 
 const MODELS = [
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
@@ -100,16 +104,43 @@ describe("checkModelScope", () => {
       expect(message).toContain("  anthropic/claude-sonnet-4-6");
     });
 
-    it("only warns for a frontmatter-pinned choice, so the spawn still proceeds", () => {
+    it("replaces a frontmatter-pinned choice, so the spawn proceeds on the session model", () => {
       const verdict = check({ callerSupplied: false, modelInput: "anthropic/claude-opus-4-6" });
-      expect(verdict.kind).toBe("warn");
+      expect(verdict.kind).toBe("replace");
+      expect((verdict as { replaced: string }).replaced).toBe("anthropic/claude-opus-4-6");
       expect((verdict as { message: string }).message)
-        .toBe('Agent "scout" using out-of-scope model "anthropic/claude-opus-4-6"');
+        .toBe('Agent "scout" pins out-of-scope model "anthropic/claude-opus-4-6"; using the session model instead');
     });
 
-    it("names the resolved model in the warning when there was no raw input", () => {
+    it("scopeModel swaps in the session model for a replaced pin", () => {
+      const session = HAIKU;
+      const scoped = scopeModel({
+        pinned: OPUS,
+        sessionModel: session,
+        cwd: projectDir,
+        modelRegistry: makeRegistry(),
+        callerSupplied: false,
+        agentLabel: "scout",
+        modelInput: "anthropic/claude-opus-4-6",
+      });
+      expect(scoped).toMatchObject({ ok: true, model: session, replaced: "anthropic/claude-opus-4-6" });
+    });
+
+    it("scopeModel never examines the session model when nothing is pinned", () => {
+      const scoped = scopeModel({
+        pinned: undefined,
+        sessionModel: OPUS,
+        cwd: projectDir,
+        modelRegistry: makeRegistry(),
+        callerSupplied: false,
+        agentLabel: "scout",
+      });
+      expect(scoped).toEqual({ ok: true, model: OPUS });
+    });
+
+    it("names the resolved model in the replacement when there was no raw input", () => {
       const verdict = check({ callerSupplied: false, modelInput: undefined });
-      expect(verdict.kind).toBe("warn");
+      expect(verdict.kind).toBe("replace");
       expect((verdict as { message: string }).message).toContain("anthropic/claude-opus-4-6");
       expect((verdict as { message: string }).message).not.toContain("undefined");
     });
@@ -125,5 +156,145 @@ describe("checkModelScope", () => {
       expect(check({ model: OPUS }).kind).toBe("ok");
       expect(check({ model: HAIKU }).kind).toBe("error");
     });
+  });
+});
+
+describe("spawn funnel scope", () => {
+  let projectDir: string;
+  let agentDir: string;
+  let prevAgentDir: string | undefined;
+  let spawn: ReturnType<typeof vi.fn>;
+  let notify: ReturnType<typeof vi.fn>;
+  let funnel: ReturnType<typeof createSpawnFunnel>;
+  const SESSION = { provider: "anthropic", id: "claude-haiku-4-5" };
+
+  function funnelCtx() {
+    return {
+      cwd: projectDir,
+      model: SESSION,
+      ui: { notify },
+      modelRegistry: {
+        getAll: () => MODELS,
+        getAvailable: () => MODELS,
+        find: (provider: string, id: string) => MODELS.find(m => m.provider === provider && m.id === id),
+      },
+    };
+  }
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "pi-scope-funnel-"));
+    agentDir = mkdtempSync(join(tmpdir(), "pi-scope-funnel-global-"));
+    prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    mkdirSync(join(projectDir, ".pi"), { recursive: true });
+    writeFileSync(join(projectDir, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/claude-haiku-4-5"] }));
+    setScopeModelsEnabled(true);
+    registerAgents(new Map([
+      ["pinned", testAgent("pinned", { model: "anthropic/claude-opus-4-6" })],
+      ["inscope", testAgent("inscope", { model: "anthropic/claude-haiku-4-5" })],
+      ["plain", testAgent("plain")],
+    ]));
+    spawn = vi.fn(() => "id-1");
+    notify = vi.fn();
+    funnel = createSpawnFunnel({ manager: { spawn, getRecord: vi.fn(), resolveMention: vi.fn() } as never, reloadCustomAgents: () => {} });
+  });
+
+  afterEach(() => {
+    setScopeModelsEnabled(false);
+    registerAgents(new Map());
+    if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
+  });
+
+  it("replaces an out-of-scope file pin on a direct start and notifies", () => {
+    funnel.spawnTopLevel({}, funnelCtx(), "pinned", "go", { description: "d" });
+    expect(spawn.mock.calls[0][4]).toMatchObject({ model: SESSION, modelReplaced: "anthropic/claude-opus-4-6" });
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("anthropic/claude-opus-4-6"), "warning");
+  });
+
+  it("replaces an out-of-scope pin on a tombstone reopen through spawnResolved", () => {
+    funnel.spawnResolved({}, funnelCtx(), "pinned", "go", { description: "d", resumeSessionFile: "/x", reclaim: { handle: "h" } });
+    expect(spawn.mock.calls[0][4]).toMatchObject({ model: SESSION, modelReplaced: "anthropic/claude-opus-4-6" });
+  });
+
+  it("replaces an out-of-scope inline pin", () => {
+    funnel.spawnTopLevel({}, funnelCtx(), "adhoc", "go", {
+      description: "d",
+      agentConfig: testAgent("adhoc", { model: "anthropic/claude-opus-4-6" }),
+    });
+    expect(spawn.mock.calls[0][4]).toMatchObject({ model: SESSION, modelReplaced: "anthropic/claude-opus-4-6" });
+  });
+
+  it("leaves an in-scope pin and an unpinned agent without a replacement", () => {
+    funnel.spawnTopLevel({}, funnelCtx(), "inscope", "go", { description: "d" });
+    funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d" });
+    expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
+    expect(spawn.mock.calls[1][4].modelReplaced).toBeUndefined();
+    expect(spawn.mock.calls[1][4].model).toBeUndefined();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("refuses a caller-supplied out-of-scope model and lists the allowed ones", () => {
+    expect(() => funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d", model: MODELS[0] }))
+      .toThrow(/Allowed models[\s\S]*anthropic\/claude-haiku-4-5/);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("never examines an out-of-scope session model", () => {
+    funnel.spawnTopLevel({}, { ...funnelCtx(), model: OPUS }, "plain", "go", { description: "d" });
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("bounds nothing while the setting is off", () => {
+    setScopeModelsEnabled(false);
+    funnel.spawnTopLevel({}, funnelCtx(), "pinned", "go", { description: "d" });
+    expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("reports modelReplaced in the subagents:rpc:spawn reply and refuses a caller model", async () => {
+    const records = new Map<string, any>();
+    const handlers = new Map<string, (raw: any) => unknown>();
+    const replies: Array<{ channel: string; data: any }> = [];
+    spawn.mockImplementation((_pi, _ctx, _type, _prompt, options) => {
+      records.set("id-1", { modelReplaced: options.modelReplaced });
+      return "id-1";
+    });
+    registerRpcHandlers({
+      events: {
+        on: (channel: string, fn: (raw: any) => unknown) => {
+          handlers.set(channel, fn);
+          return () => {};
+        },
+        emit: (channel: string, data: unknown) => replies.push({ channel, data }),
+      },
+      pi: {},
+      getCtx: () => funnelCtx() as never,
+      manager: {
+        spawn: funnel.spawnTopLevel,
+        awaitStartup: async () => {},
+        getRecord: id => records.get(id),
+        abort: () => false,
+        consumeResult: () => false,
+      },
+    });
+
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "a", type: "pinned", prompt: "go", options: { description: "d" } });
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "b", type: "plain", prompt: "go", options: { description: "d" } });
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "c", type: "plain", prompt: "go", options: { description: "d", model: "anthropic/claude-opus-4-6" } });
+
+    const reply = (id: string) => replies.find(r => r.channel === `subagents:rpc:spawn:reply:${id}`)?.data;
+    expect(reply("a")).toEqual({ success: true, data: { id: "id-1", modelReplaced: "anthropic/claude-opus-4-6" } });
+    expect(reply("b")).toEqual({ success: true, data: { id: "id-1" } });
+    expect(reply("c").success).toBe(false);
+    expect(reply("c").error).toContain("Allowed models");
+  });
+
+  it("drops a caller-forged modelReplaced from top-level options", () => {
+    funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d", modelReplaced: "forged" });
+    expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
   });
 });

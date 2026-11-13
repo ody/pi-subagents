@@ -19,7 +19,7 @@ export interface SpawnCapable {
   spawn(pi: unknown, ctx: unknown, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>): string;
   awaitStartup(id: string): Promise<void>;
   abort(id: string): boolean;
-  getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered"> | undefined;
+  getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered" | "modelReplaced"> | undefined;
   consumeResult(id: string): boolean;
 }
 
@@ -128,8 +128,8 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
         ? manager.spawn(pi, ctx, type, prompt, normalizedOptions)
         : manager.spawn(pi, ctx, type, prompt, normalizedOptions, rawAgentConfig);
       await manager.awaitStartup(id);
-      const filtered = manager.getRecord(id)?.filtered;
-      return filtered ? { id, filtered } : { id };
+      const { filtered, modelReplaced } = manager.getRecord(id) ?? {};
+      return { id, ...(filtered && { filtered }), ...(modelReplaced && { modelReplaced }) };
     },
   );
 

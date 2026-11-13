@@ -24,7 +24,7 @@ import {
 } from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, nestedFilteredNote, parentBound, resolveCapability } from "../config/capability-policy.js";
 import { resolveModel } from "../config/model-resolver.js";
-import { checkModelScope } from "../config/model-scope.js";
+import { modelReplacedNote, scopeModel } from "../config/model-scope.js";
 import {
   createOutputFilePath,
   getOutputTranscriptDefault,
@@ -229,13 +229,12 @@ export function resolveNestedType(
 
 export function resolveNestedModel(
   invocation: { modelInput?: string; modelFromParams: boolean },
-  ctxModel: Model<any> | undefined,
   modelRegistry: ExtensionContext["modelRegistry"],
-): { model: Model<any> | undefined } | { error: string } {
-  if (!invocation.modelInput) return { model: ctxModel };
+): { pinned: Model<any> | undefined } | { error: string } {
+  if (!invocation.modelInput) return { pinned: undefined };
   const resolved = resolveModel(invocation.modelInput, modelRegistry);
-  if (typeof resolved !== "string") return { model: resolved };
-  return invocation.modelFromParams ? { error: resolved } : { model: ctxModel };
+  if (typeof resolved !== "string") return { pinned: resolved };
+  return invocation.modelFromParams ? { error: resolved } : { pinned: undefined };
 }
 
 export function addUsageToAncestors(
@@ -310,19 +309,20 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         worktreeAllowed: isWorktreeIsolationEnabled(),
         defaultRunInBackground: false,
       });
-      const modelResult = resolveNestedModel(invocation, ctx.model, ctx.modelRegistry);
+      const modelResult = resolveNestedModel(invocation, ctx.modelRegistry);
       if ("error" in modelResult) return textResult(modelResult.error, true);
-      const model = modelResult.model;
-
-      const scopeVerdict = checkModelScope({
-        model,
+      const scoped = scopeModel({
+        pinned: modelResult.pinned,
+        sessionModel: ctx.model,
         cwd: context.configCwd,
         modelRegistry: ctx.modelRegistry,
         callerSupplied: invocation.modelFromParams,
         agentLabel: config?.displayName ?? resolvedType,
         modelInput: invocation.modelInput,
       });
-      if (scopeVerdict.kind === "error") return textResult(scopeVerdict.message, true);
+      if (!scoped.ok) return textResult(scoped.message, true);
+      if (scoped.notice) ctx.ui?.notify(scoped.notice, "warning");
+      const model = scoped.model;
 
       const granted = grantNestedCapability(context, {
         type: resolvedType,
@@ -333,7 +333,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       });
       if ("error" in granted) return textResult(granted.error, true);
       const { capability } = granted;
-      const note = nestedFilteredNote(capability);
+      const note = nestedFilteredNote(capability) + modelReplacedNote(scoped.replaced);
 
       const rootSessionId = context.manager.getRecord(context.parentAgentId)?.rootSessionId;
       const childDepth = context.depth + 1;

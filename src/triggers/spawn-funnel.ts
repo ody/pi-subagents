@@ -1,5 +1,7 @@
 import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import { resolveCapability } from "../config/capability-policy.js";
+import { resolveModel } from "../config/model-resolver.js";
+import { scopeModel } from "../config/model-scope.js";
 import { resolveEffectiveMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
@@ -30,9 +32,40 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       notify: (message, level) => ctxRef?.ui?.notify?.(message, level),
     });
 
-  const spawnResolved = (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => {
-    const inline: AgentConfig | undefined = options?.agentConfig;
+  const scopedOptions = (ctxRef: any, label: string, options: any, configModel: string | undefined) => {
+    const registry = ctxRef?.modelRegistry;
+    const callerModel = options?.model;
+    let pinned = callerModel;
+    let modelInput = callerModel == null ? configModel : `${callerModel.provider}/${callerModel.id}`;
+    if (typeof callerModel === "string") {
+      const resolved = registry ? resolveModel(callerModel, registry) : callerModel;
+      if (typeof resolved === "string") throw new Error(resolved);
+      pinned = resolved;
+      modelInput = callerModel;
+    } else if (callerModel == null && configModel && registry) {
+      const resolved = resolveModel(configModel, registry);
+      pinned = typeof resolved === "string" ? undefined : resolved;
+    }
+    if (pinned == null || !registry) return options;
+    const scoped = scopeModel({
+      pinned,
+      sessionModel: ctxRef.model,
+      cwd: ctxRef.cwd ?? process.cwd(),
+      modelRegistry: registry,
+      callerSupplied: callerModel != null,
+      agentLabel: label,
+      modelInput,
+    });
+    if (!scoped.ok) throw new Error(scoped.message);
+    if (scoped.replaced === undefined) return callerModel === pinned ? options : { ...options, model: pinned };
+    ctxRef.ui?.notify?.(scoped.notice, "warning");
+    return { ...options, model: scoped.model, modelReplaced: scoped.replaced };
+  };
+
+  const spawnResolved = (piRef: any, ctxRef: any, type: string, prompt: string, rawOptions: any, rawAgentConfig?: Partial<AgentConfig>) => {
+    const inline: AgentConfig | undefined = rawOptions?.agentConfig;
     if (inline) {
+      const options = scopedOptions(ctxRef, inline.displayName ?? type, rawOptions, inline.model);
       return manager.spawn(piRef, ctxRef, type, prompt, {
         ...options,
         capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? inline),
@@ -43,6 +76,8 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     reloadCustomAgents();
     const dispatch = resolveSpawnType(type);
     if (!dispatch.ok) throw new Error(dispatch.message);
+    const config = getAgentConfig(dispatch.type);
+    const options = scopedOptions(ctxRef, config?.displayName ?? dispatch.type, rawOptions, config?.model);
     return manager.spawn(piRef, ctxRef, dispatch.type, prompt, {
       ...options,
       capability: capabilityFor(ctxRef, dispatch.type, options),
@@ -63,6 +98,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     delete safeOptions.blocking;
     delete safeOptions.capability;
     delete safeOptions.ephemeral;
+    delete safeOptions.modelReplaced;
     return spawnResolved(piRef, ctxRef, type, prompt, safeOptions, rawAgentConfig);
   };
 

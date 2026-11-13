@@ -1,5 +1,6 @@
 import type { AgentToolUpdateCallback, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { filteredNote } from "../config/capability-policy.js";
+import { modelReplacedNote } from "../config/model-scope.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
@@ -40,6 +41,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     agentConfig,
     ephemeral,
     model,
+    modelReplaced,
     thinking,
     inheritContext,
     isolated,
@@ -49,7 +51,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     detailBase,
   } = call;
 
-  const capabilityNote = capability ? filteredNote(capability) : "";
+  const capabilityNote = (capability ? filteredNote(capability) : "") + modelReplacedNote(modelReplaced);
   let spinnerFrame = 0;
   const startedAt = Date.now();
   let fgId: string | undefined;
