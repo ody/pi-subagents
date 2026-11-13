@@ -10,6 +10,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import { BUILTIN_TOOL_NAMES, getAllTypes, getAvailableTypes } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import subagentsExtension from "../src/index.js";
+import { AgentManager } from "../src/manager/agent-manager.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { getDisplayName, getPromptModeLabel } from "../src/ui/agent-format.js";
@@ -251,24 +252,51 @@ describe("identity", () => {
     expect(getAvailableTypes()).not.toContain(type);
   });
 
-  it("leaves no tombstone, so an evicted agent cannot be reopened by handle", async () => {
+  async function evictAfterRun(sessionFile: string | undefined) {
+    const { tool, registry } = boot({ agentMentions: "direct" });
+    let manager: AgentManager | undefined;
+    const spawn = AgentManager.prototype.spawn;
+    vi.spyOn(AgentManager.prototype, "spawn").mockImplementation(function (this: AgentManager, ...args: Parameters<AgentManager["spawn"]>) {
+      manager = this;
+      return spawn.apply(this, args);
+    });
+    const session = {
+      dispose: vi.fn(),
+      messages: [],
+      subscribe: vi.fn(() => () => {}),
+      getActiveToolNames: vi.fn(() => []),
+      sessionManager: { getSessionFile: () => sessionFile },
+    };
+    vi.mocked(runAgent).mockImplementation((async (_ctx: any, _type: string, _prompt: string, opts: any) => {
+      opts.onSessionCreated?.(session);
+      return { responseText: "done", session, aborted: false, steered: false };
+    }) as any);
+    const id = idOf(await run(tool, { name: "auth-audit" }));
+    await flush();
+    const record = registry().getRecord(id);
+    const config = record.agentConfig;
+    record.completedAt = Date.now() - 11 * 60_000;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(registry().getRecord(id)).toBeUndefined();
+    return { config, mention: manager?.resolveMention("auth-audit") };
+  }
+
+  it("stores the built config on the record and copies it to the tombstone after eviction", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
     try {
-      const { tool, registry, lifecycle } = boot({ agentMentions: "direct" });
-      vi.mocked(runAgent).mockResolvedValue({
-        responseText: "done",
-        session: { dispose: vi.fn(), messages: [], subscribe: vi.fn(() => () => {}), getActiveToolNames: vi.fn(() => []) },
-        aborted: false,
-        steered: false,
-      } as any);
-      const id = idOf(await run(tool, { name: "auth-audit" }));
-      await flush();
-      const record = registry().getRecord(id);
-      record.completedAt = Date.now() - 11 * 60_000;
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(registry().getRecord(id)).toBeUndefined();
-      const result = await lifecycle.get("input")({ type: "input", text: "@auth-audit again", source: "interactive" }, ctx());
-      expect(result).toEqual({ action: "continue" });
+      const { config, mention } = await evictAfterRun("/sessions/auth-audit.jsonl");
+      expect(config).toMatchObject({ systemPrompt: "", promptMode: "append" });
+      expect(mention).toMatchObject({ kind: "tombstone", entry: { agentConfig: config } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves no tombstone when the session was not persisted", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
+    try {
+      const { mention } = await evictAfterRun(undefined);
+      expect(mention).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
