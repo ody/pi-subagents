@@ -13,7 +13,7 @@ An extension that runs its own agent through `subagents:rpc:spawn` used to need 
 - `normalizeInlineAgentConfig` in `src/triggers/cross-extension-rpc.ts` completes the definition at the RPC boundary, so an inline agent behaves like the same agent written as a file, except that its explicit fields are caller-supplied under the capability policy:
   - `systemPrompt` is required. A missing one, or an empty `type`, is an error envelope.
   - `name` is always `type`. `description` defaults to `options.description`, then `type`.
-  - `extensions` and `skills` default to `true`, `promptMode` to `"replace"`, the same as omitted frontmatter.
+  - `extensions` and `skills` default to `true`, `promptMode` to `"replace"`, the same as omitted frontmatter. `persistSession` defaults to `false`, and an inline agent persists only when it sets `true` ([ADR 0027](0027-remember-agents.md)).
 - `AgentManager.spawn` passes it through to `runAgent`, which uses it in place of `getAgentConfig(type)`.
 - `PROTOCOL_VERSION` stays `2`. The field is additive; callers that omit it get the registry path unchanged.
 

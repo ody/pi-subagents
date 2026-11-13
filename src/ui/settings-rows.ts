@@ -75,7 +75,7 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
     id: "worktreeIsolation",
     label: "Worktree isolation",
     description:
-      "Allow isolation: worktree to copy the repo. Off refuses worktrees on every path immediately — for repos where a copy costs too much time or disk — and drops the `isolation` param from the agent tool spec on next pi session.",
+      "Allow isolation: worktree to copy the repo. Off downgrades a worktree request to a normal run on every path immediately — for repos where a copy costs too much time or disk — and drops the `isolation` param from the agent tool spec on next pi session.",
     values: ON_OFF,
   },
   {
