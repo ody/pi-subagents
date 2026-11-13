@@ -3,13 +3,13 @@
 ## Decisions
 
 - **#81 where the warning fires.** `runAgent` emits it as a `policy-warning:` tool activity, once per agent start. No other path has the discovered extensions.
-- **#81 known sets.** Tools are built-ins, the four subagent tools, and tools of discovered extensions. Extensions come from the loader's `extensionsOverride`, which `runAgent` wraps only when a policy entry exists. Skills come from pi's default skill directories.
+- **#81 known sets.** Known tools: built-ins, the four subagent tools, and tools of discovered extensions. Extensions come from the loader's `extensionsOverride`, which `runAgent` wraps only when a policy entry exists. Skills come from pi's default skill directories.
 - **#81 cost.** Discovery runs only when the policy has at least one entry. Extension and extension-tool entries are not judged when `extensions: false` loads nothing.
-- **#85 description.** The `run_in_background` description is fixed at registration from the loaded setting. A live menu change shows after restart, like `toolDescriptionMode`.
+- **#85 description.** The extension fixes the `run_in_background` description at registration from the loaded setting. A live menu change shows after restart, like `toolDescriptionMode`.
 - **#86 driving the setter.** The test uses the real `/agents` command and a fake `ctx.ui.custom`. No other code path calls `setReportUsageFlag`.
-- **#87 funnel.** A new `resolveIsolation` in `src/tool/invocation-config.ts` is shared by the tool resolver and the funnel. The funnel applies a file's `isolation` over a caller's value and downgrades when the switch is off.
+- **#87 funnel.** A new `resolveIsolation` in `src/tool/invocation-config.ts` serves both the tool resolver and the funnel. The funnel applies a file's `isolation` over a caller's value and downgrades when the switch is off.
 - **#87 mention resume.** A mention resume also applies the file's `isolation: worktree`, because the resume goes through `spawnResolved`.
-- **#88.** The mention paragraph in the README now describes the clone's `<system-reminder>`. The `agentMentionReminder` text is unchanged.
+- **#88.** The mention paragraph in the README now describes the clone's `<system-reminder>`. The `agentMentionReminder` text stays the same.
 
 ## Unresolved
 

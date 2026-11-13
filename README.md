@@ -164,7 +164,7 @@ No turn is ever spent in the main conversation, and nothing about the mention en
 
 #### Starting a new agent
 
-In `model` mode the clone receives your message with a `<system-reminder>` appended. The reminder reads "the user has expressed a desire to invoke the agent X; please invoke the agent appropriately, passing in the required context to it". The clone's model then makes the tool call. There is no tool forcing and no allowed-tools narrowing. The mention constrains *which* agent, not what it is told.
+In `model` mode the clone receives your message with a `<system-reminder>` appended. The reminder says the user wants to invoke the agent X. It asks the model to invoke the agent and pass in the required context. The clone's model then makes the tool call. There is no tool forcing and no allowed-tools narrowing. The mention constrains *which* agent, not what it is told.
 
 So the model writes the agent's prompt, giving it the conversation context a cold spawn lacks.
 
@@ -367,7 +367,7 @@ All fields are optional — sensible defaults for everything.
 `name`:
 
 - The filename does not have to match, so `blubb.md` with `name: code-review` dispatches as `code-review`. Omit it and the extension uses the filename.
-- Any value works except one containing `:`, which is reserved for plugin-scoped identifiers. The extension skips such a file with a warning.
+- Any value works except one containing `:`, which plugin-scoped identifiers reserve. The extension skips such a file with a warning.
 - Two files may declare the same name; the later load wins, as a filename clash always did.
 
 `color` sets the badge in the agent tool header, widget, FleetView, and conversation viewer. Accepted value:
@@ -793,7 +793,7 @@ With it off, handles expire with their record (roughly ten minutes past completi
 
 ### Worktree isolation setting
 
-`worktreeIsolation`, default `true`: whether `isolation: "worktree"` may create a worktree at all. With it on, an agent file's `isolation` applies on every spawn path (tool, nested tool, `@handle` mention, RPC, and registry), and a file's `isolation: off` overrides a caller's worktree request. With it off, no path creates a worktree and none refuses. Toggle via `/agents → Settings → Worktree isolation`, or set `false` in `subagents.json` on a repo where a copy costs too much time or disk.
+`worktreeIsolation`, default `true`: whether `isolation: "worktree"` may create a worktree at all. With it on, an agent file's `isolation` applies on every spawn path (tool, nested tool, `@handle` mention, RPC, and registry). A file's `isolation: off` overrides a caller's worktree request. With it off, no path creates a worktree and none refuses. Toggle via `/agents → Settings → Worktree isolation`, or set `false` in `subagents.json` on a repo where a copy costs too much time or disk.
 
 When off:
 
