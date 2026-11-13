@@ -118,6 +118,36 @@ function dispatchType(
   return { ok: true, subagentType: dispatch.ok ? dispatch.type : rawType };
 }
 
+function resolveCallModel(
+  params: AgentCallParams,
+  ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
+  invocation: Pick<ReturnType<typeof resolveAgentInvocationConfig>, "modelInput" | "modelFromParams">,
+  agentLabel: string,
+): { ok: false; message: string } | { ok: true; model: Model<any> | undefined; replaced: string | undefined } {
+  let pinned: Model<any> | undefined;
+  if (invocation.modelInput) {
+    const resolved = resolveModel(invocation.modelInput, ctx.modelRegistry);
+    if (typeof resolved === "string") {
+      if (invocation.modelFromParams) return { ok: false, message: resolved };
+    } else {
+      pinned = resolved;
+    }
+  }
+  if (params.resume) return { ok: true, model: pinned ?? ctx.model, replaced: undefined };
+  const scoped = scopeModel({
+    pinned,
+    sessionModel: ctx.model,
+    cwd: ctx.cwd,
+    modelRegistry: ctx.modelRegistry,
+    callerSupplied: invocation.modelFromParams,
+    agentLabel,
+    modelInput: invocation.modelInput,
+  });
+  if (!scoped.ok) return { ok: false, message: scoped.message };
+  if (scoped.notice) ctx.ui.notify(scoped.notice, "warning");
+  return { ok: true, model: scoped.model, replaced: scoped.replaced };
+}
+
 export function resolveAgentCall(
   params: AgentCallParams,
   ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
@@ -140,30 +170,9 @@ export function resolveAgentCall(
     forceBackground: opts.forceBackground,
   });
 
-  let pinned: Model<any> | undefined;
-  if (resolvedConfig.modelInput) {
-    const resolved = resolveModel(resolvedConfig.modelInput, ctx.modelRegistry);
-    if (typeof resolved === "string") {
-      if (resolvedConfig.modelFromParams) return { ok: false, message: resolved };
-    } else {
-      pinned = resolved;
-    }
-  }
-
-  const scoped = params.resume
-    ? { ok: true as const, model: pinned ?? ctx.model, replaced: undefined, notice: undefined }
-    : scopeModel({
-      pinned,
-      sessionModel: ctx.model,
-      cwd: ctx.cwd,
-      modelRegistry: ctx.modelRegistry,
-      callerSupplied: resolvedConfig.modelFromParams,
-      agentLabel: customConfig?.displayName ?? subagentType,
-      modelInput: resolvedConfig.modelInput,
-    });
-  if (!scoped.ok) return { ok: false, message: scoped.message };
-  if (scoped.notice) ctx.ui.notify(scoped.notice, "warning");
-  const { model, replaced: modelReplaced } = scoped;
+  const resolvedModel = resolveCallModel(params, ctx, resolvedConfig, customConfig?.displayName ?? subagentType);
+  if (!resolvedModel.ok) return resolvedModel;
+  const { model, replaced: modelReplaced } = resolvedModel;
 
   const minted = mintCapability(params, ctx, subagentType, resolvedConfig.isolated, built);
   if (!minted.ok) return minted;
