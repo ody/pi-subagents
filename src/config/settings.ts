@@ -1,10 +1,9 @@
-// Size: the SubagentsSettings interface documents every field (about half the file); sanitize, load/save and apply all change together whenever a setting is added.
-
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
-import { policyEventPayload, readProjectPolicyRaw } from "./capability-policy-config.js";
+import { policyEventPayload } from "./capability-policy-config.js";
+import { isValidSettingValue, SETTING_KEYS, SETTING_SPECS } from "./settings-defaults.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
+import { readLayerFile, type SettingsLayer, setLayerKey, setLayerPolicyKey } from "./settings-store.js";
 
 export interface SubagentsSettings {
   maxConcurrent?: number;
@@ -25,7 +24,6 @@ export interface SubagentsSettings {
   maxSubagentDepth?: number;
   reportUsage?: boolean;
   showCost?: boolean;
-
   showModel?: boolean;
   viewerMarkdown?: ViewerMarkdownMode;
 }
@@ -57,103 +55,14 @@ export interface SettingsAppliers {
 
 export type SettingsEmit = (event: string, payload: unknown) => void;
 
-const VALID_JOIN_MODES: ReadonlySet<string> = new Set<JoinMode>(["async", "group", "smart"]);
-const VALID_TOOL_DESCRIPTION_MODES: ReadonlySet<string> = new Set<ToolDescriptionMode>(["full", "compact", "custom"]);
-const VALID_WIDGET_MODES: ReadonlySet<string> = new Set<WidgetMode>(["all", "background", "off"]);
-const VALID_VIEWER_MARKDOWN_MODES: ReadonlySet<string> = new Set<ViewerMarkdownMode>(["off", "assistant", "all"]);
-const VALID_AGENT_MENTION_MODES: ReadonlySet<string> = new Set<AgentMentionMode>(["model", "direct", "off"]);
-
-const MAX_CONCURRENT_CEILING = 1024;
-const MAX_TURNS_CEILING = 10_000;
-const GRACE_TURNS_CEILING = 1_000;
-const SUBAGENT_DEPTH_CEILING = 16;
-
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: flat per-field allowlist, one independent check per setting, no nesting
-function sanitize(raw: unknown): SubagentsSettings {
+export function sanitize(raw: unknown): SubagentsSettings {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
-  const out: SubagentsSettings = {};
-  if (
-    Number.isInteger(r.maxConcurrent) &&
-    (r.maxConcurrent as number) >= 1 &&
-    (r.maxConcurrent as number) <= MAX_CONCURRENT_CEILING
-  ) {
-    out.maxConcurrent = r.maxConcurrent as number;
+  const out: Record<string, unknown> = {};
+  for (const key of SETTING_KEYS) {
+    if (isValidSettingValue(SETTING_SPECS[key], r[key])) out[key] = r[key];
   }
-  if (
-    Number.isInteger(r.maxConcurrentForeground) &&
-    (r.maxConcurrentForeground as number) >= 0 &&
-    (r.maxConcurrentForeground as number) <= MAX_CONCURRENT_CEILING
-  ) {
-    out.maxConcurrentForeground = r.maxConcurrentForeground as number;
-  }
-  if (
-    Number.isInteger(r.defaultMaxTurns) &&
-    (r.defaultMaxTurns as number) >= 0 &&
-    (r.defaultMaxTurns as number) <= MAX_TURNS_CEILING
-  ) {
-    out.defaultMaxTurns = r.defaultMaxTurns as number;
-  }
-  if (
-    Number.isInteger(r.graceTurns) &&
-    (r.graceTurns as number) >= 1 &&
-    (r.graceTurns as number) <= GRACE_TURNS_CEILING
-  ) {
-    out.graceTurns = r.graceTurns as number;
-  }
-  if (
-    Number.isInteger(r.maxSubagentDepth) &&
-    (r.maxSubagentDepth as number) >= 0 &&
-    (r.maxSubagentDepth as number) <= SUBAGENT_DEPTH_CEILING
-  ) {
-    out.maxSubagentDepth = r.maxSubagentDepth as number;
-  }
-  if (typeof r.defaultJoinMode === "string" && VALID_JOIN_MODES.has(r.defaultJoinMode)) {
-    out.defaultJoinMode = r.defaultJoinMode as JoinMode;
-  }
-  if (typeof r.backgroundByDefault === "boolean") {
-    out.backgroundByDefault = r.backgroundByDefault;
-  }
-  if (typeof r.scopeModels === "boolean") {
-    out.scopeModels = r.scopeModels;
-  }
-  if (typeof r.strictAgentFiles === "boolean") {
-    out.strictAgentFiles = r.strictAgentFiles;
-  }
-  if (typeof r.toolDescriptionMode === "string" && VALID_TOOL_DESCRIPTION_MODES.has(r.toolDescriptionMode)) {
-    out.toolDescriptionMode = r.toolDescriptionMode as ToolDescriptionMode;
-  }
-  if (typeof r.fleetView === "boolean") {
-    out.fleetView = r.fleetView;
-  }
-  if (typeof r.agentMentions === "string" && VALID_AGENT_MENTION_MODES.has(r.agentMentions)) {
-    out.agentMentions = r.agentMentions as AgentMentionMode;
-  }
-  if (typeof r.rememberAgents === "boolean") {
-    out.rememberAgents = r.rememberAgents;
-  }
-  if (typeof r.widgetMode === "string" && VALID_WIDGET_MODES.has(r.widgetMode)) {
-    out.widgetMode = r.widgetMode as WidgetMode;
-  }
-  if (typeof r.outputTranscript === "boolean") {
-    out.outputTranscript = r.outputTranscript;
-  }
-  if (typeof r.worktreeIsolation === "boolean") {
-    out.worktreeIsolation = r.worktreeIsolation;
-  }
-  if (typeof r.reportUsage === "boolean") {
-    out.reportUsage = r.reportUsage;
-  }
-  if (typeof r.showCost === "boolean") {
-    out.showCost = r.showCost;
-  }
-  if (typeof r.showModel === "boolean") {
-    out.showModel = r.showModel;
-  }
-  if (typeof r.viewerMarkdown === "string" && VALID_VIEWER_MARKDOWN_MODES.has(r.viewerMarkdown)) {
-    out.viewerMarkdown = r.viewerMarkdown as ViewerMarkdownMode;
-  }
-  return out;
+  return out as SubagentsSettings;
 }
 
 function readSettingsFile(path: string): SubagentsSettings {
@@ -171,21 +80,27 @@ export function loadSettings(cwd: string = process.cwd()): SubagentsSettings {
   return { ...readSettingsFile(globalSettingsPath()), ...readSettingsFile(projectSettingsPath(cwd)) };
 }
 
-export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
-  const path = projectSettingsPath(cwd);
-  const existing = readProjectPolicyRaw(cwd);
-  if (!existing.ok) {
-    console.warn(`[pi-subagents] Not saving settings: ${existing.reason}. Fix the file so its policy is not lost.`);
-    return false;
-  }
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    const body = existing.policy === undefined ? s : { ...s, policy: existing.policy };
-    writeFileSync(path, JSON.stringify(body, null, 2), "utf-8");
-    return true;
-  } catch {
-    return false;
-  }
+function defaultSettings(): Required<SubagentsSettings> {
+  return Object.fromEntries(SETTING_KEYS.map((key) => [key, SETTING_SPECS[key].default])) as Required<SubagentsSettings>;
+}
+
+export function effectiveSettings(cwd: string = process.cwd()): Required<SubagentsSettings> {
+  return { ...defaultSettings(), ...loadSettings(cwd) };
+}
+
+export type LayerSettings =
+  | { ok: true; exists: boolean; own: SubagentsSettings }
+  | { ok: false; reason: string };
+
+export function readLayerSettings(layer: SettingsLayer, cwd: string): LayerSettings {
+  const read = readLayerFile(layer, cwd);
+  return read.ok ? { ok: true, exists: read.exists, own: sanitize(read.data) } : read;
+}
+
+export function layerValues(layer: SettingsLayer, cwd: string): Required<SubagentsSettings> {
+  if (layer === "project") return effectiveSettings(cwd);
+  const global = readLayerSettings("global", cwd);
+  return { ...defaultSettings(), ...(global.ok ? global.own : {}) };
 }
 
 export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers): void {
@@ -235,13 +150,33 @@ export function applyAndEmitLoaded(
   return settings;
 }
 
+export type SettingKey = keyof SubagentsSettings | "ephemeralNesting";
+
+export interface SettingChange {
+  layer: SettingsLayer;
+  key: SettingKey;
+  value: unknown;
+}
+
+function writeChange(change: SettingChange, cwd: string): boolean {
+  const write =
+    change.key === "ephemeralNesting"
+      ? setLayerPolicyKey(change.layer, cwd, change.key, change.value)
+      : setLayerKey(change.layer, cwd, change.key, change.value);
+  return write.ok;
+}
+
 export function saveAndEmitChanged(
-  snapshot: SubagentsSettings,
+  change: SettingChange,
   successMsg: string,
   emit: SettingsEmit,
+  appliers: SettingsAppliers,
   cwd: string = process.cwd(),
 ): { message: string; level: "info" | "warning" } {
-  const persisted = saveSettings(snapshot, cwd);
-  emit("subagents:settings_changed", { settings: snapshot, persisted, policy: policyEventPayload(cwd) });
+  const persisted = writeChange(change, cwd);
+  const effective = effectiveSettings(cwd);
+  const settings = persisted ? effective : { ...effective, ...sanitize({ [change.key]: change.value }) };
+  applySettings(settings, appliers);
+  emit("subagents:settings_changed", { settings, persisted, layer: change.layer, policy: policyEventPayload(cwd) });
   return persistToastFor(successMsg, persisted);
 }

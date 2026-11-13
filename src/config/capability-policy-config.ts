@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { globalSettingsPath, projectSettingsPath } from "../config/settings-paths.js";
+import { readLayerFile, type SettingsLayer } from "./settings-store.js";
 
 export interface PolicyList {
   allow?: string[];
@@ -131,21 +132,16 @@ export function loadCapabilityPolicy(cwd: string): LoadedPolicy {
   };
 }
 
+export function layerEphemeralNesting(layer: SettingsLayer, cwd: string): boolean | undefined {
+  const read = readLayerFile(layer, cwd);
+  const policy = read.ok ? read.data.policy : undefined;
+  const value = isRecord(policy) ? policy.ephemeralNesting : undefined;
+  return typeof value === "boolean" ? value : undefined;
+}
+
 export function policyEventPayload(cwd: string): PolicyEventPayload {
   const { global, project, ephemeralNesting, problems } = loadCapabilityPolicy(cwd);
   const payload: PolicyEventPayload = { global, project, ephemeralNesting };
   if (problems.length > 0) payload.malformed = problems;
   return payload;
-}
-
-export function readProjectPolicyRaw(cwd: string): { ok: true; policy: unknown } | { ok: false; reason: string } {
-  const path = projectSettingsPath(cwd);
-  if (!existsSync(path)) return { ok: true, policy: undefined };
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-    if (!isRecord(parsed)) return { ok: false, reason: `${path} must contain a JSON object` };
-    return { ok: true, policy: parsed.policy };
-  } catch (err) {
-    return { ok: false, reason: `${path} cannot be parsed (${describeError(err)})` };
-  }
 }

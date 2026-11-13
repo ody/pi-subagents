@@ -6,7 +6,8 @@ import { loadCustomAgents } from "./agents/custom-agents.js";
 import { setScopeModelsEnabled } from "./config/model-scope.js";
 import { setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "./config/runner-defaults.js";
 import { createSettingsPersistence } from "./config/runtime-settings.js";
-import { applyAndEmitLoaded, loadSettings, type SettingsAppliers, type ToolDescriptionMode } from "./config/settings.js";
+import { applyAndEmitLoaded, effectiveSettings, type SettingsAppliers, type ToolDescriptionMode } from "./config/settings.js";
+import { SETTING_SPECS } from "./config/settings-defaults.js";
 import { buildEventData } from "./lifecycle-events.js";
 import { AgentManager } from "./manager/agent-manager.js";
 import { isTopLevelAgent } from "./manager/agent-manager-rules.js";
@@ -33,7 +34,7 @@ import { PendingUsagePool, withUsageReporting } from "./usage.js";
 export default function (pi: ExtensionAPI) {
   if (inChildSessionContext()) return;
 
-  let strictAgentFiles = loadSettings(process.cwd()).strictAgentFiles === true;
+  let strictAgentFiles = effectiveSettings(process.cwd()).strictAgentFiles;
 
   const reloadCustomAgents = (strict = false) => {
     const userAgents = loadCustomAgents(process.cwd(), strict);
@@ -51,8 +52,7 @@ export default function (pi: ExtensionAPI) {
   const getViewerMarkdown = () => settings.viewerMarkdown;
   const setViewerMarkdown = (m: ViewerMarkdownMode): void => { settings.setViewerMarkdownMode(m); };
   function chooseViewerMarkdown(mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext): void {
-    setViewerMarkdown(mode);
-    settingsPersist.persist(ctx, `Viewer markdown set to ${mode}`);
+    settingsPersist.persist(ctx, `Viewer markdown set to ${mode}`, { layer: "project", key: "viewerMarkdown", value: mode });
   }
   const pendingUsage = new PendingUsagePool();
 
@@ -102,12 +102,6 @@ export default function (pi: ExtensionAPI) {
   }, (_record, usage) => {
     if (settings.reportUsage) pendingUsage.add(usage);
   });
-
-  const settingsPersist = createSettingsPersistence(
-    settings,
-    { manager },
-    (event, payload) => pi.events.emit(event, payload),
-  );
 
   const MANAGER_KEY = Symbol.for("pi-subagents:manager");
   const { spawnResolved, spawnTopLevel, resolveAgentRef } = createSpawnFunnel({ manager, reloadCustomAgents });
@@ -207,16 +201,16 @@ export default function (pi: ExtensionAPI) {
     setToolDescMode(m: ToolDescriptionMode): void; setStrictAgentFiles(b: boolean): void;
   } {
     return {
-      reportUsage: false,
-      showCost: false,
-      showModel: false,
-      viewerMarkdown: "assistant",
-      widgetMode: "all",
-      fleetView: true,
-      agentMentionMode: "model",
-      defaultJoinMode: "smart",
-      backgroundByDefault: true,
-      toolDescriptionMode: "full",
+      reportUsage: SETTING_SPECS.reportUsage.default,
+      showCost: SETTING_SPECS.showCost.default,
+      showModel: SETTING_SPECS.showModel.default,
+      viewerMarkdown: SETTING_SPECS.viewerMarkdown.default,
+      widgetMode: SETTING_SPECS.widgetMode.default,
+      fleetView: SETTING_SPECS.fleetView.default,
+      agentMentionMode: SETTING_SPECS.agentMentions.default,
+      defaultJoinMode: SETTING_SPECS.defaultJoinMode.default,
+      backgroundByDefault: SETTING_SPECS.backgroundByDefault.default,
+      toolDescriptionMode: SETTING_SPECS.toolDescriptionMode.default,
       strictAgentFiles,
       setReportUsageFlag(b) {
         this.reportUsage = b;
@@ -284,6 +278,7 @@ export default function (pi: ExtensionAPI) {
     setShowModel,
     setViewerMarkdown,
   };
+  const settingsPersist = createSettingsPersistence(appliers, (event, payload) => pi.events.emit(event, payload));
   applyAndEmitLoaded(appliers, (event, payload) => pi.events.emit(event, payload));
 
   const agentTool = createAgentTool(pi, {
@@ -319,12 +314,6 @@ export default function (pi: ExtensionAPI) {
     reloadCustomAgents,
     settings,
     chooseViewerMarkdown,
-    showSettings: (ctx) => showSettings(ctx, {
-      settings,
-      appliers,
-      manager,
-      settingsPersist,
-      isStrictAgentFiles: () => strictAgentFiles,
-    }),
+    showSettings: (ctx) => showSettings(ctx, { cwd: process.cwd(), settingsPersist }),
   });
 }

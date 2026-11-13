@@ -1,13 +1,14 @@
 // Size: AgentManager owns lifecycle state and delegates cohesive operations to adjacent modules.
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SETTING_SPECS } from "../config/settings-defaults.js";
 import { pruneWorktrees } from "../platform/worktree.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { shutdownChildSession } from "../session/agent-session-shutdown.js";
 import type { NestedAgentManager } from "../tool/nested-tools.js";
 import type { AgentActivity, AgentRecord, AgentTombstone, MentionResolution, SubagentType } from "../types.js";
 import type { LifetimeUsage } from "../usage.js";
-import { DEFAULT_MAX_CONCURRENT, DEFAULT_MAX_CONCURRENT_FOREGROUND, occupiesForegroundSlot, occupiesPoolSlot, type Pool } from "./agent-manager-rules.js";
+import { occupiesForegroundSlot, occupiesPoolSlot, type Pool } from "./agent-manager-rules.js";
 import { type ResumeDeps, type ResumeOptions, resume as resumeOperation } from "./agent-resume.js";
 import { cleanup as cleanupRecords, clearCompleted as clearCompletedRecords, dropTombstone as dropTombstoneEntry, takenHandles as getTakenHandles, listTombstones as listTombstoneEntries, type RetentionDeps, resolveMention as resolveAgentMention } from "./agent-retention.js";
 import { type SpawnArgs, type SpawnDeps, type SpawnOptions, spawnAgent, spawnAndWait as spawnAndWaitOperation } from "./agent-spawn.js";
@@ -30,7 +31,7 @@ export class AgentManager {
   private onCompact?: OnAgentCompact;
   private onUsage?: OnAgentUsage;
   private maxConcurrent: number;
-  private maxConcurrentForeground = DEFAULT_MAX_CONCURRENT_FOREGROUND;
+  private maxConcurrentForeground = SETTING_SPECS.maxConcurrentForeground.default;
   private worktreeRepos = new Set<string>();
 
   private startups = new Map<string, Promise<void>>();
@@ -43,7 +44,7 @@ export class AgentManager {
 
   constructor(
     onComplete?: OnAgentComplete,
-    maxConcurrent = DEFAULT_MAX_CONCURRENT,
+    maxConcurrent = SETTING_SPECS.maxConcurrent.default,
     onStart?: OnAgentStart,
     onCompact?: OnAgentCompact,
     onUsage?: OnAgentUsage,

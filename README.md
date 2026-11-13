@@ -6,7 +6,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 
 - **Native tools and UI** — the `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools follow pi's calling conventions and UI patterns
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
-- **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent), `background` (default — hides foreground runs, which already render inline as the `agent` tool result), or `off`
+- **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent, the default), `background` (hides foreground runs, which already render inline as the `agent` tool result), or `off`
 - **FleetView** — navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in. `↑`/`↓` move the selection. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` returns. Toggle via `/agents → Settings → Fleet view`
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too.
   - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
@@ -80,7 +80,7 @@ Agents run in the background by default. The call returns an ID immediately and 
 
 ## UI
 
-The extension renders a persistent widget above the editor showing active agents. By default it shows background runs only (`widgetMode: background`) — foreground agents already render inline as the `agent` tool result, so the widget would otherwise double-render them. Switch to `all` (every agent) or `off` (hide the widget) via `/agents → Settings → Widget`:
+The extension renders a persistent widget above the editor showing active agents. By default it shows every agent (`widgetMode: all`). Switch to `background` (hide foreground agents, which already render inline as the `agent` tool result) or `off` (hide the widget) via `/agents → Settings → Widget`:
 
 ```text
 ● Agents
@@ -710,12 +710,28 @@ Runtime tuning values set via `/agents` → Settings persist across pi restarts:
 
 Two files, merged on load:
 
-- **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults. Edit by hand; the `/agents` menu never writes here.
-- **Project:** `<cwd>/.pi/subagents.json` — per-project overrides. Written by `/agents` → Settings.
+- **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults.
+- **Project:** `<cwd>/.pi/subagents.json` — per-project overrides.
+
+`/agents` → Settings edits either file.
+
+- The header reads `Scope: global | project`, and the footer advertises `tab scope`. `tab` switches layers at any time.
+- The menu opens on the project layer when `<cwd>/.pi/subagents.json` exists, and on the global layer when it does not.
+- The global layer shows the global file's value, or the default for an unset key. A change writes the global file. When the project overrides that key, the notification says the change does not reach this project.
+- The project layer shows the effective value of every row, and a change writes the project file. It marks each row by source:
+  - `(project)`: the project file sets the key, and the global file does not.
+  - `(overrides global)`: both files set the key.
+  - `(inherited)`, dimmed: the project file does not set the key.
+- A change on the project layer makes that key a project override.
+- `r` on a row removes that key from the layer's file. A project row then inherits, and a global row returns to the default. The running session takes the inherited value at once. `r` on a row the layer does not set does nothing, and the footer advertises it.
+- `r` on a project file that holds a full snapshot removes one key at a time and leaves the rest.
+- A layer file that exists and does not parse shows its parse error. That layer stays read-only until you fix the file.
+
+A menu change writes one key to one file. It keeps every other key in that file, including unknown keys and the whole `policy`. It never writes a file that exists and does not parse, and it warns with the file name instead. After the write, the extension recomputes the effective settings from both files and applies them live.
 
 ### Precedence
 
-Project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`).
+Project overrides global on any field present in both. A menu change never copies an inherited global value into the project file, so a later edit to the global file still applies. A project file that already holds a full snapshot stays as it is, and every key in it is an override. Missing fields fall back to the defaults in the table above.
 
 ### Nested depth
 
@@ -732,7 +748,7 @@ A `subagent_type` that does not resolve to exactly one enabled agent is an error
 
 ### Capability policy
 
-An optional `policy` object in `subagents.json` bounds the tools, extensions, and skills of new agents. It is not a `/agents` setting, and `/agents` never edits it.
+An optional `policy` object in `subagents.json` bounds the tools, extensions, and skills of new agents. `/agents` edits one key of it, `ephemeralNesting`. You edit the `allow` and `deny` lists by hand.
 
 ```json
 {
@@ -759,7 +775,10 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
 - The extension reads the policy at each spawn, so an edit applies without a restart.
 - A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names no built-in tool, discovered extension, or discovered skill only warns, as a `policy-warning:` tool activity when an agent starts. The spawn proceeds. Skills come from the default skill directories.
-- Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
+- A change from `/agents → Settings` keeps the `policy` of the file it writes. It refuses, with a warning, when that file exists and does not parse.
+- The `Ephemeral nesting` row appears in both layers and writes `policy.ephemeralNesting` only. It leaves every other part of `policy` as it was, and `r` removes the key.
+- The row shows the effective value. On the project layer it refuses to turn on while the global file has it off, because a project can only narrow.
+- A change fires `subagents:settings_changed` with the `policy` payload.
 - `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
 
 ### Strict agent files
@@ -967,7 +986,7 @@ The extension emits agent lifecycle events via `pi.events.emit()` so other exten
 | `subagents:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
 | `subagents:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
 | `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project), `policy` (`{ global, project, ephemeralNesting }`) |
-| `subagents:settings_changed` | `/agents` → Settings mutation took effect | `settings`, `persisted` (`boolean` — `false` on write failure), `policy` (`{ global, project, ephemeralNesting }`) |
+| `subagents:settings_changed` | `/agents` → Settings change or reset took effect | `settings` (effective, recomputed from both files and the defaults), `persisted` (`boolean` — `false` on write failure), `layer` (`"global"` or `"project"`, the layer that changed), `policy` (`{ global, project, ephemeralNesting }`) |
 
 The extension emits the four agent-lifecycle events (`subagents:started`, `:completed`, `:failed`, `:compacted`) for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
 
@@ -1247,8 +1266,10 @@ src/
 
   config/             # How a run is configured: settings, defaults, model choice
     settings.ts       # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
-    runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
+    runtime-settings.ts # In-memory settings state and settings-write toasts
+    settings-defaults.ts # The one table of every setting's default and bounds
     settings-paths.ts # Paths of the global and project subagents.json
+    settings-store.ts # Read and write one key of one subagents.json layer, keeping every other key
     capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json
     capability-policy.ts # checkCapabilityPolicy: match declared tools, extensions, and skills against the policy
     policy-unknown-entries.ts # Name the policy entries that match no known tool, extension, or skill
@@ -1277,6 +1298,8 @@ src/
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
     settings-menu.ts      # /agents → Settings menu
+    settings-rows.ts      # Static rows of the Settings menu: id, label, description, values
+    settings-changes.ts   # Parse a menu choice into one settings key, value, and toast
     agents-menu.ts        # /agents command: menu, agent lists and detail, eject/disable/enable
 ```
 

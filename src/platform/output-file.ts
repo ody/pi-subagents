@@ -2,8 +2,9 @@ import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
+import { SETTING_SPECS } from "../config/settings-defaults.js";
 
-let outputTranscriptDefault = true;
+let outputTranscriptDefault = SETTING_SPECS.outputTranscript.default;
 
 export function getOutputTranscriptDefault(): boolean { return outputTranscriptDefault; }
 export function setOutputTranscriptDefault(b: boolean): void { outputTranscriptDefault = b; }
