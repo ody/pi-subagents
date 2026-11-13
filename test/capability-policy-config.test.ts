@@ -3,6 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadCapabilityPolicy, policyEventPayload } from "../src/config/capability-policy-config.js";
+import { registerAgents } from "../src/agents/agent-types.js";
+import { unknownPolicyEntries } from "../src/config/policy-unknown-entries.js";
+import { runAgent } from "../src/session/agent-runner.js";
+import type { AgentConfig } from "../src/types.js";
+import { registeredCapability } from "./helpers/capability.js";
+import { registerFauxProvider } from "./helpers/pi-ai.js";
 import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged, saveSettings } from "../src/config/settings.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 
@@ -120,6 +126,82 @@ describe("capability policy configuration", () => {
     const expected = { global: { skills: { deny: ["x"] } }, project: {}, ephemeralNesting: false };
     expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", expect.objectContaining({ policy: expected }));
     expect(emit).toHaveBeenCalledWith("subagents:settings_changed", expect.objectContaining({ policy: expected }));
+  });
+
+  it("names the file and entry for a well-formed entry that names nothing known", () => {
+    writeGlobal({ policy: { tools: { deny: ["bash", "nosuchtool"] }, skills: { allow: ["*", "ghost-skill"] } } });
+    writeProject({ policy: { extensions: { deny: ["ghost-ext"] }, tools: { allow: ["ext:ghost-ext/x", "read"] } } });
+    const loaded = loadCapabilityPolicy(projectDir);
+    expect(loaded.problems).toEqual([]);
+    const known = { extensions: new Set(["real-ext"]), extensionTools: new Set(["real_tool"]), skills: new Set(["real-skill"]) };
+    expect(unknownPolicyEntries(loaded, projectDir, () => known)).toEqual([
+      `${globalFile()}: policy.tools.deny entry "nosuchtool" names no known tool`,
+      `${globalFile()}: policy.skills.allow entry "ghost-skill" names no known skill`,
+      `${projectFile()}: policy.tools.allow entry "ext:ghost-ext/x" names no known tool`,
+      `${projectFile()}: policy.extensions.deny entry "ghost-ext" names no known extension`,
+    ]);
+  });
+
+  it("does not judge extension entries when no extension was discovered", () => {
+    writeGlobal({ policy: { tools: { deny: ["nosuchtool", "ext:a"] }, extensions: { deny: ["a"] } } });
+    const loaded = loadCapabilityPolicy(projectDir);
+    expect(unknownPolicyEntries(loaded, projectDir, () => ({ skills: new Set() }))).toEqual([]);
+  });
+
+  it("warns and still runs the spawn when an entry names nothing known", async () => {
+    writeGlobal({ policy: { tools: { deny: ["nosuchtool"] }, extensions: { deny: ["ghost-ext"] }, skills: { deny: ["ghost-skill"] } } });
+    const faux = registerFauxProvider({ provider: "faux", models: [{ id: "faux-1", contextWindow: 200_000 }] });
+    try {
+      registerAgents(
+        new Map([
+          [
+            "warn-probe",
+            {
+              name: "warn-probe",
+              description: "warn-probe",
+              builtinToolNames: ["read"],
+              extensions: true,
+              skills: false,
+              systemPrompt: "You are a probe.",
+              promptMode: "replace",
+              inheritContext: false,
+              runInBackground: false,
+              isolated: false,
+            } as AgentConfig,
+          ],
+        ]),
+      );
+      const model = faux.getModel();
+      const modelRegistry: any = {
+        find: () => model,
+        getAll: () => [model],
+        getAvailable: () => [model],
+        hasConfiguredAuth: () => true,
+        isUsingOAuth: () => false,
+        getApiKeyAndHeaders: async () => ({ apiKey: "faux", headers: {} }),
+        registerProvider: () => {},
+        unregisterProvider: () => {},
+      };
+      const ctx: any = { cwd: projectDir, getSystemPrompt: () => "PARENT", model, modelRegistry };
+      const activity: string[] = [];
+      let created = false;
+      await runAgent(ctx, "warn-probe", "go", {
+        pi: { exec: async () => ({ code: 1, stdout: "", stderr: "" }) } as any,
+        capability: registeredCapability("warn-probe"),
+        model,
+        onToolActivity: a => activity.push(a.toolName ?? ""),
+        onSessionCreated: () => {
+          created = true;
+        },
+      }).catch(() => {});
+      expect(created).toBe(true);
+      const warnings = activity.filter(name => name.startsWith("policy-warning:"));
+      expect(warnings).toContain(`policy-warning:${globalFile()}: policy.tools.deny entry "nosuchtool" names no known tool`);
+      expect(warnings).toContain(`policy-warning:${globalFile()}: policy.extensions.deny entry "ghost-ext" names no known extension`);
+      expect(warnings).toContain(`policy-warning:${globalFile()}: policy.skills.deny entry "ghost-skill" names no known skill`);
+    } finally {
+      faux.unregister();
+    }
   });
 
   it("carries the policy in the ping reply", async () => {
