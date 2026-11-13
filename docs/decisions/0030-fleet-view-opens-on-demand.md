@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Fleet view opens on demand above the editor
+# 0030. Fleet view opens on demand above the editor
 
 ## Context
 

@@ -29,6 +29,7 @@ Each entry: the rule an agent must not break, and its ADR.
 - **Session persistence.** A nested agent never persists a session. [ADR 0027](docs/decisions/0027-remember-agents.md)
 - **Usage reporting.** Subagent usage reaches pi's totals only as `usage` on tool results, and only with `reportUsage` on. [ADR 0028](docs/decisions/0028-report-usage-to-session.md)
 - **Worktree switch.** With `worktreeIsolation` off, no path creates a worktree, and a worktree request downgrades without refusal. [ADR 0029](docs/decisions/0029-worktree-isolation-switch.md)
+- **Fleet view.** The fleet view never draws until `↓` at an empty prompt, renders directly above the editor, and closes only on `Esc`, `Enter` on `main`, or a non-fleet key. [ADR 0030](docs/decisions/0030-fleet-view-opens-on-demand.md)
 - **No comments.** Files under `src/` and `test/` carry no comments, only `Size:` headers, `biome-ignore` reasons and a shebang. Never add a comment, or carry its prose in a string or variable. [ADR 0010](docs/decisions/0010-no-code-comments.md)
 - **Git hooks.** Pre-commit checks live in tracked `.githooks/` and stay fast. Never run the full suite in the hook, skip it with `--no-verify`, or edit git config. [ADR 0005](docs/decisions/0005-git-hooks.md)
 
