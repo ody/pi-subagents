@@ -3,7 +3,7 @@ import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from 
 import { policyEventPayload } from "./capability-policy-config.js";
 import { isValidSettingValue, SETTING_KEYS, SETTING_SPECS } from "./settings-defaults.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
-import { readLayerFile, type SettingsLayer, setLayerKey } from "./settings-store.js";
+import { readLayerFile, type SettingsLayer, setLayerKey, setLayerPolicyKey } from "./settings-store.js";
 
 export interface SubagentsSettings {
   maxConcurrent?: number;
@@ -150,10 +150,20 @@ export function applyAndEmitLoaded(
   return settings;
 }
 
+export type SettingKey = keyof SubagentsSettings | "ephemeralNesting";
+
 export interface SettingChange {
   layer: SettingsLayer;
-  key: keyof SubagentsSettings;
+  key: SettingKey;
   value: unknown;
+}
+
+function writeChange(change: SettingChange, cwd: string): boolean {
+  const write =
+    change.key === "ephemeralNesting"
+      ? setLayerPolicyKey(change.layer, cwd, change.key, change.value)
+      : setLayerKey(change.layer, cwd, change.key, change.value);
+  return write.ok;
 }
 
 export function saveAndEmitChanged(
@@ -163,7 +173,7 @@ export function saveAndEmitChanged(
   appliers: SettingsAppliers,
   cwd: string = process.cwd(),
 ): { message: string; level: "info" | "warning" } {
-  const persisted = setLayerKey(change.layer, cwd, change.key, change.value).ok;
+  const persisted = writeChange(change, cwd);
   const effective = effectiveSettings(cwd);
   const settings = persisted ? effective : { ...effective, ...sanitize({ [change.key]: change.value }) };
   applySettings(settings, appliers);

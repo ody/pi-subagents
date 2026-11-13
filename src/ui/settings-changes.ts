@@ -1,17 +1,17 @@
-import type { SubagentsSettings } from "../config/settings.js";
+import type { SettingKey, SubagentsSettings } from "../config/settings.js";
 import { describeRange, isValidSettingValue, SETTING_SPECS } from "../config/settings-defaults.js";
 
 export type ParsedChange =
-  | { ok: true; key: keyof SubagentsSettings; value: unknown; message: string }
+  | { ok: true; key: SettingKey; value: unknown; message: string }
   | { ok: false; message: string };
 
 type Parser = (value: string) => ParsedChange;
 
-function toggle(key: keyof SubagentsSettings, message: (enabled: boolean) => string): Parser {
+function toggle(key: SettingKey, message: (enabled: boolean) => string): Parser {
   return (value) => ({ ok: true, key, value: value === "on", message: message(value === "on") });
 }
 
-function choice(key: keyof SubagentsSettings, message: (value: string) => string): Parser {
+function choice(key: SettingKey, message: (value: string) => string): Parser {
   return (value) => ({ ok: true, key, value, message: message(value) });
 }
 
@@ -77,6 +77,11 @@ const PARSERS: Record<string, Parser> = {
         : "Agent mentions on — a mentioned agent starts here, with no model call",
   ),
   rememberAgents: toggle("rememberAgents", (enabled) => `Remember agents ${enabledWord(enabled)}`),
+  ephemeralNesting: toggle("ephemeralNesting", (enabled) =>
+    enabled
+      ? "Ephemeral nesting on. An ephemeral agent can own subagents when the caller allows it."
+      : "Ephemeral nesting off. An ephemeral agent gets no subagents.",
+  ),
   widgetMode: choice("widgetMode", (v) => `Widget set to ${v}`),
 };
 

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { globalSettingsPath, projectSettingsPath } from "../config/settings-paths.js";
+import { readLayerFile, type SettingsLayer } from "./settings-store.js";
 
 export interface PolicyList {
   allow?: string[];
@@ -129,6 +130,13 @@ export function loadCapabilityPolicy(cwd: string): LoadedPolicy {
     ephemeralNesting: global.ephemeralNesting !== false && project.ephemeralNesting !== false,
     problems,
   };
+}
+
+export function layerEphemeralNesting(layer: SettingsLayer, cwd: string): boolean | undefined {
+  const read = readLayerFile(layer, cwd);
+  const policy = read.ok ? read.data.policy : undefined;
+  const value = isRecord(policy) ? policy.ephemeralNesting : undefined;
+  return typeof value === "boolean" ? value : undefined;
 }
 
 export function policyEventPayload(cwd: string): PolicyEventPayload {

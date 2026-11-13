@@ -737,7 +737,7 @@ A `subagent_type` that does not resolve to exactly one enabled agent is an error
 
 ### Capability policy
 
-An optional `policy` object in `subagents.json` bounds the tools, extensions, and skills of new agents. It is not a `/agents` setting, and `/agents` never edits it.
+An optional `policy` object in `subagents.json` bounds the tools, extensions, and skills of new agents. `/agents` edits one key of it, `ephemeralNesting`. You edit the `allow` and `deny` lists by hand.
 
 ```json
 {
@@ -765,6 +765,9 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - The extension reads the policy at each spawn, so an edit applies without a restart.
 - A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names nothing known only warns.
 - A change from `/agents → Settings` keeps the `policy` of the file it writes. It refuses, with a warning, when that file exists and does not parse.
+- The `Ephemeral nesting` row appears in both layers and writes `policy.ephemeralNesting` only. It leaves every other part of `policy` as it was, and `r` removes the key.
+- The row shows the effective value. On the project layer it refuses to turn on while the global file has it off, because a project can only narrow.
+- A change fires `subagents:settings_changed` with the `policy` payload.
 - `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
 
 ### Strict agent files
