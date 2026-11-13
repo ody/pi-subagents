@@ -753,6 +753,37 @@ describe("agent-runner session persistence", () => {
     expect(sessionManagerCreate).not.toHaveBeenCalled();
   });
 
+  it("persists a top-level ephemeral agent under rememberAgents", async () => {
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = makeAgentConfig({ name: "ephemeral-0123abcd", systemPrompt: "" });
+
+    await runAgent(ctx, "ephemeral-0123abcd", "go", { pi, agentConfig } as any);
+
+    expect(sessionManagerCreate).toHaveBeenCalled();
+    expect(sessionManagerInMemory).not.toHaveBeenCalled();
+  });
+
+  it("keeps a top-level ephemeral agent in memory when rememberAgents is off", async () => {
+    setRememberAgents(false);
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = makeAgentConfig({ name: "ephemeral-0123abcd", systemPrompt: "" });
+
+    await runAgent(ctx, "ephemeral-0123abcd", "go", { pi, agentConfig } as any);
+
+    expect(sessionManagerInMemory).toHaveBeenCalled();
+    expect(sessionManagerCreate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a nested ephemeral agent in memory", async () => {
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = makeAgentConfig({ name: "ephemeral-0123abcd", systemPrompt: "" });
+
+    await runAgent(ctx, "ephemeral-0123abcd", "go", { pi, agentConfig, nested: true } as any);
+
+    expect(sessionManagerInMemory).toHaveBeenCalled();
+    expect(sessionManagerCreate).not.toHaveBeenCalled();
+  });
+
   it("still persists a nested child that asks for it in frontmatter", async () => {
     vi.mocked(getAgentConfig).mockReturnValueOnce(makeAgentConfig({ persistSession: true }));
     createAgentSession.mockResolvedValue({ session: createSession("OK").session });

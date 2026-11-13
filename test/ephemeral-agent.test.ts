@@ -64,7 +64,6 @@ describe("an omitted subagent_type", () => {
       description: "find auth files",
       systemPrompt: "",
       promptMode: "append",
-      persistSession: false,
       extensions: true,
       skills: true,
       allowedSubagents: [],
@@ -303,7 +302,7 @@ describe("a nested ephemeral spawn", () => {
     const calls = vi.mocked(runAgent).mock.calls as any[][];
     expect(calls).toHaveLength(2);
     expect(calls[1][1]).toMatch(/^ephemeral-[0-9a-f]{8}$/);
-    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Inner Helper", persistSession: false, systemPrompt: "" });
+    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Inner Helper", systemPrompt: "" });
     expect(calls[1][3].capability.capabilities.builtinToolNames).toEqual(["read"]);
     expect(calls[1][3].maxTurns).toBe(0);
     expect(calls[1][3].thinkingLevel).toBe("high");
