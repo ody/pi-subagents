@@ -236,22 +236,24 @@ describe("capability policy configuration", () => {
         unregisterProvider: () => {},
       };
       const ctx: any = { cwd: projectDir, getSystemPrompt: () => "PARENT", model, modelRegistry };
-      const activity: string[] = [];
+      const notify = vi.fn();
       let created = false;
       await runAgent(ctx, "warn-probe", "go", {
         pi: { exec: async () => ({ code: 1, stdout: "", stderr: "" }) } as any,
         capability: registeredCapability("warn-probe"),
         model,
-        onToolActivity: a => activity.push(a.toolName ?? ""),
+        notify,
         onSessionCreated: () => {
           created = true;
         },
       }).catch(() => {});
       expect(created).toBe(true);
-      const warnings = activity.filter(name => name.startsWith("policy-warning:"));
-      expect(warnings).toContain(`policy-warning:${globalFile()}: policy.tools.deny entry "nosuchtool" names no known tool`);
-      expect(warnings).toContain(`policy-warning:${globalFile()}: policy.extensions.deny entry "ghost-ext" names no known extension`);
-      expect(warnings).toContain(`policy-warning:${globalFile()}: policy.skills.deny entry "ghost-skill" names no known skill`);
+      const messages = notify.mock.calls.map(call => call[0]);
+      expect(notify.mock.calls.every(call => call[1] === "warning")).toBe(true);
+      expect(messages).toContain(`${globalFile()}: policy.tools.deny entry "nosuchtool" names no known tool`);
+      expect(messages).toContain(`${globalFile()}: policy.extensions.deny entry "ghost-ext" names no known extension`);
+      expect(messages).toContain(`${globalFile()}: policy.skills.deny entry "ghost-skill" names no known skill`);
+      expect(messages).toHaveLength(new Set(messages).size);
     } finally {
       faux.unregister();
     }
