@@ -8,15 +8,15 @@ This builds on ADR 0011 (capability policy) and ADR 0015 (ephemeral agents). It 
 
 ## Decision
 
-A nested spawn is bounded by its parent. In this rule the spawner is the owner as ADR 0007 defines it. Top-level, `@handle`, and RPC spawns have no parent and are bounded by the capability policy alone.
+The parent bounds a nested spawn. In this rule the spawner is the owner as ADR 0007 defines it. Top-level, `@handle`, and RPC spawns have no parent, so the capability policy alone bounds them.
 
-- The parent's set is its tools, extensions, and skills after the capability policy and its own ceiling, so the bound is transitive. It is recorded on the parent's `AgentRecord` when its session is built.
-- A child's values are compared with the parent's using the capability policy's expansion rules: wildcards, `true`, and whole-extension selectors expand first and are narrowed, never refused. The parent's `disallowed_tools` and `exclude_extensions` apply to the child, and `skills: true` under a parent list narrows to that list.
-- A caller-supplied child value outside the parent's set refuses the spawn. File values and ephemeral defaults are narrowed to the intersection, with a warning to the user and a note in the nested tool result.
-- A child's `allowed_subagents` cannot exceed its parent's. A list is a subset of a list, and `all` is allowed only when the parent has `all`. A caller value outside the parent's refuses the spawn, and a file value or ephemeral default is narrowed. The main session counts as `all`.
-- A nested ephemeral child, one spawned with no `subagent_type`, is allowed only when the parent's `allowed_subagents` is `all`.
-- A nested spawn whose parent record has no recorded set is refused.
-- Extension tools that register after spawn are filtered by the same set, through the extension scope guard.
+- The parent's set is its tools, extensions, and skills after the capability policy and its own ceiling, so the bound is transitive. The manager records it on the parent's `AgentRecord` when it builds the parent's session.
+- The runner compares a child's values with the parent's using the capability policy's expansion rules. Wildcards, `true`, and whole-extension selectors expand first, and the runner narrows them and never refuses them. The parent's `disallowed_tools` and `exclude_extensions` apply to the child. `skills: true` under a parent list narrows to that list.
+- A caller-supplied child value outside the parent's set refuses the spawn. The runner narrows file values and ephemeral defaults to the intersection, with a warning to the user and a note in the nested tool result.
+- A child's `allowed_subagents` cannot exceed its parent's. A list must be a subset of a list, and `all` needs a parent with `all`. A caller value outside the parent's refuses the spawn, and the runner narrows a file value or ephemeral default. The main session counts as `all`.
+- A nested ephemeral child, one spawned with no `subagent_type`, needs a parent whose `allowed_subagents` is `all`.
+- The nested tool refuses a spawn whose parent record has no recorded set.
+- The extension scope guard filters extension tools that register after spawn through the same set.
 - `maxSubagentDepth` (default `2`, 0 to 16) is the hard ceiling on nesting, counted from the main session as 0 and its subagents as 1. An agent whose depth has reached it gets no nested delegation tools, whatever its `allowed_subagents`, and `0` or `1` turns nesting off. An `isolated` agent also gets none.
 - The runner reads the ceiling when it builds a top-level agent's session, and descendants inherit that value. A change applies to agent trees that start after it.
 
