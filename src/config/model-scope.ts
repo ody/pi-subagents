@@ -8,7 +8,7 @@ export function setScopeModelsEnabled(enabled: boolean): void { scopeModelsEnabl
 export type ModelScopeVerdict =
   | { kind: "ok" }
   | { kind: "error"; message: string }
-  | { kind: "warn"; message: string };
+  | { kind: "replace"; message: string; replaced: string };
 
 export function checkModelScope(args: {
   model: { provider: string; id: string } | undefined;
@@ -33,7 +33,34 @@ export function checkModelScope(args: {
   }
   const modelLabel = modelInput ?? `${model.provider}/${model.id}`;
   return {
-    kind: "warn",
-    message: `Agent "${agentLabel}" using out-of-scope model "${modelLabel}"`,
+    kind: "replace",
+    replaced: modelLabel,
+    message: `Agent "${agentLabel}" pins out-of-scope model "${modelLabel}"; using the session model instead`,
   };
+}
+
+export type ScopedModel<M> =
+  | { ok: false; message: string }
+  | { ok: true; model: M | undefined; replaced?: string; notice?: string };
+
+export function scopeModel<M extends { provider: string; id: string }>(args: {
+  pinned: M | undefined;
+  sessionModel: M | undefined;
+  cwd: string;
+  modelRegistry: ModelRegistryRef;
+  callerSupplied: boolean;
+  agentLabel: string;
+  modelInput?: string;
+}): ScopedModel<M> {
+  const { pinned, sessionModel, ...rest } = args;
+  const verdict = checkModelScope({ ...rest, model: pinned });
+  if (verdict.kind === "error") return { ok: false, message: verdict.message };
+  if (verdict.kind === "replace") {
+    return { ok: true, model: sessionModel, replaced: verdict.replaced, notice: verdict.message };
+  }
+  return { ok: true, model: pinned ?? sessionModel };
+}
+
+export function modelReplacedNote(replaced: string | undefined): string {
+  return replaced === undefined ? "" : `Note: model scope replaced out-of-scope model ${replaced} with the session model.\n\n`;
 }

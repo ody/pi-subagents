@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { filteredNote } from "../config/capability-policy.js";
+import { modelReplacedNote } from "../config/model-scope.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { CompletionNotifier } from "../manager/completion-notifier.js";
@@ -39,6 +40,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     ephemeral,
     displayName,
     model,
+    modelReplaced,
     thinking,
     inheritContext,
     isolated,
@@ -48,7 +50,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     detailBase,
   } = call;
 
-  const capabilityNote = capability ? filteredNote(capability) : "";
+  const capabilityNote = (capability ? filteredNote(capability) : "") + modelReplacedNote(modelReplaced);
   const bgCallbacks = createActivityTracker();
 
   let id: string;
