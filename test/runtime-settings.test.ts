@@ -3,29 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { saveAndEmitChanged } = vi.hoisted(() => ({ saveAndEmitChanged: vi.fn() }));
 vi.mock("../src/config/settings.js", () => ({ saveAndEmitChanged }));
 
-import { createSettingsPersistence, type RuntimeSettings, snapshotSettings } from "../src/config/runtime-settings.js";
+import { createSettingsPersistence } from "../src/config/runtime-settings.js";
+import type { SettingChange, SettingsAppliers } from "../src/config/settings.js";
 
-function runtimeSettings(over: Partial<RuntimeSettings> = {}): RuntimeSettings {
-  return {
-    reportUsage: false,
-    showCost: false,
-    showModel: false,
-    viewerMarkdown: "assistant",
-    widgetMode: "all",
-    fleetView: true,
-    agentMentionMode: "model",
-    defaultJoinMode: "smart",
-    backgroundByDefault: true,
-    toolDescriptionMode: "full",
-    strictAgentFiles: false,
-    ...over,
-  };
-}
-
-const manager = {
-  getMaxConcurrent: () => 7,
-  getMaxConcurrentForeground: () => 3,
-};
+const appliers = {} as SettingsAppliers;
+const change: SettingChange = { layer: "project", key: "showCost", value: true };
 
 function ui() {
   return { ui: { notify: vi.fn() } };
@@ -36,64 +18,37 @@ beforeEach(() => {
   saveAndEmitChanged.mockReturnValue({ message: "ok", level: "info" });
 });
 
-describe("snapshotSettings", () => {
-  it("maps the in-memory fields to their SubagentsSettings keys", () => {
-    const s = snapshotSettings(
-      runtimeSettings({ defaultJoinMode: "async", agentMentionMode: "direct", viewerMarkdown: "all" }),
-      { manager },
-    );
-    expect(s.defaultJoinMode).toBe("async");
-    expect(s.agentMentions).toBe("direct");
-    expect(s.viewerMarkdown).toBe("all");
-  });
-
-  it("takes concurrency from the manager", () => {
-    const s = snapshotSettings(runtimeSettings(), { manager });
-    expect(s.maxConcurrent).toBe(7);
-    expect(s.maxConcurrentForeground).toBe(3);
-  });
-
-  it("snapshots neither a fallback agent nor a defaults switch", () => {
-    const s = snapshotSettings(runtimeSettings(), { manager });
-    expect(Object.keys(s)).not.toContain("fallbackSubagent");
-    expect(Object.keys(s)).not.toContain("disableDefaultAgents");
-  });
-});
-
 describe("createSettingsPersistence", () => {
   it("persist is silent on success and warns the ctx on failure", () => {
-    const persist = createSettingsPersistence(runtimeSettings(), { manager }, vi.fn()).persist;
+    const persist = createSettingsPersistence(appliers, vi.fn()).persist;
     const okCtx = ui();
-    persist(okCtx as never, "changed");
+    persist(okCtx as never, "changed", change);
     expect(okCtx.ui.notify).not.toHaveBeenCalled();
 
     saveAndEmitChanged.mockReturnValueOnce({ message: "warn", level: "warning" });
     const warnCtx = ui();
-    persist(warnCtx as never, "changed");
+    persist(warnCtx as never, "changed", change);
     expect(warnCtx.ui.notify).toHaveBeenCalledWith("warn", "warning");
   });
 
-  it("persist writes the whole snapshot", () => {
-    const persist = createSettingsPersistence(runtimeSettings({ showCost: true }), { manager }, vi.fn()).persist;
-    persist(undefined, "changed");
-    const snapshot = saveAndEmitChanged.mock.calls[0][0];
-    expect(snapshot.showCost).toBe(true);
-    expect(snapshot.maxConcurrent).toBe(7);
-    expect(saveAndEmitChanged.mock.calls[0][1]).toBe("changed");
+  it("persist writes the one change it is given, not a snapshot", () => {
+    const persist = createSettingsPersistence(appliers, vi.fn(), "/work").persist;
+    persist(undefined, "changed", change);
+    expect(saveAndEmitChanged).toHaveBeenCalledWith(change, "changed", expect.any(Function), appliers, "/work");
   });
 
   it("notifyApplied toasts whatever the write returned", () => {
-    const { notifyApplied } = createSettingsPersistence(runtimeSettings(), { manager }, vi.fn());
+    const { notifyApplied } = createSettingsPersistence(appliers, vi.fn());
     saveAndEmitChanged.mockReturnValueOnce({ message: "saved (session only)", level: "warning" });
     const ctx = ui();
-    notifyApplied(ctx as never, "saved");
+    notifyApplied(ctx as never, "saved", change);
     expect(ctx.ui.notify).toHaveBeenCalledWith("saved (session only)", "warning");
   });
 
   it("passes the emit through to saveAndEmitChanged", () => {
     const emit = vi.fn();
-    const { notifyApplied } = createSettingsPersistence(runtimeSettings(), { manager }, emit);
-    notifyApplied(ui() as never, "saved");
+    const { notifyApplied } = createSettingsPersistence(appliers, emit);
+    notifyApplied(ui() as never, "saved", change);
     expect(saveAndEmitChanged.mock.calls[0][2]).toBe(emit);
   });
 });

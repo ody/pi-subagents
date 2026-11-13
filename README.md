@@ -702,9 +702,11 @@ Two files, merged on load:
 - **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults. Edit by hand; the `/agents` menu never writes here.
 - **Project:** `<cwd>/.pi/subagents.json` — per-project overrides. Written by `/agents` → Settings.
 
+A menu change writes one key to one file. It keeps every other key in that file, including unknown keys and the whole `policy`. It never writes a file that exists and does not parse, and it warns with the file name instead. After the write, the extension recomputes the effective settings from both files and applies them live.
+
 ### Precedence
 
-Project overrides global on any field present in both. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`).
+Project overrides global on any field present in both. A menu change never copies an inherited global value into the project file, so a later edit to the global file still applies. Missing fields fall back to the hardcoded defaults (max concurrency `10`, max foreground concurrency `0` = unlimited, default max turns unlimited, grace turns `5`, nested depth `2`, join mode `smart`).
 
 ### Nested depth
 
@@ -748,7 +750,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
 - The extension reads the policy at each spawn, so an edit applies without a restart.
 - A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names nothing known only warns.
-- Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
+- A change from `/agents → Settings` keeps the `policy` of the file it writes. It refuses, with a warning, when that file exists and does not parse.
 - `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
 
 ### Strict agent files
@@ -1236,8 +1238,9 @@ src/
 
   config/             # How a run is configured: settings, defaults, model choice
     settings.ts       # Persistent settings (~/.pi/agent/subagents.json + .pi/subagents.json)
-    runtime-settings.ts # In-memory settings state, snapshot and settings-write toasts
+    runtime-settings.ts # In-memory settings state and settings-write toasts
     settings-paths.ts # Paths of the global and project subagents.json
+    settings-store.ts # Read and write one key of one subagents.json layer, keeping every other key
     capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json
     capability-policy.ts # checkCapabilityPolicy: match declared tools, extensions, and skills against the policy
     runner-defaults.ts # Process-wide run defaults: max turns, grace turns, rememberAgents
@@ -1265,6 +1268,8 @@ src/
     agent-mention.ts      # `@` roster (running, resumable, and startable agents) + popup rows
     select-item.ts        # Collision-safe ctx.ui.select wrapper (numbered rows)
     settings-menu.ts      # /agents → Settings menu
+    settings-rows.ts      # Static rows of the Settings menu: id, label, description, values
+    settings-changes.ts   # Parse a menu choice into one settings key, value, and toast
     agents-menu.ts        # /agents command: menu, agent lists and detail, eject/disable/enable
 ```
 
