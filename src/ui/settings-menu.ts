@@ -120,17 +120,23 @@ function currentText(values: RowValues, id: NumericSettingId): string {
   return displayValue(values[id]);
 }
 
-export async function showSettings(
+interface MenuOutcome {
+  result: string | undefined;
+  selected: string;
+  values: RowValues;
+}
+
+async function runMenu(
   ctx: ExtensionCommandContext,
   deps: SettingsMenuDeps,
-  state: SettingsMenuState = {},
-): Promise<void> {
-  const layer = state.layer ?? initialLayer(deps.cwd);
+  layer: SettingsLayer,
+  selectedRow: string | undefined,
+): Promise<MenuOutcome> {
   const values = rowValues(layer, deps.cwd);
   const file = readLayerSettings(layer, deps.cwd);
   const readOnlyReason = file.ok ? undefined : file.reason;
   const rowIds = SETTING_ROWS.map((row) => row.id);
-  let currentIndex = Math.max(0, rowIds.findIndex((id) => id === state.selected));
+  let currentIndex = Math.max(0, rowIds.findIndex((id) => id === selectedRow));
   const sources = layer === "project" ? projectSources(deps.cwd) : undefined;
 
   const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
@@ -189,28 +195,48 @@ export async function showSettings(
     };
   });
 
-  const selected = rowIds[currentIndex];
-  if (result === SWITCH_LAYER) {
-    await showSettings(ctx, deps, { layer: otherLayer(layer), selected });
-    return;
-  }
-  if (result === REFRESH) {
-    await showSettings(ctx, deps, { layer, selected });
-    return;
-  }
-  if (!isNumericSettingId(result)) return;
+  return { result, selected: rowIds[currentIndex], values };
+}
 
-  const label = promptLabel(result);
-  let input: string | undefined = await ctx.ui.input(label, currentText(values, result));
+export async function showSettings(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  state: SettingsMenuState = {},
+): Promise<void> {
+  let layer = state.layer ?? initialLayer(deps.cwd);
+  let selected = state.selected;
+  for (;;) {
+    const outcome = await runMenu(ctx, deps, layer, selected);
+    selected = outcome.selected;
+    if (outcome.result === SWITCH_LAYER) {
+      layer = otherLayer(layer);
+      continue;
+    }
+    if (outcome.result === REFRESH) continue;
+    if (!isNumericSettingId(outcome.result)) return;
+    if (!(await editNumeric(ctx, deps, layer, outcome.result, outcome.values))) return;
+    selected = outcome.result;
+  }
+}
+
+async function editNumeric(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  layer: SettingsLayer,
+  id: NumericSettingId,
+  values: RowValues,
+): Promise<boolean> {
+  const label = promptLabel(id);
+  let input: string | undefined = await ctx.ui.input(label, currentText(values, id));
   while (input != null) {
     const trimmed = input.trim();
-    const parsed = parseSettingChange(result, trimmed);
+    const parsed = parseSettingChange(id, trimmed);
     if (parsed?.ok) {
-      applySettingValue(ctx, deps, layer, result, trimmed);
-      await showSettings(ctx, deps, { layer, selected: result });
-      return;
+      applySettingValue(ctx, deps, layer, id, trimmed);
+      return true;
     }
     if (parsed) ctx.ui.notify(parsed.message, "warning");
     input = await ctx.ui.input(label, trimmed);
   }
+  return false;
 }
