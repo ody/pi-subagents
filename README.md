@@ -972,7 +972,7 @@ The extension emits agent lifecycle events via `pi.events.emit()` so other exten
 | `subagents:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
 | `subagents:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
 | `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project), `policy` (`{ global, project, ephemeralNesting }`) |
-| `subagents:settings_changed` | `/agents` → Settings mutation took effect | `settings`, `persisted` (`boolean` — `false` on write failure), `policy` (`{ global, project, ephemeralNesting }`) |
+| `subagents:settings_changed` | `/agents` → Settings change or reset took effect | `settings` (effective, recomputed from both files and the defaults), `persisted` (`boolean` — `false` on write failure), `layer` (`"global"` or `"project"`, the layer that changed), `policy` (`{ global, project, ephemeralNesting }`) |
 
 The extension emits the four agent-lifecycle events (`subagents:started`, `:completed`, `:failed`, `:compacted`) for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
 
