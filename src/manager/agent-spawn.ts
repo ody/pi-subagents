@@ -93,6 +93,7 @@ export function spawnAgent(
       : options.reclaim?.handle ?? assignHandle(handleBase(options.ephemeral?.handleSeed ?? type), deps.takenHandles()),
     displayName: options.ephemeral ? options.agentConfig?.displayName : undefined,
     promptMode: options.ephemeral ? options.agentConfig?.promptMode : undefined,
+    agentConfig: options.ephemeral ? options.agentConfig : undefined,
     description: options.description,
     alias: isTopLevelAgent(options) ? options.reclaim?.alias : undefined,
     status: options.isBackground ? "queued" : "running",

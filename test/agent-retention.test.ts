@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type RetentionDeps, resolveMention, takenHandles } from "../src/manager/agent-retention.js";
-import type { AgentRecord, AgentTombstone } from "../src/types.js";
+import { type RetentionDeps, removeRecord, resolveMention, takenHandles } from "../src/manager/agent-retention.js";
+import type { AgentConfig, AgentRecord, AgentTombstone } from "../src/types.js";
 
 function record(overrides: Partial<AgentRecord>): AgentRecord {
   return {
@@ -57,5 +57,29 @@ describe("agent retention lookups", () => {
     const entry = tombstone({ alias: "audit" });
 
     expect(resolveMention(retentionDeps([child], [entry]), "audit")).toEqual({ kind: "tombstone", entry });
+  });
+});
+
+describe("tombstone agent config", () => {
+  const config = { name: "ephemeral-0123abcd", systemPrompt: "" } as AgentConfig;
+
+  function remove(overrides: Partial<AgentRecord>): RetentionDeps {
+    const deps = retentionDeps([record(overrides)]);
+    removeRecord(deps, "agent-id", deps.agents.get("agent-id") as AgentRecord);
+    return deps;
+  }
+
+  it("copies the stored config onto the tombstone", () => {
+    const deps = remove({ handle: "audit", sessionFile: "/s/a.jsonl", agentConfig: config });
+    expect(deps.tombstones.get("audit")?.agentConfig).toBe(config);
+  });
+
+  it("leaves no tombstone without a session file", () => {
+    expect(remove({ handle: "audit", agentConfig: config }).tombstones.size).toBe(0);
+  });
+
+  it("leaves no tombstone for an agent with a parent, which has no handle", () => {
+    const deps = remove({ parentAgentId: "parent", sessionFile: "/s/a.jsonl", agentConfig: config });
+    expect(deps.tombstones.size).toBe(0);
   });
 });
