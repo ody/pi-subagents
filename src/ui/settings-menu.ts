@@ -1,12 +1,13 @@
 import { existsSync } from "node:fs";
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
+import { layerEphemeralNesting } from "../config/capability-policy-config.js";
 import type { SettingsPersistence } from "../config/runtime-settings.js";
-import { layerValues, readLayerSettings, type SubagentsSettings } from "../config/settings.js";
+import { layerValues, readLayerSettings } from "../config/settings.js";
 import { describeRange, SETTING_SPECS } from "../config/settings-defaults.js";
 import { layerPath, readLayerFile, type SettingsLayer } from "../config/settings-store.js";
 import { parseSettingChange } from "./settings-changes.js";
-import { buildItems, displayValue, type RowSource, rowSources, SETTING_ROWS } from "./settings-rows.js";
+import { buildItems, displayValue, type RowId, type RowSource, type RowValues, rowSources, SETTING_ROWS } from "./settings-rows.js";
 
 export interface SettingsMenuDeps {
   cwd: string;
@@ -40,10 +41,20 @@ function promptLabel(id: NumericSettingId): string {
 const SWITCH_LAYER = "\0tab";
 const REFRESH = "\0refresh";
 
+function layerOwn(layer: SettingsLayer, cwd: string): object {
+  const read = readLayerSettings(layer, cwd);
+  const own = read.ok ? read.own : {};
+  return layerEphemeralNesting(layer, cwd) === undefined ? own : { ...own, ephemeralNesting: true };
+}
+
 function projectSources(cwd: string): Record<string, RowSource> {
-  const project = readLayerSettings("project", cwd);
-  const global = readLayerSettings("global", cwd);
-  return rowSources(project.ok ? project.own : {}, global.ok ? global.own : {});
+  return rowSources(layerOwn("project", cwd), layerOwn("global", cwd));
+}
+
+function rowValues(layer: SettingsLayer, cwd: string): RowValues {
+  const global = layerEphemeralNesting("global", cwd) !== false;
+  const project = layerEphemeralNesting("project", cwd) !== false;
+  return { ...layerValues(layer, cwd), ephemeralNesting: layer === "global" ? global : global && project };
 }
 
 const otherLayer = (layer: SettingsLayer): SettingsLayer => (layer === "global" ? "project" : "global");
@@ -65,13 +76,22 @@ export function applySettingValue(
     ctx.ui.notify(parsed.message, "warning");
     return;
   }
-  const message = `${parsed.message}${overrideNotice(layer, parsed.key, deps.cwd)}`;
+  if (layer === "project" && parsed.key === "ephemeralNesting" && parsed.value === true && layerEphemeralNesting("global", deps.cwd) === false) {
+    ctx.ui.notify("Ephemeral nesting is off in the global file, and a project can only narrow it. Turn it on in the global layer first.", "warning");
+    return;
+  }
+  const message = `${parsed.message}${overrideNotice(layer, parsed.key, parsed.value, deps.cwd)}`;
   deps.settingsPersist.notifyApplied(ctx, message, { layer, key: parsed.key, value: parsed.value });
 }
 
-function overrideNotice(layer: SettingsLayer, key: string, cwd: string): string {
+function projectOverrides(key: string, value: unknown, cwd: string): boolean {
+  if (key === "ephemeralNesting") return layerEphemeralNesting("project", cwd) === false && value !== false;
   const project = readLayerSettings("project", cwd);
-  const overridden = layer === "global" && project.ok && key in project.own;
+  return project.ok && key in project.own;
+}
+
+function overrideNotice(layer: SettingsLayer, key: string, value: unknown, cwd: string): string {
+  const overridden = layer === "global" && projectOverrides(key, value, cwd);
   return overridden ? ". This project overrides it, so the change does not reach this project." : "";
 }
 
@@ -79,18 +99,24 @@ export function resetSettingValue(
   ctx: ExtensionCommandContext,
   deps: SettingsMenuDeps,
   layer: SettingsLayer,
-  id: keyof SubagentsSettings,
+  id: RowId,
 ): boolean {
   const file = readLayerFile(layer, deps.cwd);
-  if (!file.ok || !(id in file.data)) return false;
+  if (!file.ok || !fileSetsRow(file.data, id)) return false;
   const label = SETTING_ROWS.find((row) => row.id === id)?.label ?? id;
   const outcome = layer === "project" ? "now inherits" : "is back to the default";
-  const message = `${label} ${outcome}${overrideNotice(layer, id, deps.cwd)}`;
+  const message = `${label} ${outcome}${overrideNotice(layer, id, undefined, deps.cwd)}`;
   deps.settingsPersist.notifyApplied(ctx, message, { layer, key: id, value: undefined });
   return true;
 }
 
-function currentText(values: Required<SubagentsSettings>, id: NumericSettingId): string {
+function fileSetsRow(data: Record<string, unknown>, id: RowId): boolean {
+  if (id !== "ephemeralNesting") return id in data;
+  const policy = data.policy;
+  return typeof policy === "object" && policy !== null && id in policy;
+}
+
+function currentText(values: RowValues, id: NumericSettingId): string {
   return displayValue(values[id]);
 }
 
@@ -100,7 +126,7 @@ export async function showSettings(
   state: SettingsMenuState = {},
 ): Promise<void> {
   const layer = state.layer ?? initialLayer(deps.cwd);
-  const values = layerValues(layer, deps.cwd);
+  const values = rowValues(layer, deps.cwd);
   const file = readLayerSettings(layer, deps.cwd);
   const readOnlyReason = file.ok ? undefined : file.reason;
   const rowIds = SETTING_ROWS.map((row) => row.id);

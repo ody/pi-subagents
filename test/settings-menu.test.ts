@@ -425,6 +425,91 @@ describe("settings layers", () => {
     expect(menus).toHaveLength(1);
   });
 
+  describe("Ephemeral nesting row", () => {
+    const row = (lines: string[]) => lines.find((line) => line.includes("Ephemeral nesting")) ?? "";
+    const apply = (id: string, value: string, layer: "global" | "project") =>
+      applySettingValue(layerCtx, realDeps(), layer, id, value);
+
+    it("appears in both layers and shows the effective value", () => {
+      writeGlobal({ policy: { ephemeralNesting: false } });
+      writeProject({});
+      expect(row(open(realDeps(), { layer: "global" }).menu().render(200))).toMatch(/off\s*$/);
+      expect(row(open(realDeps(), { layer: "project" }).menu().render(200))).toMatch(/\(inherited\)\s+off\s*$/);
+    });
+
+    it("defaults to on in both layers", () => {
+      expect(row(open(realDeps(), { layer: "global" }).menu().render(200))).toMatch(/on\s*$/);
+      expect(row(open(realDeps(), { layer: "project" }).menu().render(200))).toMatch(/on\s*$/);
+    });
+
+    it("writes policy.ephemeralNesting only and keeps the rest of policy", () => {
+      const policy = { tools: { deny: ["bash"] }, ephemeralNesting: true };
+      writeGlobal({ maxConcurrent: 3, policy, futureKey: 1 });
+      apply("ephemeralNesting", "off", "global");
+      expect(readJson(globalFile())).toEqual({
+        maxConcurrent: 3,
+        policy: { tools: { deny: ["bash"] }, ephemeralNesting: false },
+        futureKey: 1,
+      });
+    });
+
+    it("fires settings_changed with the policy payload and the layer", () => {
+      writeGlobal({});
+      const events: Array<[string, any]> = [];
+      const deps: SettingsMenuDeps = {
+        cwd: projectDir,
+        settingsPersist: createSettingsPersistence(appliers, (event, payload) => events.push([event, payload]), projectDir),
+      };
+      applySettingValue(layerCtx, deps, "project", "ephemeralNesting", "off");
+      expect(readJson(projectFile())).toEqual({ policy: { ephemeralNesting: false } });
+      expect(events).toHaveLength(1);
+      expect(events[0][0]).toBe("subagents:settings_changed");
+      expect(events[0][1]).toMatchObject({
+        layer: "project",
+        persisted: true,
+        policy: { global: {}, project: {}, ephemeralNesting: false },
+      });
+    });
+
+    it("refuses to turn on in the project while the global file has it off", () => {
+      writeGlobal({ policy: { ephemeralNesting: false } });
+      writeProject({ policy: { ephemeralNesting: false } });
+      apply("ephemeralNesting", "on", "project");
+      expect(notify).toHaveBeenCalledWith(expect.stringContaining("off in the global file"), "warning");
+      expect(readJson(projectFile())).toEqual({ policy: { ephemeralNesting: false } });
+    });
+
+    it("lets the project turn it off, and on again when the global file allows it", () => {
+      writeGlobal({});
+      apply("ephemeralNesting", "off", "project");
+      apply("ephemeralNesting", "on", "project");
+      expect(readJson(projectFile())).toEqual({ policy: { ephemeralNesting: true } });
+    });
+
+    it("warns when a global change does not reach a project that turned it off", () => {
+      writeProject({ policy: { ephemeralNesting: false } });
+      apply("ephemeralNesting", "on", "global");
+      expect(notify).toHaveBeenCalledWith(expect.stringContaining("does not reach this project"), "info");
+    });
+
+    it("refuses to write when policy is not an object", () => {
+      writeGlobal({ policy: "nope" });
+      apply("ephemeralNesting", "off", "global");
+      expect(readJson(globalFile())).toEqual({ policy: "nope" });
+      expect(notify).toHaveBeenCalledWith(expect.stringContaining("failed to persist"), "warning");
+    });
+
+    it("r removes the key and an emptied policy", () => {
+      writeProject({ maxConcurrent: 2, policy: { ephemeralNesting: false } });
+      expect(resetSettingValue(layerCtx, realDeps(), "project", "ephemeralNesting")).toBe(true);
+      expect(readJson(projectFile())).toEqual({ maxConcurrent: 2 });
+      writeProject({ policy: { tools: { deny: ["bash"] }, ephemeralNesting: false } });
+      resetSettingValue(layerCtx, realDeps(), "project", "ephemeralNesting");
+      expect(readJson(projectFile())).toEqual({ policy: { tools: { deny: ["bash"] } } });
+      expect(resetSettingValue(layerCtx, realDeps(), "project", "ephemeralNesting")).toBe(false);
+    });
+  });
+
   it("keeps a later global edit live after a project change on another key", () => {
     const calls: number[] = [];
     const tracking = new Proxy({}, {

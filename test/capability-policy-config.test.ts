@@ -109,6 +109,46 @@ describe("capability policy configuration", () => {
     expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ maxConcurrent: 7, policy });
   });
 
+  it("changing ephemeralNesting writes only that key and fires settings_changed with the policy", () => {
+    const policy = { tools: { deny: ["bash"] }, skills: { allow: ["review"] } };
+    writeProject({ maxConcurrent: 3, policy, extra: true });
+    const emit = vi.fn();
+    const toast = saveAndEmitChanged(
+      { layer: "project", key: "ephemeralNesting", value: false },
+      "ok",
+      emit,
+      appliers(),
+      projectDir,
+    );
+    expect(toast.level).toBe("info");
+    expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({
+      maxConcurrent: 3,
+      policy: { ...policy, ephemeralNesting: false },
+      extra: true,
+    });
+    expect(emit).toHaveBeenCalledWith(
+      "subagents:settings_changed",
+      expect.objectContaining({
+        layer: "project",
+        persisted: true,
+        policy: { global: {}, project: policy, ephemeralNesting: false },
+      }),
+    );
+  });
+
+  it("changing ephemeralNesting refuses a policy that is not an object", () => {
+    writeGlobal({ policy: [] });
+    const toast = saveAndEmitChanged(
+      { layer: "global", key: "ephemeralNesting", value: false },
+      "ok",
+      vi.fn(),
+      appliers(),
+      projectDir,
+    );
+    expect(toast.level).toBe("warning");
+    expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ policy: [] });
+  });
+
   it("saving settings adds no policy key when the file has none", () => {
     expect(changeMax("project", 7).level).toBe("info");
     expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 7 });

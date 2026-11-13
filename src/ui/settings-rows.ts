@@ -1,8 +1,12 @@
 import type { SettingItem } from "@earendil-works/pi-tui";
 import type { SubagentsSettings } from "../config/settings.js";
 
+export type RowId = keyof SubagentsSettings | "ephemeralNesting";
+
+export type RowValues = Required<SubagentsSettings> & { ephemeralNesting: boolean };
+
 export interface SettingRowDef {
-  id: keyof SubagentsSettings;
+  id: RowId;
   label: string;
   description: string;
   values?: readonly string[];
@@ -136,6 +140,13 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
       "agent tool description sent to the LLM: full (rich, default), compact (~75% fewer tokens, for small/local models), or custom (.pi/agent-tool-description.md with {{placeholders}})",
     values: ["full", "compact", "custom"],
   },
+  {
+    id: "ephemeralNesting",
+    label: "Ephemeral nesting",
+    description:
+      "Off forces allowed_subagents: [] on an ephemeral agent and refuses any other caller value. A project can only narrow: off in either file turns it off, so the project layer cannot turn it on while the global file has it off. Edits policy.ephemeralNesting only.",
+    values: ON_OFF,
+  },
 ];
 
 export function displayValue(value: string | number | boolean): string {
@@ -150,7 +161,7 @@ const SOURCE_TAGS: Record<RowSource, string> = {
   inherited: "inherited",
 };
 
-export function rowSources(project: SubagentsSettings, global: SubagentsSettings): Record<string, RowSource> {
+export function rowSources(project: object, global: object): Record<string, RowSource> {
   return Object.fromEntries(
     SETTING_ROWS.map((row) => {
       if (!(row.id in project)) return [row.id, "inherited"];
@@ -160,7 +171,7 @@ export function rowSources(project: SubagentsSettings, global: SubagentsSettings
 }
 
 export function buildItems(
-  values: Required<SubagentsSettings>,
+  values: RowValues,
   sources?: Record<string, RowSource>,
   dim: (text: string) => string = (text) => text,
 ): SettingItem[] {

@@ -205,7 +205,7 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 `subagents:settings_loaded` fires once at init. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
 
-`subagents:settings_changed` fires when the `/agents` menu changes or resets a setting. Its payload is `{ settings, persisted, layer, policy }`:
+`subagents:settings_changed` fires when the `/agents` menu changes or resets a setting, including `policy.ephemeralNesting`. Its payload is `{ settings, persisted, layer, policy }`:
 
 | Field | Meaning |
 | --- | --- |

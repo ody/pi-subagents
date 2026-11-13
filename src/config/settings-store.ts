@@ -53,6 +53,20 @@ export function updateLayerFile(
   }
 }
 
+export function setLayerPolicyKey(layer: SettingsLayer, cwd: string, key: string, value: unknown): LayerWrite {
+  return updateLayerFile(layer, cwd, (data) => {
+    const policy = data.policy ?? {};
+    if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+      throw new Error("policy must be an object");
+    }
+    const record = policy as Record<string, unknown>;
+    if (value === undefined) delete record[key];
+    else record[key] = value;
+    if (Object.keys(record).length === 0) delete data.policy;
+    else data.policy = record;
+  });
+}
+
 export function setLayerKey(layer: SettingsLayer, cwd: string, key: string, value: unknown): LayerWrite {
   return updateLayerFile(layer, cwd, (data) => {
     if (value === undefined) delete data[key];
