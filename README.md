@@ -1,10 +1,10 @@
 # @ody/pi-subagents
 
-A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-agents** to pi. Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level. Run them in the background (the default) or block on them, steer them mid-run, resume completed sessions, and define your own custom agent types.
+A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Spawn specialized agents that run in isolated sessions — each with its own tools, system prompt, model, and thinking level. Run them in the background (the default) or block on them, steer them mid-run, resume completed sessions, and define your own custom agent types.
 
 ## Features
 
-- **Claude Code look & feel** — same tool names, calling conventions, and UI patterns (`agent`, `get_subagent_result`, `steer_subagent`) — feels native
+- **Native tools and UI** — the `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools follow pi's calling conventions and UI patterns
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent), `background` (default — hides foreground runs, which already render inline as the `agent` tool result), or `off`
 - **FleetView** — navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in. `↑`/`↓` move the selection. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` returns. Toggle via `/agents → Settings → Fleet view`
@@ -12,11 +12,11 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
   - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
   - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings)).
-- **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally. YAML frontmatter sets custom system prompts, model selection, thinking levels, tool restrictions, and Claude Code-compatible colored name badges
+- **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally. YAML frontmatter sets custom system prompts, model selection, thinking levels, tool restrictions, and colored name badges
 - **Nested subagents** — opt-in, default-off delegation. A custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools. The extension caps depth from the main session (default 2). The agent can control only its own children. The extension stops them when the agent finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
 - **Agent mentions** — subagents are first-class. Type `@reviewer also check the RPC path` at the prompt. The text goes to that agent instead of the main model, and none of it enters the chat. Toggle via `/agents → Settings → Agent mentions`.
   - One syntax covers the whole lifecycle. Message an agent while it runs. Resume it once it has finished. Reopen its session from disk long after that. Start it if it never ran.
-  - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation. The agent gets Claude Code's context-written prompt and a real `agent` tool call, and none of it reaches the chat. `direct` mode starts it here from your text instead, with no model call at all.
+  - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation. The agent gets a context-written prompt and a real `agent` tool call, and none of it reaches the chat. `direct` mode starts it here from your text instead, with no model call at all.
   - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too.
   - `@` completes live agents, resumable ones, and startable types alongside pi's file completion. `@main` forces text back to the main model.
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
@@ -100,7 +100,7 @@ The token field carries two optional signals inside parens:
 
 ### FleetView
 
-While subagents are running, a Claude Code-style navigable list renders **below** the editor:
+While subagents are running, a navigable list renders **below** the editor:
 
 ```text
   ↑↓ select · ←→ collapse · enter view · esc back
@@ -164,7 +164,7 @@ No turn is ever spent in the main conversation, and nothing about the mention en
 
 #### Starting a new agent
 
-Claude Code does not start a mentioned agent itself. `@agent-<type>` becomes an *attachment* appending a `<system-reminder>` to your prompt. The reminder reads "the user has expressed a desire to invoke the agent X; please invoke the agent appropriately, passing in the required context to it". The main model then makes the tool call. There is no tool forcing and no allowed-tools narrowing. The mention constrains *which* agent, not what it is told.
+In `model` mode the clone receives your message with a `<system-reminder>` appended. The reminder reads "the user has expressed a desire to invoke the agent X; please invoke the agent appropriately, passing in the required context to it". The clone's model then makes the tool call. There is no tool forcing and no allowed-tools narrowing. The mention constrains *which* agent, not what it is told.
 
 So the model writes the agent's prompt, giving it the conversation context a cold spawn lacks.
 
@@ -221,7 +221,7 @@ Pi persists subagent sessions by default ([`rememberAgents`](#persistent-setting
 - An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead.
 - If someone has since deleted the session file, the mention says so and frees the handle. It does not silently send your message to a new agent.
 
-The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets swallowed by accident:
+The grammar is deliberately narrow so nothing gets swallowed by accident:
 
 | Input | Goes to |
 | --- | --- |
@@ -248,7 +248,7 @@ Live tool activity and the turn counter are *not* part of that trade — a direc
 
 ### Result rendering
 
-Individual agent results render Claude Code-style in the conversation:
+Individual agent results render in the conversation as follows:
 
 | State | Example |
 | --- | --- |
@@ -341,7 +341,7 @@ All fields are optional — sensible defaults for everything.
 | --- | --- | --- |
 | `description` | filename | Agent description shown in tool listings |
 | `name` | filename | **The agent's type** — what `subagent_type` and `@handle` address. See [`name` and `color` rules](#name-and-color-rules) |
-| `display_name` | the type | Label shown in the UI (widget, agent list, badges) — cosmetic only, and independent of `name`. Claude Code has no equivalent; a file that sets only `name` badges as its type, unchanged |
+| `display_name` | the type | Label shown in the UI (widget, agent list, badges) — cosmetic only, and independent of `name`. A file that sets only `name` badges as its type, unchanged |
 | `color` | — | Background color for the agent name badge. See [`name` and `color` rules](#name-and-color-rules) |
 | `tools` | all 7 | Which tools the agent can call. Built-in names (`read, grep, …`), `*` / `all` (all built-ins), `none`, and `ext:<extension>` / `ext:<extension>/<tool>` selectors for extension tools. See [Tool & extension scoping](#tool--extension-scoping) below |
 | `extensions` | `true` | Which extensions to load for the agent. `true` (all defaults), `false` (none), or an explicit list: `[mcp, "/abs/path.ts", "*"]`. See [Tool & extension scoping](#tool--extension-scoping) below |
@@ -366,8 +366,8 @@ All fields are optional — sensible defaults for everything.
 
 `name`:
 
-- Claude Code's rule: the filename doesn't have to match, so `blubb.md` with `name: code-review` dispatches as `code-review`. Omit it and the extension uses the filename.
-- Any value works except one containing `:`, which Claude Code reserves for plugin-scoped identifiers. The extension skips such a file with a warning.
+- The filename does not have to match, so `blubb.md` with `name: code-review` dispatches as `code-review`. Omit it and the extension uses the filename.
+- Any value works except one containing `:`, which is reserved for plugin-scoped identifiers. The extension skips such a file with a warning.
 - Two files may declare the same name; the later load wins, as a filename clash always did.
 
 `color` sets the badge in the agent tool header, widget, FleetView, and conversation viewer. Accepted value:
@@ -564,7 +564,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 
 ### `stop_subagent`
 
-Stop a running or queued background agent. This is the model's own lever to end a run. A human takes the same action with `x` in FleetView, the conversation viewer, or `/agents`, and `subagents:rpc:stop` gives it to another extension. There is no Claude Code equivalent. This tool is a deliberate divergence from the tool-name parity described in [Features](#features).
+Stop a running or queued background agent. This is the model's own lever to end a run. A human takes the same action with `x` in FleetView, the conversation viewer, or `/agents`, and `subagents:rpc:stop` gives it to another extension.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
