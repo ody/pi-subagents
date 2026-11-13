@@ -50,8 +50,8 @@ describe("reporting subagent usage back to the parent session", () => {
     const reportUsageRow = 11;
     initTheme();
     const select = vi.fn().mockResolvedValueOnce("Settings").mockResolvedValue(undefined);
-    const custom = vi.fn((factory: any) => new Promise(resolve => {
-      const component = factory({}, {}, {}, resolve);
+    const custom = vi.fn().mockResolvedValue(undefined).mockImplementationOnce((factory: any) => new Promise(resolve => {
+      const component = factory({}, { fg: (_color: string, text: string) => text, bold: (text: string) => text }, {}, resolve);
       for (let i = 0; i < reportUsageRow; i++) component.handleInput("\x1b[B");
       component.handleInput("\r");
       component.handleInput("\x1b");

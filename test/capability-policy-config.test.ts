@@ -2,15 +2,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadCapabilityPolicy, policyEventPayload } from "../src/config/capability-policy-config.js";
 import { registerAgents } from "../src/agents/agent-types.js";
+import { loadCapabilityPolicy, policyEventPayload } from "../src/config/capability-policy-config.js";
 import { unknownPolicyEntries } from "../src/config/policy-unknown-entries.js";
+import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged } from "../src/config/settings.js";
 import { runAgent } from "../src/session/agent-runner.js";
+import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 import type { AgentConfig } from "../src/types.js";
 import { registeredCapability } from "./helpers/capability.js";
 import { registerFauxProvider } from "./helpers/pi-ai.js";
-import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged } from "../src/config/settings.js";
-import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 
 describe("capability policy configuration", () => {
   let globalDir: string;
