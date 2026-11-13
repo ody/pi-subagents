@@ -663,6 +663,13 @@ When on, the extension validates each subagent spawn's effective model against p
 | Session model (nothing pinned, or the pin does not resolve) | Never checked; the session model runs |
 | `agent({ resume })` of a live agent | Never checked; the agent keeps its session and model |
 
+**Spawn paths:** the check runs on every path that starts an agent.
+
+- The `agent` tool and the nested `agent` tool.
+- `@handle` mentions, including the clone fallback and tombstone reopens.
+- `subagents:rpc:spawn`.
+- The registry `spawn`, which still returns only the agent id.
+
 **Design:** `scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin outside the scope gives way to the session model, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one. Winning the precedence contest against a pin does not buy it a replacement instead of an error.
 
 **Nested spawns** ([nested subagents](#nested-subagents)) apply the same table against the parent's config root. The hard-error and replacement cases are identical, including the toast and the result note.
