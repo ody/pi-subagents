@@ -145,6 +145,7 @@ export async function startAgent(
     worktreeBase: worktreeCwd ? baseCwd : undefined,
     configCwd: options.configCwd ?? (customCwd !== undefined ? ctx.cwd : undefined),
     signal: record.abortController!.signal,
+    notify: (message, level) => ctx.ui?.notify?.(message, level),
     onToolActivity: (activity) => {
       if (activity.type === "end") record.toolUses++;
       deps.noteToolActivity(id, activity);
