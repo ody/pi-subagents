@@ -13,6 +13,7 @@ export default defineConfig({
   // affects modules Vite resolves; without inline the runtime stays externalized).
   test: {
     server: { deps: { inline: [/@earendil-works\/pi-/] } },
+    setupFiles: ["./test/helpers/seed-agent-dir.ts"],
     // Local reporting only — deliberately no `thresholds`, and not wired into
     // CI. src/index.ts is mostly the /agents wizard, which is TUI flow with
     // almost no logic and is not worth a fake-TUI harness; any global floor
