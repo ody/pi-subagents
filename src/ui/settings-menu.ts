@@ -4,7 +4,7 @@ import { Container, Key, matchesKey, SettingsList, Spacer, Text } from "@earendi
 import type { SettingsPersistence } from "../config/runtime-settings.js";
 import { layerValues, readLayerSettings, type SubagentsSettings } from "../config/settings.js";
 import { describeRange, SETTING_SPECS } from "../config/settings-defaults.js";
-import { layerPath, type SettingsLayer } from "../config/settings-store.js";
+import { layerPath, readLayerFile, type SettingsLayer } from "../config/settings-store.js";
 import { parseSettingChange } from "./settings-changes.js";
 import { buildItems, displayValue, type RowSource, rowSources, SETTING_ROWS } from "./settings-rows.js";
 
@@ -65,12 +65,29 @@ export function applySettingValue(
     ctx.ui.notify(parsed.message, "warning");
     return;
   }
-  const project = readLayerSettings("project", deps.cwd);
-  const overridden = layer === "global" && project.ok && parsed.key in project.own;
-  const message = overridden
-    ? `${parsed.message}. This project overrides it, so the change does not reach this project.`
-    : parsed.message;
+  const message = `${parsed.message}${overrideNotice(layer, parsed.key, deps.cwd)}`;
   deps.settingsPersist.notifyApplied(ctx, message, { layer, key: parsed.key, value: parsed.value });
+}
+
+function overrideNotice(layer: SettingsLayer, key: string, cwd: string): string {
+  const project = readLayerSettings("project", cwd);
+  const overridden = layer === "global" && project.ok && key in project.own;
+  return overridden ? ". This project overrides it, so the change does not reach this project." : "";
+}
+
+export function resetSettingValue(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  layer: SettingsLayer,
+  id: keyof SubagentsSettings,
+): boolean {
+  const file = readLayerFile(layer, deps.cwd);
+  if (!file.ok || !(id in file.data)) return false;
+  const label = SETTING_ROWS.find((row) => row.id === id)?.label ?? id;
+  const outcome = layer === "project" ? "now inherits" : "is back to the default";
+  const message = `${label} ${outcome}${overrideNotice(layer, id, deps.cwd)}`;
+  deps.settingsPersist.notifyApplied(ctx, message, { layer, key: id, value: undefined });
+  return true;
 }
 
 function currentText(values: Required<SubagentsSettings>, id: NumericSettingId): string {
@@ -112,7 +129,7 @@ export async function showSettings(
     if (readOnlyReason) container.addChild(new Text(theme.fg("error", `${readOnlyReason}. Read-only until the file is fixed.`), 0, 0));
     container.addChild(new Spacer(1));
     container.addChild(list);
-    container.addChild(new Text(theme.fg("dim", "tab scope"), 0, 0));
+    container.addChild(new Text(theme.fg("dim", "tab scope · r reset"), 0, 0));
 
     return {
       render: (w: number) => container.render(w),
@@ -128,9 +145,13 @@ export async function showSettings(
           currentIndex = (currentIndex + 1) % rowIds.length;
         }
 
-        const editing = matchesKey(data, Key.enter) || data === " " || matchesKey(data, "left") || matchesKey(data, "right");
+        const editing = data === "r" || matchesKey(data, Key.enter) || data === " " || matchesKey(data, "left") || matchesKey(data, "right");
         if (editing && readOnlyReason) {
           ctx.ui.notify(`${readOnlyReason}. Fix the file first.`, "warning");
+          return;
+        }
+        if (data === "r") {
+          if (resetSettingValue(ctx, deps, layer, rowIds[currentIndex])) done(REFRESH);
           return;
         }
         if (matchesKey(data, Key.enter) && isNumericSettingId(rowIds[currentIndex])) {

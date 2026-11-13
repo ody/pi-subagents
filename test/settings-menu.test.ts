@@ -5,7 +5,7 @@ import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSettingsPersistence } from "../src/config/runtime-settings.js";
 import type { SettingsAppliers } from "../src/config/settings.js";
-import { applySettingValue, initialLayer, type SettingsMenuDeps, showSettings } from "../src/ui/settings-menu.js";
+import { applySettingValue, initialLayer, resetSettingValue, type SettingsMenuDeps, showSettings } from "../src/ui/settings-menu.js";
 
 vi.mock("@earendil-works/pi-coding-agent", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@earendil-works/pi-coding-agent")>()),
@@ -361,6 +361,68 @@ describe("settings layers", () => {
     expect(readJson(projectFile())).toEqual({ graceTurns: 2, showCost: true });
     expect(readJson(globalFile())).toEqual({ showCost: false });
     expect(menu().render(200).find((line) => line.includes("Show cost"))).toContain("Show cost (overrides global)");
+  });
+
+  it("advertises r reset in the footer", () => {
+    const lines = open(realDeps()).menu().render(100);
+    expect(lines[lines.length - 1]).toContain("r reset");
+  });
+
+  it("r removes the key from the project file so the row inherits, and the session takes the inherited value", async () => {
+    writeGlobal({ graceTurns: 9 });
+    writeProject({ graceTurns: 2, showCost: true });
+    const applied: number[] = [];
+    const tracking = new Proxy({}, {
+      get: (_t, name) => (n: unknown) => {
+        if (name === "setGraceTurns") applied.push(n as number);
+      },
+    }) as SettingsAppliers;
+    const deps: SettingsMenuDeps = { cwd: projectDir, settingsPersist: createSettingsPersistence(tracking, emit, projectDir) };
+    const { menu } = open(deps, { layer: "project", selected: "graceTurns" });
+    menu().handleInput("r");
+    await vi.waitFor(() => expect(menus).toHaveLength(2));
+    expect(readJson(projectFile())).toEqual({ showCost: true });
+    expect(applied).toEqual([9]);
+    expect(menu().render(200).find((line) => line.includes("Grace turns"))).toContain("Grace turns (inherited)");
+    expect(notify).toHaveBeenCalledWith("Grace turns now inherits", "info");
+  });
+
+  it("r on a global row returns it to the default and tells the user when the project overrides it", () => {
+    writeGlobal({ graceTurns: 9, showCost: true, futureKey: 1 });
+    writeProject({ graceTurns: 2 });
+    expect(resetSettingValue(layerCtx, realDeps(), "global", "graceTurns")).toBe(true);
+    expect(readJson(globalFile())).toEqual({ showCost: true, futureKey: 1 });
+    expect(notify).toHaveBeenCalledWith(
+      "Grace turns is back to the default. This project overrides it, so the change does not reach this project.",
+      "info",
+    );
+  });
+
+  it("r on a row the layer does not set does nothing", async () => {
+    writeGlobal({ graceTurns: 9 });
+    writeProject({ showCost: true });
+    const before = readFileSync(projectFile(), "utf-8");
+    const { menu } = open(realDeps(), { layer: "project", selected: "graceTurns" });
+    menu().handleInput("r");
+    expect(menus).toHaveLength(1);
+    expect(readFileSync(projectFile(), "utf-8")).toBe(before);
+    expect(notify).not.toHaveBeenCalled();
+    expect(resetSettingValue(layerCtx, realDeps(), "project", "graceTurns")).toBe(false);
+  });
+
+  it("r removes keys of a full snapshot one at a time", () => {
+    const snapshot = { maxConcurrent: 10, graceTurns: 5, showCost: false };
+    writeProject(snapshot);
+    resetSettingValue(layerCtx, realDeps(), "project", "graceTurns");
+    expect(readJson(projectFile())).toEqual({ maxConcurrent: 10, showCost: false });
+  });
+
+  it("r does nothing on a read-only layer", () => {
+    writeProject("{ broken");
+    const { menu } = open(realDeps(), { layer: "project" });
+    menu().handleInput("r");
+    expect(readFileSync(projectFile(), "utf-8")).toBe("{ broken");
+    expect(menus).toHaveLength(1);
   });
 
   it("keeps a later global edit live after a project change on another key", () => {

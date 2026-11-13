@@ -803,6 +803,28 @@ describe("settings persistence", () => {
       }
     });
 
+    it("removes the key on a reset and applies the inherited value live", () => {
+      writeGlobal({ graceTurns: 9 });
+      writeProject({ graceTurns: 2, showCost: true });
+      const appliers = spyAppliers();
+      const emit = vi.fn();
+      saveAndEmitChanged(change("project", "graceTurns", undefined), "ok", emit, appliers, projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ showCost: true });
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(9);
+      expect(emit).toHaveBeenCalledWith(
+        "subagents:settings_changed",
+        expect.objectContaining({ persisted: true, settings: expect.objectContaining({ graceTurns: 9 }) }),
+      );
+    });
+
+    it("returns a global reset to the default live", () => {
+      writeGlobal({ graceTurns: 9, futureKey: true });
+      const appliers = spyAppliers();
+      saveAndEmitChanged(change("global", "graceTurns", undefined), "ok", vi.fn(), appliers, projectDir);
+      expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ futureKey: true });
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(SETTING_SPECS.graceTurns.default);
+    });
+
     it("does not trim a project file that holds a full snapshot", () => {
       const snapshot = { maxConcurrent: 10, graceTurns: 5, showCost: false, widgetMode: "all" };
       writeProject(snapshot);

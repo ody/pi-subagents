@@ -712,6 +712,8 @@ Two files, merged on load:
   - `(overrides global)`: both files set the key.
   - `(inherited)`, dimmed: the project file does not set the key.
 - A change on the project layer makes that key a project override.
+- `r` on a row removes that key from the layer's file. A project row then inherits, and a global row returns to the default. The running session takes the inherited value at once. `r` on a row the layer does not set does nothing, and the footer advertises it.
+- `r` on a project file that holds a full snapshot removes one key at a time and leaves the rest.
 - A layer file that exists and does not parse shows its parse error. That layer stays read-only until you fix the file.
 
 A menu change writes one key to one file. It keeps every other key in that file, including unknown keys and the whole `policy`. It never writes a file that exists and does not parse, and it warns with the file name instead. After the write, the extension recomputes the effective settings from both files and applies them live.

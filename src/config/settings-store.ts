@@ -55,6 +55,7 @@ export function updateLayerFile(
 
 export function setLayerKey(layer: SettingsLayer, cwd: string, key: string, value: unknown): LayerWrite {
   return updateLayerFile(layer, cwd, (data) => {
-    data[key] = value;
+    if (value === undefined) delete data[key];
+    else data[key] = value;
   });
 }
