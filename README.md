@@ -536,7 +536,7 @@ A call with no `subagent_type` runs an agent built from its parameters, and the 
 - The defaults are all built-in tools, `extensions: true`, `skills: true`, `allowed_subagents: []`, the session's model, `inherit_context: false`, `isolated: false`, and no worktree. `max_turns` follows `defaultMaxTurns`, and `run_in_background` follows `backgroundByDefault`.
 - The extension mints the type as `ephemeral-<8 hex>`, and skips an agent file whose name starts with `ephemeral-` with a warning. Lifecycle events carry the minted type.
 - The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge is `name`, else the first three words of `description`, title-cased, else `Agent`.
-- The extension does not persist the session. The agent is steerable and resumable while its record is in memory, and you cannot reopen it once the extension evicts it.
+- A top-level ephemeral agent persists its session as [`rememberAgents`](#persistent-settings) says, and no parameter overrides that. A nested ephemeral agent never persists. The agent is steerable and resumable while its record is in memory.
 - The extension checks every value against the [capability policy](#capability-policy).
 - The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. The extension allows a nested ephemeral child only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn. The extension narrows ephemeral defaults.
 - In `agentMentions: "model"` mode, the extension refuses the conversation clone's `agent` call when it omits `subagent_type` or names a different type than the mention.
