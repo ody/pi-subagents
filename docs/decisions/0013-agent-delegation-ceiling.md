@@ -2,11 +2,9 @@
 
 ## Context
 
-README documents that a child runs with its own `tools:`, `extensions:`, and `isolated:`, that the parent's restrictions are not inherited, and that delegation grants the parent the union of what its listed agents can do. This decision reverses that.
+A nested child's own file could grant tools, extensions, skills, or `allowed_subagents` that its parent lacked. A restricted orchestrator could then escalate through its children. When pi builds the parent's session, the manager records its effective capabilities on the parent's `AgentRecord`, and the nested tool reads them from there.
 
-A nested child's `allowed_subagents` comes from its own file, and nothing compares it with its parent's. `AgentRecord` stores no tools, extensions, or skills, and `NestedToolContext` carries only the parent's `allowedSubagents`.
-
-This builds on ADR 0011 (capability policy) and ADR 0015 (ephemeral agents), and the three are accepted together. It uses ADR 0011's expansion rules.
+This builds on ADR 0011 (capability policy) and ADR 0015 (ephemeral agents). It uses ADR 0011's expansion rules.
 
 ## Decision
 
@@ -19,8 +17,10 @@ A nested spawn is bounded by its parent. In this rule the spawner is the owner a
 - A nested ephemeral child, one spawned with no `subagent_type`, is allowed only when the parent's `allowed_subagents` is `all`.
 - A nested spawn whose parent record has no recorded set is refused.
 - Extension tools that register after spawn are filtered by the same set, through the extension scope guard.
+- `maxSubagentDepth` (default `2`, 0 to 16) is the hard ceiling on nesting, counted from the main session as 0 and its subagents as 1. An agent whose depth has reached it gets no nested delegation tools, whatever its `allowed_subagents`, and `0` or `1` turns nesting off. An `isolated` agent also gets none.
+- The runner reads the ceiling when it builds a top-level agent's session, and descendants inherit that value. A change applies to agent trees that start after it.
 
-Done check: `npx vitest run test/delegation-ceiling.test.ts` passes. It covers each rule above through the nested `agent` tool.
+Done check: `npx vitest run test/delegation-ceiling.test.ts` passes. It covers each rule above through the nested `agent` tool, including the depth ceiling.
 
 ## Consequences
 

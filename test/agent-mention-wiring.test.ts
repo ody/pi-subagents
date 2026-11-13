@@ -802,7 +802,7 @@ describe("input that is not a mention", () => {
   });
 
   it("falls through entirely when mentions are disabled", async () => {
-    const { tools, lifecycle } = boot({ agentMentions: false });
+    const { tools, lifecycle } = boot({ agentMentions: "off" });
     const session = fakeSession();
     heldRun(session);
 
@@ -815,7 +815,7 @@ describe("input that is not a mention", () => {
   });
 
   it("disabled also blocks starting an agent, not just messaging one", async () => {
-    const { lifecycle } = boot({ agentMentions: false });
+    const { lifecycle } = boot({ agentMentions: "off" });
     heldRun(fakeSession());
 
     expect(await send(lifecycle, "@explore go")).toEqual({ action: "continue" });
@@ -824,7 +824,7 @@ describe("input that is not a mention", () => {
   });
 
   it("disabled also blocks resuming a finished agent", async () => {
-    const { tools, lifecycle } = boot({ agentMentions: false });
+    const { tools, lifecycle } = boot({ agentMentions: "off" });
     finishedRun(fakeSession());
 
     await spawnBackground(tools);
@@ -837,7 +837,7 @@ describe("input that is not a mention", () => {
   });
 
   it("the suggestion popup goes quiet too, so @ means only 'attach a file'", async () => {
-    const { tools, lifecycle } = boot({ agentMentions: false });
+    const { tools, lifecycle } = boot({ agentMentions: "off" });
     heldRun(fakeSession());
     const tui = ctx({
       mode: "tui",

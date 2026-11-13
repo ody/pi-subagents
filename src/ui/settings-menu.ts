@@ -1,4 +1,4 @@
-// Size: the menu's item list and the per-setting handler table both enumerate the same 23 settings, so they change together.
+// Size: the menu's item list and the per-setting handler table both enumerate the same 20 settings, so they change together.
 
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
@@ -66,7 +66,7 @@ type SettingId =
   | "fleetView" | "agentMentions" | "rememberAgents" | "widgetMode";
 
 function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Map<string, (value: string) => void> {
-  const { settings, appliers, manager, settingsPersist } = deps;
+  const { appliers, manager, settingsPersist } = deps;
   const handlers: Record<SettingId, (value: string) => void> = {
     maxConcurrent: (value) => {
       const n = parseInt(value, 10);
@@ -336,7 +336,7 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
       {
         id: "fleetView",
         label: "Fleet view",
-        description: "Claude Code-style main+subagents list below the editor (↓/← to navigate, Enter to view)",
+        description: "Navigable main+subagents tree below the editor (↓/← to navigate, Enter to view)",
         currentValue: settings.fleetView ? "on" : "off",
         values: ["on", "off"],
       },

@@ -112,11 +112,11 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({});
   });
 
-  it("reads the pre-mode agentMentions booleans as their modes", () => {
+  it("drops a boolean agentMentions", () => {
     writeProject({ agentMentions: true } as any);
-    expect(loadSettings(projectDir)).toEqual({ agentMentions: "model" });
+    expect(loadSettings(projectDir)).toEqual({});
     writeProject({ agentMentions: false } as any);
-    expect(loadSettings(projectDir)).toEqual({ agentMentions: "off" });
+    expect(loadSettings(projectDir)).toEqual({});
   });
 
   it("round-trips rememberAgents (true and false); keeps boolean, drops non-boolean", () => {
