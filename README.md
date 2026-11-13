@@ -797,7 +797,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 
 ### Background by default
 
-`backgroundByDefault`, default `true`: what an `agent` call that doesn't say means. Toggle via `/agents → Settings → Background by default`; applied live. The `agent` tool is registered again on a change, so the `run_in_background` parameter description states the new default.
+`backgroundByDefault`, default `true`: what an `agent` call that doesn't say means. Toggle via `/agents → Settings → Background by default`; applied live. A change registers the `agent` tool again, so the `run_in_background` parameter description states the new default.
 
 - On: the agent runs detached, the call returns its ID immediately, and a completion notification carries a preview of the result (`get_subagent_result` for the full text).
 - `false`: restores the previous behaviour, where an unqualified spawn blocked the turn and returned its output inline.
