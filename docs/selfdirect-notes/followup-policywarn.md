@@ -1,4 +1,4 @@
-- Warning toast: `notify` is set once in `agent-start.ts` from `ctx.ui.notify` and reaches every `runAgent` call, nested ones included. It is not a per-path spawn option. Resume does not re-warn.
+- Warning toast: `agent-start.ts` sets `notify` once from `ctx.ui.notify`, and it reaches every `runAgent` call, nested ones included. It is not a per-path spawn option. Resume does not re-warn.
 - `notify` is a no-op when the context has no `ui` (for example RPC-only hosts).
 - Skill discovery uses a second `DefaultResourceLoader` (no extensions, prompts, themes, context files). It honors settings and packages. Skills that only an extension's `resources_discover` adds stay unknown.
 - Discovery runs only when the policy has a skill entry. Extension and tool checks reuse the main loader result.
