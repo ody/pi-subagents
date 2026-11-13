@@ -11,7 +11,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too.
   - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
-  - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything (see [Viewer markdown](#persistent-settings)).
+  - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything for this session only (see [Viewer markdown](#persistent-settings)).
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally. YAML frontmatter sets custom system prompts, model selection, thinking levels, tool restrictions, and colored name badges
 - **Nested subagents** — opt-in, default-off delegation. A custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools. The extension caps depth from the main session (default 2). The agent can control only its own children. The extension stops them when the agent finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
 - **Agent mentions** — subagents are first-class. Type `@reviewer also check the RPC path` at the prompt. The text goes to that agent instead of the main model, and none of it enters the chat. Toggle via `/agents → Settings → Agent mentions`.
@@ -596,7 +596,7 @@ Settings                                    ← every persistent setting (see Pe
 - **Agents** — the whole hierarchy, indented, with nested children under their spawner. The list marks an agent whose owner is gone as `detached`. Select an agent to open its live conversation viewer, where:
   - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `steer_subagent` tool. `Esc`, or an empty submit, returns.
   - `x` (then `x` again to confirm) stops or aborts it, **background** agents included. A global Esc can't unambiguously target those, and still stops a blocking foreground `agent` call instead. A stopped agent reports its partial output and flags it as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot. It also fires its completion notification within a few seconds, rather than holding both forever.
-  - `m` cycles how much of the transcript renders as Markdown — see [Viewer markdown](#persistent-settings).
+  - `m` cycles how much of the transcript renders as Markdown, for this session only — see [Viewer markdown](#persistent-settings).
 - **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model. The full description of the highlighted agent appears below the list. The model column flags `(unavailable, fallback: inherit)` when the extension can't resolve a configured model (it would silently inherit the parent model). It shows `(→ provider/id)` when the model resolves to a different provider or version than configured. Select an agent to manage it:
   - **Skill agents**: Eject (export as `.md`), Disable
   - **Custom agents**: Edit, Disable, Delete
@@ -909,7 +909,7 @@ A tool result is whatever bytes the tool produced. A Markdown pass over one rewr
 
 The extension suppresses two rewrites outright rather than leaving them to the mode, because they change *data* rather than layout. Ordered-list markers keep their source numbering (`3) 7) 9)` stays, instead of becoming `3. 4. 5.`). The extension does not normalise backslash escapes.
 
-Turn `all` on for tools that genuinely emit Markdown, and off again for a diff or a log. `m` in the viewer cycles the three and persists the choice, so the key and this setting are the same value. The footer shows which is in force as `m raw` / `m md` / `m md+`.
+Turn `all` on for tools that genuinely emit Markdown, and off again for a diff or a log. `m` in the viewer cycles the three for this session only: it sets the runtime value, writes no file, and shows a toast. `/agents → Settings → Viewer markdown` persists the choice. The footer shows which is in force as `m raw` / `m md` / `m md+`.
 
 Code fences are syntax-highlighted using pi's own Markdown theme. That is also why fenced code is the one part of a result *not* dimmed under `all`. Result prose still is, so the transcript keeps its hierarchy.
 

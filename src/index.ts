@@ -52,7 +52,8 @@ export default function (pi: ExtensionAPI) {
   const getViewerMarkdown = () => settings.viewerMarkdown;
   const setViewerMarkdown = (m: ViewerMarkdownMode): void => { settings.setViewerMarkdownMode(m); };
   function chooseViewerMarkdown(mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext): void {
-    settingsPersist.persist(ctx, `Viewer markdown set to ${mode}`, { layer: "project", key: "viewerMarkdown", value: mode });
+    setViewerMarkdown(mode);
+    ctx?.ui.notify(`Viewer markdown set to ${mode} (this session)`, "info");
   }
   const pendingUsage = new PendingUsagePool();
 

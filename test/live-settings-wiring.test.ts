@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,4 +77,13 @@ describe("live settings wiring", () => {
     expect(runInBackgroundDescription(tools)).toMatch(/^Defaults to true/);
   });
 
+  it("viewer markdown key sets the runtime value, writes no file, and toasts", () => {
+    const notify = vi.fn();
+    const settings = captured.menu.settings;
+    expect(settings.viewerMarkdown).toBe("assistant");
+    captured.menu.chooseViewerMarkdown("all", { ui: { notify } });
+    expect(settings.viewerMarkdown).toBe("all");
+    expect(notify).toHaveBeenCalledWith("Viewer markdown set to all (this session)", "info");
+    expect(existsSync(join(tmpDir, ".pi", "subagents.json"))).toBe(false);
+  });
 });
