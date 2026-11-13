@@ -72,6 +72,7 @@ function tombstone(deps: RetentionDeps, record: AgentRecord): void {
     description: record.description,
     sessionFile: record.sessionFile,
     completedAt: record.completedAt ?? Date.now(),
+    agentConfig: record.agentConfig,
   });
   while (deps.tombstones.size > MAX_TOMBSTONES) {
     const oldest = [...deps.tombstones.values()].reduce((a, b) => (a.completedAt <= b.completedAt ? a : b));

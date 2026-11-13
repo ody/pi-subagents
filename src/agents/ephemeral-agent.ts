@@ -100,7 +100,6 @@ export function buildEphemeralAgent(params: EphemeralParams): BuiltEphemeralAgen
     allowedSubagents: params.allowed_subagents ?? [],
     systemPrompt: "",
     promptMode: params.prompt_mode ?? "append",
-    persistSession: false,
   };
   return { type, config, supplied, explicitTools: tools?.explicit };
 }

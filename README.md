@@ -217,6 +217,9 @@ Pi persists subagent sessions by default ([`rememberAgents`](#persistent-setting
 
 - Only the *definition* is re-resolved, so a continuation runs under the agent type's current frontmatter, not the one the first run used.
 - If someone has since deleted or disabled the type, the extension refuses the resume rather than falling back to another agent. Re-enable it and the handle works again.
+- A remembered [ephemeral agent](#ephemeral-agents) has no type to resolve. Its tombstone stores the built config, and the reopen runs that config under the same minted type and handle.
+- The [capability policy](#capability-policy) filters stored values that it now denies and notifies you. It refuses the reopen only when filtering empties an explicit tool list.
+- The `@` list shows a remembered ephemeral agent under its display name, and never offers an ephemeral type as startable.
 - Names from an evicted agent stay reserved, so a later reviewer becomes `reviewer-2` rather than shadowing something you can still reach. The extension keeps the 100 most recent, and forgets all of them on `/new` and session switch. A resumed agent takes those names back, so `@reviewer` keeps meaning the same conversation.
 - An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead.
 - If someone has since deleted the session file, the mention says so and frees the handle. It does not silently send your message to a new agent.
@@ -536,7 +539,7 @@ A call with no `subagent_type` runs an agent built from its parameters, and the 
 - The defaults are all built-in tools, `extensions: true`, `skills: true`, `allowed_subagents: []`, the session's model, `inherit_context: false`, `isolated: false`, and no worktree. `max_turns` follows `defaultMaxTurns`, and `run_in_background` follows `backgroundByDefault`.
 - The extension mints the type as `ephemeral-<8 hex>`, and skips an agent file whose name starts with `ephemeral-` with a warning. Lifecycle events carry the minted type.
 - The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge is `name`, else the first three words of `description`, title-cased, else `Agent`.
-- The extension does not persist the session. The agent is steerable and resumable while its record is in memory, and you cannot reopen it once the extension evicts it.
+- A top-level ephemeral agent persists its session as [`rememberAgents`](#persistent-settings) says, and no parameter overrides that. A nested ephemeral agent never persists. The agent is steerable and resumable while its record is in memory. Once the extension evicts the record, `@handle` reopens the agent from the config its tombstone stores.
 - The extension checks every value against the [capability policy](#capability-policy).
 - The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. The extension allows a nested ephemeral child only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn. The extension narrows ephemeral defaults.
 - In `agentMentions: "model"` mode, the extension refuses the conversation clone's `agent` call when it omits `subagent_type` or names a different type than the mention.
@@ -791,7 +794,7 @@ Two visible consequences of the default:
 - Top-level subagents write a session file.
 - They nest under the session that spawned them in pi's `/resume`.
 
-This excludes agents that another agent spawned. They get no handle, so nothing could reopen their transcript. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
+This excludes agents that another agent spawned. They get no handle, so nothing could reopen their transcript. It also excludes an inline `subagents:rpc:spawn` agent, which persists only when its `agentConfig` sets `persistSession: true`. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
 
 With it off, handles expire with their record (roughly ten minutes past completion) and `@reviewer` then starts a fresh agent rather than resuming. That was the behaviour before this setting existed.
 

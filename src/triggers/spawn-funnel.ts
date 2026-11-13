@@ -22,12 +22,13 @@ export interface SpawnFunnel {
 export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
   const { manager, reloadCustomAgents } = deps;
 
-  const capabilityFor = (ctxRef: any, type: string, options: any, config?: AgentConfig, raw?: Partial<AgentConfig>) =>
+  const capabilityFor = (ctxRef: any, type: string, options: any, config?: AgentConfig, raw?: Partial<AgentConfig>, ephemeral?: boolean) =>
     resolveCapability({
       type,
       cwd: ctxRef?.cwd ?? process.cwd(),
       config: config && { ...config, extensions: config.extensions ?? true, skills: config.skills ?? true },
       raw,
+      ephemeral,
       isolated: options?.isolated,
       notify: (message, level) => ctxRef?.ui?.notify?.(message, level),
     });
@@ -68,7 +69,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       const options = scopedOptions(ctxRef, inline.displayName ?? type, rawOptions, inline.model);
       return manager.spawn(piRef, ctxRef, type, prompt, {
         ...options,
-        capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? inline),
+        capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? (options.ephemeral ? undefined : inline), options.ephemeral !== undefined),
         isolation: resolveIsolation(inline.isolation, options?.isolation, isWorktreeIsolationEnabled()),
         maxTurns: resolveEffectiveMaxTurns(type, options.maxTurns, inline),
       });

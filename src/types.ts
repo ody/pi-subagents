@@ -63,6 +63,7 @@ export interface AgentTombstone {
   description: string;
   sessionFile: string;
   completedAt: number;
+  agentConfig?: AgentConfig;
 }
 
 export type MentionResolution =
@@ -111,6 +112,7 @@ export interface AgentRecord {
   modelReplaced?: string;
   displayName?: string;
   promptMode?: "replace" | "append";
+  agentConfig?: AgentConfig;
   capabilities?: EffectiveCapabilities;
 }
 
