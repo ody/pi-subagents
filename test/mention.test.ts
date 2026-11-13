@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { agentMentionReminder, assignHandle, describeMention, handleBase, isReservedHandle, MENTION_TRIGGER, parseMention, resolveHandleToType, stripAgentPrefix } from "../src/triggers/mention.js";
+import { agentMentionReminder, assignHandle, describeMention, handleBase, isReservedHandle, MENTION_TRIGGER, parseMention, resolveHandleToType } from "../src/triggers/mention.js";
 
 describe("handleBase", () => {
   it("lowercases so the handle matches how it is typed", () => {
@@ -94,26 +94,6 @@ describe("isReservedHandle", () => {
     for (const handle of ["explore", "mainframe", "main-2", "ma"]) {
       expect(isReservedHandle(handle)).toBe(false);
     }
-  });
-});
-
-describe("stripAgentPrefix", () => {
-  it("unwraps Claude Code's manual @agent-<type> spelling", () => {
-    expect(stripAgentPrefix("agent-explore")).toBe("explore");
-  });
-
-  it("keeps the remainder intact when it is itself prefixed", () => {
-    expect(stripAgentPrefix("agent-agent-foo")).toBe("agent-foo");
-  });
-
-  it("returns nothing when there is no prefix or nothing behind it", () => {
-    expect(stripAgentPrefix("explore")).toBeUndefined();
-    expect(stripAgentPrefix("agent-")).toBeUndefined();
-    expect(stripAgentPrefix("agentexplore")).toBeUndefined();
-  });
-
-  it("only unwraps a prefix at the very start", () => {
-    expect(stripAgentPrefix("sub-agent-explore")).toBeUndefined();
   });
 });
 

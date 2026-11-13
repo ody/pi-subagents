@@ -899,21 +899,8 @@ describe("@main — the escape hatch", () => {
   });
 });
 
-describe("@agent-<type> — Claude Code's manual spelling", () => {
-  it("starts the agent the unprefixed handle would have", async () => {
-    const { lifecycle } = bootDirect();
-    finishedRun(fakeSession());
-
-    const result = await send(lifecycle, "@agent-explore find the flaky test");
-    await flush();
-
-    expect(result).toEqual({ action: "handled" });
-    expect(vi.mocked(runAgent)).toHaveBeenCalledWith(
-      expect.anything(), "Explore", "find the flaky test", expect.anything(),
-    );
-  });
-
-  it("reaches a running agent, not a second copy of it", async () => {
+describe("@agent-<x> is an ordinary handle", () => {
+  it("does not resolve to the agent named <x>", async () => {
     const { tools, lifecycle } = boot();
     const session = fakeSession();
     heldRun(session);
@@ -922,10 +909,10 @@ describe("@agent-<type> — Claude Code's manual spelling", () => {
 
     await send(lifecycle, "@agent-explore also check the RPC path");
 
-    expect(session.steer).toHaveBeenCalledWith("also check the RPC path");
+    expect(session.steer).not.toHaveBeenCalled();
   });
 
-  it("prefers an agent literally named agent-<x> over the unwrapped spelling", async () => {
+  it("reaches an agent literally named agent-<x>", async () => {
     const { tools, lifecycle } = boot();
     const literal = fakeSession();
     const plain = fakeSession();
@@ -947,7 +934,7 @@ describe("@agent-<type> — Claude Code's manual spelling", () => {
     expect(plain.steer).not.toHaveBeenCalled();
   });
 
-  it("still falls through when nothing answers either spelling", async () => {
+  it("falls through when nothing answers the handle", async () => {
     const { lifecycle } = boot();
 
     expect(await send(lifecycle, "@agent-nosuchtype hello")).toEqual({ action: "continue" });

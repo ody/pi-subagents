@@ -7,7 +7,7 @@ import type { AgentManager } from "../manager/agent-manager.js";
 import type { StartBackgroundResume } from "../manager/background-resume.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import type { AgentRecord, AgentTombstone } from "../types.js";
-import { describeMention, handleBase, isReservedHandle, parseMention, resolveHandleToType, stripAgentPrefix } from "./mention.js";
+import { describeMention, handleBase, isReservedHandle, parseMention, resolveHandleToType } from "./mention.js";
 import { type MentionCloneOptions, runMentionClone } from "./mention-clone.js";
 import type { SpawnFunnel } from "./spawn-funnel.js";
 
@@ -171,9 +171,7 @@ export function registerMentionInput(pi: ExtensionAPI, deps: MentionInputDeps): 
       return { action: "transform", text: mention.message, ...(event.images && { images: event.images }) };
     }
 
-    const alias = stripAgentPrefix(mention.handle);
-    const resolved = manager.resolveMention(mention.handle)
-      ?? (alias ? manager.resolveMention(alias) : undefined);
+    const resolved = manager.resolveMention(mention.handle);
 
     if (resolved && !canDispatchDirectly) return { action: "continue" };
 
@@ -184,8 +182,7 @@ export function registerMentionInput(pi: ExtensionAPI, deps: MentionInputDeps): 
 
     if (resolved?.kind === "tombstone") return resumeTombstone(pi, ctx, deps, resolved.entry, mention);
 
-    const type = resolveHandleToType(mention.handle, getAvailableTypes())
-      ?? (alias ? resolveHandleToType(alias, getAvailableTypes()) : undefined);
+    const type = resolveHandleToType(mention.handle, getAvailableTypes());
     if (!type) return { action: "continue" };
 
     return startMentionedType(pi, ctx, deps, type, mention);

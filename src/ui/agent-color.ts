@@ -1,31 +1,5 @@
 import { getConfig } from "../agents/agent-types.js";
 
-const NAMED_AGENT_COLORS: Readonly<Record<string, string>> = {
-  red: "#DC2626",
-  blue: "#6A9BCC",
-  green: "#16A34A",
-  yellow: "#CA8A04",
-  purple: "#827DBD",
-  orange: "#D97757",
-  pink: "#C46686",
-  cyan: "#0891B2",
-  amber: "#F59E0B",
-  teal: "#008080",
-  indigo: "#6366F1",
-  gold: "#EAB308",
-  "neon-green": "#10B981",
-  "neon-cyan": "#06B6D4",
-  "metallic-blue": "#3B82F6",
-  violet: "#8B5CF6",
-  rose: "#F43F5E",
-  lime: "#84CC16",
-  gray: "#6B7280",
-  grey: "#6B7280",
-  fuchsia: "#D946EF",
-  slate: "#64748B",
-  navy: "#1E3A8A",
-};
-
 const CUBE_VALUES = [0, 95, 135, 175, 215, 255];
 const GRAY_VALUES = Array.from({ length: 24 }, (_, i) => 8 + i * 10);
 const BLACK = { r: 0, g: 0, b: 0 };
@@ -49,8 +23,7 @@ export interface AgentNameStyle {
 export function resolveAgentColor(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const normalized = value.trim().toLowerCase();
-  const resolved = NAMED_AGENT_COLORS[normalized] ?? normalized;
-  return /^#[0-9a-f]{6}$/i.test(resolved) ? resolved.toUpperCase() : undefined;
+  return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized.toUpperCase() : undefined;
 }
 
 function parseHex(hex: string): Rgb {

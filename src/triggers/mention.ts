@@ -35,11 +35,6 @@ export function resolveHandleToType(handle: string, types: readonly string[]): s
   return types.find(type => handleBase(type) === wanted);
 }
 
-export function stripAgentPrefix(handle: string): string | undefined {
-  const rest = /^agent-(.+)$/i.exec(handle)?.[1];
-  return rest || undefined;
-}
-
 export function describeMention(message: string): string {
   const oneLine = message.split("\n", 1)[0].replace(/\s+/g, " ").trim();
   return oneLine.length > 40 ? `${oneLine.slice(0, 39).trimEnd()}…` : oneLine;

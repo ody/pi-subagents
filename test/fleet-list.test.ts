@@ -26,7 +26,7 @@ const PURPLE_BACKGROUND = "\u001b[48;2;130;125;189m";
 const BADGED_CONFIG: AgentConfig = {
   name: BADGED_TYPE,
   displayName: "Code Reviewer",
-  color: "purple",
+  color: "#827DBD",
   description: "Reviews code",
   extensions: false,
   skills: false,

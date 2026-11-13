@@ -18,7 +18,7 @@ const PURPLE_BACKGROUND = "\u001b[48;2;130;125;189m";
 const config: AgentConfig = {
   name: TYPE,
   displayName: DISPLAY_NAME,
-  color: "purple",
+  color: "#827DBD",
   description: "Reviews code",
   extensions: false,
   skills: false,
@@ -49,7 +49,7 @@ interface RegisteredTool {
   ): RenderedComponent;
 }
 
-function registerColoredReviewer(color = "purple"): void {
+function registerColoredReviewer(color = "#827DBD"): void {
   registerAgents(new Map([[TYPE, { ...config, color }]]));
 }
 

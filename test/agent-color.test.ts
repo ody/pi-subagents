@@ -9,10 +9,9 @@ const theme = {
 };
 
 describe("resolveAgentColor", () => {
-  it("resolves Claude Code names and Agency Agents aliases", () => {
-    expect(resolveAgentColor("purple")).toBe("#827DBD");
-    expect(resolveAgentColor("neon-cyan")).toBe("#06B6D4");
-    expect(resolveAgentColor("slate")).toBe("#64748B");
+  it("rejects color names", () => {
+    expect(resolveAgentColor("purple")).toBeUndefined();
+    expect(resolveAgentColor("neon-cyan")).toBeUndefined();
   });
 
   it("normalizes six-digit hex and rejects unsupported values", () => {
@@ -28,13 +27,13 @@ describe("renderAgentNameLabel", () => {
       ...theme,
       bold: (text: string) => `\u001b[1m${text}\u001b[22m`,
     };
-    const badge = renderAgentNameLabel("Code Reviewer", "purple", ansiTheme, { bold: true });
+    const badge = renderAgentNameLabel("Code Reviewer", "#827DBD", ansiTheme, { bold: true });
     expect(badge).toContain("\u001b[48;2;130;125;189m");
     expect(badge).toContain(" Code Reviewer ");
     expect(visibleWidth(badge)).toBe("Code Reviewer".length + 2);
 
     expect(badge).toContain("\u001b[38;2;0;0;0m");
-    expect(renderAgentNameLabel("Tester", "navy", theme)).toContain("\u001b[38;2;255;255;255m");
+    expect(renderAgentNameLabel("Tester", "#1E3A8A", theme)).toContain("\u001b[38;2;255;255;255m");
   });
 
   it("judges contrast against the effective color in 256-color mode", () => {
@@ -48,14 +47,14 @@ describe("renderAgentNameLabel", () => {
   });
 
   it("restores an enclosing tool background after the badge", () => {
-    const label = renderAgentNameLabel("Reviewer", "purple", theme, {
+    const label = renderAgentNameLabel("Reviewer", "#827DBD", theme, {
       restoreBackground: "\u001b[48;2;1;2;3m",
     });
     expect(label).toMatch(/\u001b\[39m\u001b\[48;2;1;2;3m$/);
   });
 
   it("resets the background when the caller paints none", () => {
-    expect(renderAgentNameLabel("Reviewer", "purple", theme)).toMatch(/\u001b\[39m\u001b\[49m$/);
+    expect(renderAgentNameLabel("Reviewer", "#827DBD", theme)).toMatch(/\u001b\[39m\u001b\[49m$/);
   });
 
   it("preserves existing theme styling without a valid color", () => {

@@ -199,7 +199,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
     mkdirSync(join(cwd, ".pi", "agents"), { recursive: true });
     writeFileSync(
       join(cwd, ".pi", "agents", "painted.md"),
-      '---\nname: Painted Agent\ncolor: purple\ndescription: "A colored agent."\n---\nBe brief.\n',
+      '---\nname: Painted Agent\ncolor: "#827DBD"\ndescription: "A colored agent."\n---\nBe brief.\n',
     );
 
     run = await runPrintMode({
