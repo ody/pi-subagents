@@ -783,7 +783,7 @@ Two visible consequences of the default:
 - Top-level subagents write a session file.
 - They nest under the session that spawned them in pi's `/resume`.
 
-This excludes agents that another agent spawned. They get no handle, so nothing could reopen their transcript. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
+This excludes agents that another agent spawned. They get no handle, so nothing could reopen their transcript. It also excludes an inline `subagents:rpc:spawn` agent, which persists only when its `agentConfig` sets `persistSession: true`. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
 
 With it off, handles expire with their record (roughly ten minutes past completion) and `@reviewer` then starts a fresh agent rather than resuming. That was the behaviour before this setting existed.
 
