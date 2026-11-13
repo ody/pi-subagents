@@ -25,6 +25,7 @@ export interface SpawnOptions {
   ephemeral?: { handleSeed: string };
   capability?: GrantedCapability;
   model?: Model<any>;
+  modelReplaced?: string;
   maxTurns?: number;
   isolated?: boolean;
   inheritContext?: boolean;
@@ -109,6 +110,7 @@ export function spawnAgent(
     maxSubagentDepth: options.maxSubagentDepth,
     rootSessionId: options.rootSessionId,
     filtered: options.capability.filtered.length > 0 ? options.capability.filtered : undefined,
+    modelReplaced: options.modelReplaced,
     capabilities: options.capability.capabilities,
   };
   deps.agents.set(id, record);
