@@ -21,17 +21,21 @@ function isPathEntry(entry: string): boolean {
   return entry.includes("/") || entry.includes("\\") || entry.startsWith("~");
 }
 
+function extSelectorIsKnown(entry: string, extensions: ReadonlySet<string>, extensionTools: ReadonlySet<string>): boolean {
+  const { extNames, narrowing } = parseExtSelectors([entry]);
+  for (const name of extNames) {
+    if (!extensions.has(name)) return false;
+    for (const tool of narrowing.get(name) ?? []) if (!extensionTools.has(tool)) return false;
+  }
+  return true;
+}
+
 function toolIsKnown(entry: string, known: KnownCapabilities): boolean {
   if (entry === "*" || entry === "ext:*") return true;
   if (BUILTIN_TOOL_NAMES.includes(entry) || EXCLUDED_TOOL_NAMES.includes(entry)) return true;
   if (!known.extensions || !known.extensionTools) return true;
   if (!entry.startsWith("ext:")) return known.extensionTools.has(entry);
-  const { extNames, narrowing } = parseExtSelectors([entry]);
-  for (const name of extNames) {
-    if (!known.extensions.has(name)) return false;
-    for (const tool of narrowing.get(name) ?? []) if (!known.extensionTools.has(tool)) return false;
-  }
-  return true;
+  return extSelectorIsKnown(entry, known.extensions, known.extensionTools);
 }
 
 function extensionIsKnown(entry: string, known: KnownCapabilities): boolean {

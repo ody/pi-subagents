@@ -19,6 +19,18 @@ export interface SpawnFunnel {
   resolveAgentRef: (ref: string) => AgentRecord | undefined;
 }
 
+function resolvePin(registry: any, callerModel: any, configModel: string | undefined): { pinned: any; modelInput: string | undefined } {
+  if (typeof callerModel === "string") {
+    const resolved = registry ? resolveModel(callerModel, registry) : callerModel;
+    if (typeof resolved === "string") throw new Error(resolved);
+    return { pinned: resolved, modelInput: callerModel };
+  }
+  if (callerModel != null) return { pinned: callerModel, modelInput: `${callerModel.provider}/${callerModel.id}` };
+  if (!configModel || !registry) return { pinned: undefined, modelInput: configModel };
+  const resolved = resolveModel(configModel, registry);
+  return { pinned: typeof resolved === "string" ? undefined : resolved, modelInput: configModel };
+}
+
 export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
   const { manager, reloadCustomAgents } = deps;
 
@@ -36,17 +48,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
   const scopedOptions = (ctxRef: any, label: string, options: any, configModel: string | undefined) => {
     const registry = ctxRef?.modelRegistry;
     const callerModel = options?.model;
-    let pinned = callerModel;
-    let modelInput = callerModel == null ? configModel : `${callerModel.provider}/${callerModel.id}`;
-    if (typeof callerModel === "string") {
-      const resolved = registry ? resolveModel(callerModel, registry) : callerModel;
-      if (typeof resolved === "string") throw new Error(resolved);
-      pinned = resolved;
-      modelInput = callerModel;
-    } else if (callerModel == null && configModel && registry) {
-      const resolved = resolveModel(configModel, registry);
-      pinned = typeof resolved === "string" ? undefined : resolved;
-    }
+    const { pinned, modelInput } = resolvePin(registry, callerModel, configModel);
     if (pinned == null || !registry) return options;
     const scoped = scopeModel({
       pinned,
