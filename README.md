@@ -793,7 +793,7 @@ With it off, handles expire with their record (roughly ten minutes past completi
 
 ### Worktree isolation setting
 
-`worktreeIsolation`, default `true`: whether `isolation: "worktree"` may create a worktree at all. Toggle via `/agents → Settings → Worktree isolation`, or set `false` in `subagents.json` on a repo where a copy costs too much time or disk.
+`worktreeIsolation`, default `true`: whether `isolation: "worktree"` may create a worktree at all. With it on, an agent file's `isolation` applies on every spawn path (tool, nested tool, `@handle` mention, RPC, and registry), and a file's `isolation: off` overrides a caller's worktree request. With it off, no path creates a worktree and none refuses. Toggle via `/agents → Settings → Worktree isolation`, or set `false` in `subagents.json` on a repo where a copy costs too much time or disk.
 
 When off:
 
