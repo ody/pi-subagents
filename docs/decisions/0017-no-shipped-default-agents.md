@@ -9,7 +9,7 @@
 - The wizard spawns it, and `agent-runner.ts` reads it as a last resort.
 - `fallbackSubagent` and `disableDefaultAgents` exist only because of them.
 
-An empty registry is workable only with ephemeral agents, so this builds on ADR 0015 (ephemeral agents).
+An empty registry is workable only with ephemeral agents, so this builds on ADR 0023 (ephemeral agents).
 
 ## Decision
 

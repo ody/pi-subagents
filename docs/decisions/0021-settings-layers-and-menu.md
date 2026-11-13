@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Settings come from a global and a project layer, and the menu edits either
+# 0021. Settings come from a global and a project layer, and the menu edits either
 
 ## Context
 
@@ -36,9 +34,9 @@ Writes:
 Other rules:
 
 - `subagents:settings_changed` carries the effective settings and a `layer` field, `"global"` or `"project"`, for the layer that changed. `docs/rpc.md` documents it.
-- A malformed file or key never fails a spawn, except a malformed `policy`, which the capability policy ADR covers.
+- A malformed file or key never fails a spawn, except a malformed `policy`, which ADR 0022 covers.
 - The extension ignores a removed key and reads no old value shape.
-- `ephemeralNesting` is a row in both layers, with the rules the capability policy ADR gives it.
+- `ephemeralNesting` is a row in both layers, with the rules ADR 0022 gives it.
 
 Done check: `npx vitest run test/settings.test.ts test/settings-menu.test.ts test/runtime-settings.test.ts` passes. It covers:
 

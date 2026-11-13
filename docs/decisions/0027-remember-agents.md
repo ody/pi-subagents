@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Top-level agents persist their pi sessions by default
+# 0027. Top-level agents persist their pi sessions by default
 
 ## Context
 
@@ -15,7 +13,7 @@ ADR 0019 says `@handle` cannot reopen an evicted inline agent, yet `normalizeInl
 A top-level agent from an agent file or the `agent` tool with a type persists its session unless told otherwise.
 
 - Precedence: the agent file's `persist_session`, in both directions, then `false` for any nested agent, then `rememberAgents`.
-- An ephemeral agent persists like any top-level agent. The ephemeral agents ADR stores its built config on its tombstone, so `@handle` can reopen it, and no parameter overrides this setting.
+- An ephemeral agent persists like any top-level agent. ADR 0023 stores its built config on its tombstone, so `@handle` can reopen it, and no parameter overrides this setting.
 - An inline RPC definition persists only when its `agentConfig` sets `persistSession: true`.
 - A persisted session lives in the agent file's `session_dir`, else `PI_CODING_AGENT_SESSION_DIR`, else pi's configured session directory.
 - Its parent is the spawning session, so it shows in that session's `/resume` tree.

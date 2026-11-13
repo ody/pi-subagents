@@ -1,10 +1,8 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. An unqualified agent call runs in the background
+# 0026. An unqualified agent call runs in the background
 
 ## Context
 
-`backgroundByDefault` (default `true`) decides what an `agent` call means when neither the caller nor the agent file says. ADR 0014 sets the precedence and lists the setting as the fallback for `run_in_background`, and ADR 0015 applies it to ephemeral agents.
+`backgroundByDefault` (default `true`) decides what an `agent` call means when neither the caller nor the agent file says. ADR 0014 sets the precedence and lists the setting as the fallback for `run_in_background`, and ADR 0023 applies it to ephemeral agents.
 
 A background agent returns its id at once and reports through a completion notification. The notification path exists only for top-level agents (ADR 0007). The manager aborts a nested child when its parent settles, so a detached nested child would never report.
 

@@ -1,8 +1,6 @@
-> DRAFT: not accepted, not current truth.
+# 0023. The agent tool runs an ephemeral agent when the call names no type
 
-# NNNN. The agent tool runs an ephemeral agent when the call names no type
-
-Replaces: 0015-ephemeral-agents, last present in 27e8b47
+Replaces: 0015-ephemeral-agents, last present in 503bd9e
 
 ## Context
 
