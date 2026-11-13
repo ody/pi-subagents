@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
 import type { ModelRegistryRef } from "../src/config/enabled-models.js";
 import { checkModelScope, isScopeModelsEnabled, scopeModel, setScopeModelsEnabled } from "../src/config/model-scope.js";
+import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
 import { testAgent } from "./helpers/test-agents.js";
 
@@ -252,6 +253,44 @@ describe("spawn funnel scope", () => {
     funnel.spawnTopLevel({}, funnelCtx(), "pinned", "go", { description: "d" });
     expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("reports modelReplaced in the subagents:rpc:spawn reply and refuses a caller model", async () => {
+    const records = new Map<string, any>();
+    const handlers = new Map<string, (raw: any) => unknown>();
+    const replies: Array<{ channel: string; data: any }> = [];
+    spawn.mockImplementation((_pi, _ctx, _type, _prompt, options) => {
+      records.set("id-1", { modelReplaced: options.modelReplaced });
+      return "id-1";
+    });
+    registerRpcHandlers({
+      events: {
+        on: (channel: string, fn: (raw: any) => unknown) => {
+          handlers.set(channel, fn);
+          return () => {};
+        },
+        emit: (channel: string, data: unknown) => replies.push({ channel, data }),
+      },
+      pi: {},
+      getCtx: () => funnelCtx() as never,
+      manager: {
+        spawn: funnel.spawnTopLevel,
+        awaitStartup: async () => {},
+        getRecord: id => records.get(id),
+        abort: () => false,
+        consumeResult: () => false,
+      },
+    });
+
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "a", type: "pinned", prompt: "go", options: { description: "d" } });
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "b", type: "plain", prompt: "go", options: { description: "d" } });
+    await handlers.get("subagents:rpc:spawn")?.({ requestId: "c", type: "plain", prompt: "go", options: { description: "d", model: "anthropic/claude-opus-4-6" } });
+
+    const reply = (id: string) => replies.find(r => r.channel === `subagents:rpc:spawn:reply:${id}`)?.data;
+    expect(reply("a")).toEqual({ success: true, data: { id: "id-1", modelReplaced: "anthropic/claude-opus-4-6" } });
+    expect(reply("b")).toEqual({ success: true, data: { id: "id-1" } });
+    expect(reply("c").success).toBe(false);
+    expect(reply("c").error).toContain("Allowed models");
   });
 
   it("drops a caller-forged modelReplaced from top-level options", () => {

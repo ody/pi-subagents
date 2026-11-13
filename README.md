@@ -1033,7 +1033,7 @@ pi.events.emit("subagents:rpc:spawn", {
 });
 ```
 
-The reply is `{ id, filtered? }`. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy. The registry `spawn` still returns the id and throws the same errors.
+The reply is `{ id, filtered?, modelReplaced? }`. `modelReplaced` names the out-of-scope model that [Model Scope](#model-scope) replaced with the session model. It appears only after a replacement. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy. The registry `spawn` still returns the id and throws the same errors.
 
 `options` is the manager's spawn-option object, not the `agent` tool's parameter schema. The background flag is `isBackground`. The tool's snake_case `run_in_background` passes through verbatim and the manager ignores it.
 
