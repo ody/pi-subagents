@@ -51,6 +51,7 @@ export function normalizeInlineAgentConfig(type: unknown, raw: unknown, descript
     extensions: given.extensions ?? true,
     skills: given.skills ?? true,
     promptMode: given.promptMode ?? "replace",
+    persistSession: given.persistSession === true,
   };
 }
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
-import { type EventBus, PROTOCOL_VERSION, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../src/triggers/cross-extension-rpc.js";
+import { type EventBus, normalizeInlineAgentConfig, PROTOCOL_VERSION, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../src/triggers/cross-extension-rpc.js";
 
 function createEventBus(): EventBus {
   const listeners = new Map<string, Set<(data: unknown) => void>>();
@@ -133,6 +133,7 @@ describe("cross-extension RPC", () => {
           extensions: false,
           skills: false,
           promptMode: "replace",
+          persistSession: false,
         },
       }, {
         systemPrompt: "You are the advisor.",
@@ -140,6 +141,12 @@ describe("cross-extension RPC", () => {
         extensions: false,
         skills: false,
       });
+    });
+
+    it("keeps persistSession true only when the inline agentConfig sets it", () => {
+      expect(normalizeInlineAgentConfig("a", { systemPrompt: "s", persistSession: true }).persistSession).toBe(true);
+      expect(normalizeInlineAgentConfig("a", { systemPrompt: "s", persistSession: false }).persistSession).toBe(false);
+      expect(normalizeInlineAgentConfig("a", { systemPrompt: "s" }).persistSession).toBe(false);
     });
 
     it("ignores a null agentConfig, as a JSON-forwarding caller sends for unset", async () => {
