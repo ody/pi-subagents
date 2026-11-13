@@ -1,5 +1,6 @@
-import { type LoadExtensionsResult, loadSkills } from "@earendil-works/pi-coding-agent";
+import { DefaultResourceLoader, type LoadExtensionsResult } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES } from "../agents/agent-types.js";
+import { runInChildSessionContext } from "../session/child-context.js";
 import { EXCLUDED_TOOL_NAMES, extensionCanonicalName, extensionCanonicalNames, parseExtSelectors } from "../session/extension-scope.js";
 import type { LoadedPolicy, PolicyList, PolicyScope } from "./capability-policy-config.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
@@ -51,8 +52,26 @@ function scopeWarnings(file: string, scope: PolicyScope, known: KnownCapabilitie
   return out;
 }
 
-export function discoverKnown(cwd: string, agentDir: string, extensions: LoadExtensionsResult | undefined): KnownCapabilities {
-  const skills = new Set(loadSkills({ cwd, agentDir, skillPaths: [], includeDefaults: true }).skills.map(skill => skill.name.toLowerCase()));
+async function discoverSkills(cwd: string, agentDir: string): Promise<Set<string>> {
+  const loader = new DefaultResourceLoader({
+    cwd,
+    agentDir,
+    noExtensions: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
+  await runInChildSessionContext(() => loader.reload());
+  return new Set(loader.getSkills().skills.map(skill => skill.name.toLowerCase()));
+}
+
+export async function discoverKnown(
+  policy: LoadedPolicy,
+  cwd: string,
+  agentDir: string,
+  extensions: LoadExtensionsResult | undefined,
+): Promise<KnownCapabilities> {
+  const skills = hasSkillEntries(policy) ? await discoverSkills(cwd, agentDir) : new Set<string>();
   if (!extensions) return { skills };
   return {
     skills,
@@ -65,13 +84,17 @@ function hasEntries(scope: PolicyScope): boolean {
   return [scope.tools, scope.extensions, scope.skills].some(list => entriesOf(list).length > 0);
 }
 
+function hasSkillEntries(policy: LoadedPolicy): boolean {
+  return entriesOf(policy.global.skills).length > 0 || entriesOf(policy.project.skills).length > 0;
+}
+
 export function policyHasEntries(policy: LoadedPolicy): boolean {
   return hasEntries(policy.global) || hasEntries(policy.project);
 }
 
-export function unknownPolicyEntries(policy: LoadedPolicy, cwd: string, discover: () => KnownCapabilities): string[] {
+export async function unknownPolicyEntries(policy: LoadedPolicy, cwd: string, discover: () => Promise<KnownCapabilities> | KnownCapabilities): Promise<string[]> {
   if (!policyHasEntries(policy)) return [];
-  const known = discover();
+  const known = await discover();
   return [
     ...scopeWarnings(globalSettingsPath(), policy.global, known),
     ...scopeWarnings(projectSettingsPath(cwd), policy.project, known),
