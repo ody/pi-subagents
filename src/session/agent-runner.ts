@@ -304,10 +304,10 @@ export async function runAgent(
     });
   }
 
-  const policyWarnings = unknownPolicyEntries(
+  const policyWarnings = await unknownPolicyEntries(
     policy,
     configCwd,
-    () => discoverKnown(configCwd, agentDir, discoveredExtensions),
+    () => discoverKnown(policy, configCwd, agentDir, discoveredExtensions),
   );
   for (const message of policyWarnings) options.notify?.(message, "warning");
 
