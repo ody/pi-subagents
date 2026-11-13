@@ -144,7 +144,7 @@ describe("parseMention", () => {
 });
 
 describe("agentMentionReminder", () => {
-  it("is Claude Code's string, byte for byte", () => {
+  it("produces the exact reminder text", () => {
     expect(agentMentionReminder("code-review")).toBe(
       '<system-reminder>\nThe user has expressed a desire to invoke the agent "code-review". Please invoke the agent appropriately, passing in the required context to it. \n</system-reminder>',
     );

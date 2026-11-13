@@ -660,7 +660,7 @@ Agent prompt.`);
     expect(agent.color).toBe("#8B5CF6");
   });
 
-  it("accepts a name Claude Code accepts, however unlike a type it looks", () => {
+  it("accepts a name with spaces and capitals, however unlike a type it looks", () => {
     writeAgent("reviewer", `---
 name: Code Reviewer
 description: Reviews code
