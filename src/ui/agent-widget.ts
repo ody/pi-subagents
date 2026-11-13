@@ -55,6 +55,8 @@ export class AgentWidget {
     private mode: () => WidgetMode = () => "all",
     private showCost: () => boolean = () => false,
     private showModel: () => boolean = () => false,
+    private showFleetHint: () => boolean = () => false,
+    private onWidgetRegistered: (tui: unknown) => void = () => {},
   ) {}
 
   private widgetAgents() {
@@ -189,7 +191,8 @@ export class AgentWidget {
       ? truncate(theme.fg("dim", "├─") + ` ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`)
       : undefined;
 
-    const lines: string[] = [truncate(theme.fg(headingColor, headingIcon) + " " + theme.fg(headingColor, "Agents"))];
+    const fleetHint = this.showFleetHint() ? " " + theme.fg("dim", "↓ to manage") : "";
+    const lines: string[] = [truncate(theme.fg(headingColor, headingIcon) + " " + theme.fg(headingColor, "Agents") + fleetHint)];
     const { body, hidden } = layoutWidgetBody({ finished: finishedLines, running: runningLines, queued: queuedLine }, MAX_WIDGET_LINES - 1);
     lines.push(...body);
     if (hidden) {
@@ -287,6 +290,11 @@ export class AgentWidget {
       this.tui?.requestRender();
       return;
     }
+    this.registerAgentsWidget(uiCtx);
+    this.onWidgetRegistered(this.tui);
+  }
+
+  private registerAgentsWidget(uiCtx: UICtx) {
     uiCtx.setWidget("agents", (tui, theme) => {
       this.tui = tui;
       return {

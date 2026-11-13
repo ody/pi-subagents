@@ -7,7 +7,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 - **Native tools and UI** — the `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools follow pi's calling conventions and UI patterns
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent, the default), `background` (hides foreground runs, which already render inline as the `agent` tool result), or `off`
-- **FleetView** — navigable **tree** of `main` + every running subagent rendered below the editor, with [nested children](#nested-subagents) indented under their owner. `↓` (or `←`) at an empty prompt jumps in. `↑`/`↓` move the selection. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` returns. Toggle via `/agents → Settings → Fleet view`
+- **FleetView** — navigable **tree** of `main` + every running subagent listed directly above the editor on demand, with [nested children](#nested-subagents) indented under their owner. `↓` at an empty prompt opens it. `↑`/`↓` move the selection and wrap. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` closes the view. Toggle via `/agents → Settings → Fleet view`
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too.
   - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
@@ -100,7 +100,7 @@ The token field carries two optional signals inside parens:
 
 ### FleetView
 
-While subagents are running, a navigable list renders **below** the editor:
+The list draws only while open. While subagents run and the list stays shut, the Agents widget heading shows `↓ to manage`. Press `↓` at an empty prompt to open the list **directly above** the editor, below the Agents widget:
 
 ```text
   ↑↓ select · ←→ collapse · enter view · esc back
@@ -128,14 +128,15 @@ Which rows appear:
 
 The keys, at an **empty prompt**:
 
-- `↓` (or `←`) moves focus from the prompt into the list. `●` marks the selected row, and `○` marks the rest.
-- `↑`/`↓` move the selection. `Esc`, or `↑` above `main`, returns to the prompt, as does selecting `main`.
+- `↓` opens the list and selects `main`. No other key opens it, and `←` passes through to the prompt. `●` marks the selected row, and `○` marks the rest.
+- `↑`/`↓` move the selection and wrap: `↑` on `main` selects the last row, and `↓` on the last row selects `main`. Moving never closes the list.
+- `Esc`, or `Enter` on `main`, closes the list. Any other key closes it and passes through to the prompt.
 - `Enter` opens the selected agent's live conversation overlay, which auto-updates as the agent works.
 - Inside that overlay, `Enter` steers the running agent. Type a message and press `Enter` to send it (`Esc` or an empty submit returns). This redirects the agent the same way the `steer_subagent` tool does.
 
 The selected row renders in the theme's primary text color rather than the muted/dim treatment of the others. An agent with a configured `color` shows its badge there too, bolded.
 
-A viewer stays open when its agent finishes so you can read the final output. Finished agents linger in the list for a few seconds before dropping out. Typing anything at a non-empty prompt behaves normally. The list only captures arrow keys when the prompt is empty. Disable it entirely via `/agents → Settings → Fleet view`.
+A viewer stays open when its agent finishes so you can read the final output. Finished agents linger in the list for a few seconds before dropping out. Closing the viewer returns to the open list with that agent selected. The list only captures arrow keys when the prompt is empty. Disable it entirely via `/agents → Settings → Fleet view`.
 
 ### Agent mentions
 
@@ -941,7 +942,7 @@ Note the usual trust umbrella: a project-level file shapes the orchestrator's pr
 
 ### Fleet view
 
-`fleetView`, default `true`: whether the [FleetView](#fleetview) tree renders below the editor. Toggle via `/agents → Settings → Fleet view`; applied live.
+`fleetView`, default `true`: whether `↓` at an empty prompt can open the [FleetView](#fleetview) tree above the editor. Toggle via `/agents → Settings → Fleet view`; applied live.
 
 ### Widget
 
@@ -1290,7 +1291,7 @@ src/
     widget-layout.ts      # Pure widget body layout: overflow prioritization and tree-connector fix-up
     agent-format.ts       # Display helpers: token/cost/duration formatters, activity text, Theme and AgentDetails types
     agent-tree.ts         # Pure projection: records → flat pre-order rows with depth
-    fleet-list.ts         # FleetView: navigable agent tree below the editor
+    fleet-list.ts         # FleetView: navigable agent tree above the editor, opened on demand
     notification-renderer.ts # How the subagent-notification message block renders
     notification-block.ts # Pure text formatting for the notification block (stats, preview, batch total)
     conversation-viewer.ts # Live conversation overlay for viewing agent sessions

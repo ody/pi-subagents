@@ -99,7 +99,7 @@ describe("FleetView wiring (real extension lifecycle)", () => {
     expect(ui.onTerminalInput).toHaveBeenCalled();
   });
 
-  it("registers the belowEditor widget once a spawned agent has a session, then clears it on shutdown", async () => {
+  it("registers the aboveEditor widget only after ↓ opens it, then clears it on shutdown", async () => {
     vi.mocked(runAgent).mockResolvedValue({
       responseText: "done",
       session: { dispose: vi.fn() } as any,
@@ -112,6 +112,7 @@ describe("FleetView wiring (real extension lifecycle)", () => {
 
     const ui = uiCtx();
     await lifecycle.get("tool_execution_start")?.({}, ctxWith(ui));
+    const onInput = (ui.onTerminalInput.mock.calls[0] as unknown as [(data: string) => unknown])[0];
 
     const spawn = await tools.get("agent").execute(
       "tc",
@@ -123,10 +124,75 @@ describe("FleetView wiring (real extension lifecycle)", () => {
     expect(textOf(spawn)).toMatch(/Agent ID:/);
     await flush();
 
-    const fleetRegs = ui.setWidget.mock.calls.filter(c => c[0] === "fleet" && typeof c[1] === "function");
-    expect(fleetRegs.length, "fleet widget should register with a render factory").toBeGreaterThan(0);
+    const fleetRegs = () => ui.setWidget.mock.calls.filter(c => c[0] === "fleet" && typeof c[1] === "function");
+    expect(fleetRegs()).toHaveLength(0);
+    expect(onInput("\x1b[D")).toBeUndefined();
+    expect(fleetRegs()).toHaveLength(0);
+
+    expect(onInput("\x1b[B")).toEqual({ consume: true });
+    expect(fleetRegs().length, "fleet widget should register with a render factory").toBeGreaterThan(0);
+    expect(fleetRegs().every(c => (c[2] as { placement?: string }).placement === "aboveEditor")).toBe(true);
 
     await lifecycle.get("session_shutdown")?.({}, ctxWith(uiCtx()));
     expect(ui.setWidget).toHaveBeenCalledWith("fleet", undefined);
+  });
+
+  async function spawnLive(ui: ReturnType<typeof uiCtx>) {
+    vi.mocked(runAgent).mockResolvedValue({
+      responseText: "done",
+      session: { dispose: vi.fn() } as any,
+      aborted: false,
+      steered: false,
+    });
+    const { pi, tools, lifecycle } = makePi();
+    subagentsExtension(pi);
+    await lifecycle.get("tool_execution_start")?.({}, ctxWith(ui));
+    const spawn = async () => {
+      await tools.get("agent").execute(
+        "tc",
+        { prompt: "go", description: "live one", subagent_type: "general-purpose", run_in_background: true },
+        undefined,
+        undefined,
+        ctxWith(ui),
+      );
+      await flush();
+    };
+    await spawn();
+    const onInput = (ui.onTerminalInput.mock.calls[0] as unknown as [(data: string) => unknown])[0];
+    return { onInput, spawn };
+  }
+
+  it("does not open on ↓ while another component has focus, using the tui the Agents widget provides", async () => {
+    const fakeTui = { requestRender: vi.fn(), terminal: { columns: 120, rows: 40 }, focusedComponent: { kind: "selector" } };
+    const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+    const ui = uiCtx();
+    ui.setWidget.mockImplementation(((_key: string, content: unknown) => {
+      if (typeof content === "function") content(fakeTui, theme);
+    }) as any);
+    const { onInput } = await spawnLive(ui);
+
+    expect(ui.setWidget.mock.calls.some(c => c[0] === "agents" && typeof c[1] === "function")).toBe(true);
+    expect(onInput("\x1b[B")).toBeUndefined();
+    expect(ui.setWidget.mock.calls.some(c => c[0] === "fleet" && typeof c[1] === "function")).toBe(false);
+  });
+
+  it("registers the fleet again after the Agents widget registers while the fleet is open", async () => {
+    const fakeTui = { requestRender: vi.fn(), terminal: { columns: 120, rows: 40 } };
+    const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s };
+    const invalidators: (() => void)[] = [];
+    const ui = uiCtx();
+    ui.setWidget.mockImplementation(((_key: string, content: unknown) => {
+      if (typeof content !== "function") return;
+      const component = content(fakeTui, theme) as { invalidate(): void };
+      if (_key === "agents") invalidators.push(() => component.invalidate());
+    }) as any);
+    const { onInput, spawn } = await spawnLive(ui);
+
+    expect(onInput("\x1b[B")).toEqual({ consume: true });
+    const registrations = () => ui.setWidget.mock.calls.filter(c => typeof c[1] === "function").map(c => c[0]);
+    const before = registrations().length;
+    invalidators.at(-1)?.();
+    await spawn();
+    expect(registrations().slice(before)).toEqual(["agents", "fleet"]);
   });
 });
