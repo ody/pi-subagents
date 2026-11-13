@@ -265,7 +265,7 @@ describe("settings layers", () => {
     menu().handleInput("\t");
     await vi.waitFor(() => expect(menus).toHaveLength(2));
     const rendered = menu().render(100).join("\n");
-    expect(rendered).toMatch(/Max concurrency\s+8/);
+    expect(rendered).toMatch(/Max concurrency[^\n]*\s8\n/);
     menu().handleInput("\t");
     await vi.waitFor(() => expect(menus).toHaveLength(3));
     expect(menu().render(100).join("\n")).toMatch(/Max concurrency\s+3/);
@@ -279,8 +279,8 @@ describe("settings layers", () => {
     const global = open(realDeps(), { layer: "global" }).menu().render(100).join("\n");
     expect(global).toMatch(/Max concurrency\s+10/);
     const project = open(realDeps(), { layer: "project" }).menu().render(100).join("\n");
-    expect(project).toMatch(/Max concurrency\s+2/);
-    expect(project).toMatch(/Grace turns\s+9/);
+    expect(project).toMatch(/Max concurrency[^\n]*\s2\n/);
+    expect(project).toMatch(/Grace turns[^\n]*\s9\n/);
   });
 
   it("writes the global file from the global layer and tells the user when the project overrides the key", () => {
@@ -322,6 +322,45 @@ describe("settings layers", () => {
     const { menu } = open(realDeps(), { layer: "global" });
     menu().handleInput("\r");
     expect(input).not.toHaveBeenCalled();
+  });
+
+  it("marks project, overriding, and inherited rows on the project layer only", () => {
+    writeGlobal({ maxConcurrent: 16, graceTurns: 9 });
+    writeProject({ graceTurns: 2, showCost: true });
+    const project = open(realDeps(), { layer: "project" }).menu().render(200);
+    const row = (text: string) => project.find((line) => line.includes(text)) ?? "";
+    expect(row("Grace turns")).toContain("Grace turns (overrides global)");
+    expect(row("Show cost")).toContain("Show cost (project)");
+    expect(row("Max concurrency")).toContain("Max concurrency (inherited)");
+    const global = open(realDeps(), { layer: "global" }).menu().render(200).join("\n");
+    expect(global).not.toMatch(/\((project|inherited|overrides global)\)/);
+  });
+
+  it("dims an inherited row", () => {
+    const dimTheme = { fg: (_color: string, text: string) => `<dim>${text}</dim>`, bold: (text: string) => text };
+    custom.mockImplementationOnce(
+      (factory: (...args: unknown[]) => Menu) =>
+        new Promise((resolve) => {
+          menus.push(factory({}, dimTheme, {}, resolve));
+        }),
+    );
+    writeProject({ graceTurns: 2 });
+    open(realDeps(), { layer: "project" });
+    const lines = menus[0].render(200);
+    expect(lines.find((line) => line.includes("Max concurrency"))).toContain("<dim>Max concurrency (inherited)</dim>");
+    expect(lines.find((line) => line.includes("Grace turns"))).not.toContain("<dim>Grace turns");
+  });
+
+  it("turns a key into a project override when it changes on the project layer", async () => {
+    writeGlobal({ showCost: false });
+    writeProject({ graceTurns: 2 });
+    const { menu } = open(realDeps(), { layer: "project", selected: "showCost" });
+    expect(menu().render(200).find((line) => line.includes("Show cost"))).toContain("(inherited)");
+    menu().handleInput(" ");
+    await vi.waitFor(() => expect(menus).toHaveLength(2));
+    expect(readJson(projectFile())).toEqual({ graceTurns: 2, showCost: true });
+    expect(readJson(globalFile())).toEqual({ showCost: false });
+    expect(menu().render(200).find((line) => line.includes("Show cost"))).toContain("Show cost (overrides global)");
   });
 
   it("keeps a later global edit live after a project change on another key", () => {
