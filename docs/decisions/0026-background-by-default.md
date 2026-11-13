@@ -12,7 +12,7 @@ The top-level `agent` tool's fallback for `run_in_background` is `backgroundByDe
 
 - Turning it off restores blocking, inline results for unqualified calls. A caller parameter or an agent file's frontmatter overrides it in both directions.
 - The nested `agent` tool never reads the setting. Its unspecified calls are foreground.
-- The setting applies live and does not change an agent already running.
+- The setting applies live and does not change an agent already running. A change registers the `agent` tool again, so the `run_in_background` description states the new default.
 - The background pool (`maxConcurrent`) and the foreground pool (`maxConcurrentForeground`) are separate. The setting only chooses which pool an unspecified call uses.
 
 Done check: `npx vitest run test/background-by-default.test.ts test/invocation-config.test.ts test/nested-tools.test.ts` passes. It covers both setting values, both overrides, and the nested foreground default.
