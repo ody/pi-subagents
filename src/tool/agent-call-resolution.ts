@@ -1,3 +1,4 @@
+import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import {
@@ -9,7 +10,7 @@ import {
 } from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
 import { describeModel, resolveModel } from "../config/model-resolver.js";
-import { checkModelScope } from "../config/model-scope.js";
+import { scopeModel } from "../config/model-scope.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import type { AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
@@ -38,6 +39,7 @@ export type AgentCallResolution =
       subagentType: SubagentType;
       displayName: string;
       model: any;
+      modelReplaced: string | undefined;
       thinking: ThinkingLevel | undefined;
       inheritContext: boolean;
       runInBackground: boolean;
@@ -138,26 +140,30 @@ export function resolveAgentCall(
     forceBackground: opts.forceBackground,
   });
 
-  let model = ctx.model;
+  let pinned: Model<any> | undefined;
   if (resolvedConfig.modelInput) {
     const resolved = resolveModel(resolvedConfig.modelInput, ctx.modelRegistry);
     if (typeof resolved === "string") {
       if (resolvedConfig.modelFromParams) return { ok: false, message: resolved };
     } else {
-      model = resolved;
+      pinned = resolved;
     }
   }
 
-  const scopeVerdict = checkModelScope({
-    model,
-    cwd: ctx.cwd,
-    modelRegistry: ctx.modelRegistry,
-    callerSupplied: resolvedConfig.modelFromParams,
-    agentLabel: customConfig?.displayName ?? subagentType,
-    modelInput: resolvedConfig.modelInput,
-  });
-  if (scopeVerdict.kind === "error") return { ok: false, message: scopeVerdict.message };
-  if (scopeVerdict.kind === "warn") ctx.ui.notify(scopeVerdict.message, "warning");
+  const scoped = params.resume
+    ? { ok: true as const, model: pinned ?? ctx.model, replaced: undefined, notice: undefined }
+    : scopeModel({
+      pinned,
+      sessionModel: ctx.model,
+      cwd: ctx.cwd,
+      modelRegistry: ctx.modelRegistry,
+      callerSupplied: resolvedConfig.modelFromParams,
+      agentLabel: customConfig?.displayName ?? subagentType,
+      modelInput: resolvedConfig.modelInput,
+    });
+  if (!scoped.ok) return { ok: false, message: scoped.message };
+  if (scoped.notice) ctx.ui.notify(scoped.notice, "warning");
+  const { model, replaced: modelReplaced } = scoped;
 
   const minted = mintCapability(params, ctx, subagentType, resolvedConfig.isolated, built);
   if (!minted.ok) return minted;
@@ -199,6 +205,7 @@ export function resolveAgentCall(
     subagentType,
     displayName,
     model,
+    modelReplaced,
     thinking,
     inheritContext,
     runInBackground,

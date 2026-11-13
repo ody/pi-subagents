@@ -1,8 +1,12 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
+import { setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { detailBaseFor, resolveAgentCall } from "../src/tool/agent-call-resolution.js";
 import type { AgentRecord } from "../src/types.js";
-import { testAgents } from "./helpers/test-agents.js";
+import { testAgent, testAgents } from "./helpers/test-agents.js";
 
 const base = {
   displayName: "Explore",
@@ -89,5 +93,72 @@ describe("resolveAgentCall", () => {
       opts,
     );
     expect(out.ok).toBe(true);
+  });
+
+  describe("model scope", () => {
+    const MODELS = [
+      { id: "allowed", name: "Allowed", provider: "anthropic" },
+      { id: "blocked", name: "Blocked", provider: "anthropic" },
+    ];
+    const session = { provider: "anthropic", id: "allowed" };
+    let dir: string;
+    let agentDir: string;
+    let prevAgentDir: string | undefined;
+    let notices: string[];
+    let scopedCtx: Parameters<typeof resolveAgentCall>[1];
+
+    beforeEach(() => {
+      dir = mkdtempSync(join(tmpdir(), "call-scope-"));
+      agentDir = mkdtempSync(join(tmpdir(), "call-scope-global-"));
+      prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+      process.env.PI_CODING_AGENT_DIR = agentDir;
+      mkdirSync(join(dir, ".pi"), { recursive: true });
+      writeFileSync(join(dir, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/allowed"] }));
+      setScopeModelsEnabled(true);
+      notices = [];
+      scopedCtx = {
+        model: session,
+        cwd: dir,
+        modelRegistry: {
+          find: (provider: string, id: string) => MODELS.find(m => m.provider === provider && m.id === id),
+          getAvailable: () => MODELS,
+          getAll: () => MODELS,
+        },
+        ui: { notify: (message: string) => notices.push(message) },
+      } as unknown as Parameters<typeof resolveAgentCall>[1];
+      registerAgents(new Map([["pinned", testAgent("pinned", { model: "anthropic/blocked" })], ["ghost", testAgent("ghost", { model: "nope/none" })]]));
+    });
+    afterEach(() => {
+      setScopeModelsEnabled(false);
+      if (prevAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(agentDir, { recursive: true, force: true });
+    });
+
+    it("replaces an out-of-scope file pin with the session model and notifies", () => {
+      const out = resolveAgentCall({ subagent_type: "pinned", description: "d", prompt: "p" } as never, scopedCtx, opts);
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.model).toBe(session);
+      expect(out.modelReplaced).toBe("anthropic/blocked");
+      expect(notices).toHaveLength(1);
+    });
+
+    it("never examines the session model when the pin fails to resolve", () => {
+      const out = resolveAgentCall({ subagent_type: "ghost", description: "d", prompt: "p" } as never, { ...scopedCtx, model: { provider: "anthropic", id: "blocked" } } as never, opts);
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.modelReplaced).toBeUndefined();
+      expect(notices).toEqual([]);
+    });
+
+    it("skips the check on resume", () => {
+      const out = resolveAgentCall({ subagent_type: "pinned", description: "d", prompt: "p", resume: "abc" } as never, scopedCtx, opts);
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.modelReplaced).toBeUndefined();
+      expect(notices).toEqual([]);
+    });
   });
 });

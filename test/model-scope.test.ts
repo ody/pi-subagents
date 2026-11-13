@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ModelRegistryRef } from "../src/config/enabled-models.js";
-import { checkModelScope, isScopeModelsEnabled, setScopeModelsEnabled } from "../src/config/model-scope.js";
+import { checkModelScope, isScopeModelsEnabled, scopeModel, setScopeModelsEnabled } from "../src/config/model-scope.js";
 
 const MODELS = [
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
@@ -100,16 +100,43 @@ describe("checkModelScope", () => {
       expect(message).toContain("  anthropic/claude-sonnet-4-6");
     });
 
-    it("only warns for a frontmatter-pinned choice, so the spawn still proceeds", () => {
+    it("replaces a frontmatter-pinned choice, so the spawn proceeds on the session model", () => {
       const verdict = check({ callerSupplied: false, modelInput: "anthropic/claude-opus-4-6" });
-      expect(verdict.kind).toBe("warn");
+      expect(verdict.kind).toBe("replace");
+      expect((verdict as { replaced: string }).replaced).toBe("anthropic/claude-opus-4-6");
       expect((verdict as { message: string }).message)
-        .toBe('Agent "scout" using out-of-scope model "anthropic/claude-opus-4-6"');
+        .toBe('Agent "scout" pins out-of-scope model "anthropic/claude-opus-4-6"; using the session model instead');
     });
 
-    it("names the resolved model in the warning when there was no raw input", () => {
+    it("scopeModel swaps in the session model for a replaced pin", () => {
+      const session = HAIKU;
+      const scoped = scopeModel({
+        pinned: OPUS,
+        sessionModel: session,
+        cwd: projectDir,
+        modelRegistry: makeRegistry(),
+        callerSupplied: false,
+        agentLabel: "scout",
+        modelInput: "anthropic/claude-opus-4-6",
+      });
+      expect(scoped).toMatchObject({ ok: true, model: session, replaced: "anthropic/claude-opus-4-6" });
+    });
+
+    it("scopeModel never examines the session model when nothing is pinned", () => {
+      const scoped = scopeModel({
+        pinned: undefined,
+        sessionModel: OPUS,
+        cwd: projectDir,
+        modelRegistry: makeRegistry(),
+        callerSupplied: false,
+        agentLabel: "scout",
+      });
+      expect(scoped).toEqual({ ok: true, model: OPUS });
+    });
+
+    it("names the resolved model in the replacement when there was no raw input", () => {
       const verdict = check({ callerSupplied: false, modelInput: undefined });
-      expect(verdict.kind).toBe("warn");
+      expect(verdict.kind).toBe("replace");
       expect((verdict as { message: string }).message).toContain("anthropic/claude-opus-4-6");
       expect((verdict as { message: string }).message).not.toContain("undefined");
     });
