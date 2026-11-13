@@ -3,7 +3,7 @@ import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from 
 import { policyEventPayload } from "./capability-policy-config.js";
 import { isValidSettingValue, SETTING_KEYS, SETTING_SPECS } from "./settings-defaults.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
-import { type SettingsLayer, setLayerKey } from "./settings-store.js";
+import { readLayerFile, type SettingsLayer, setLayerKey } from "./settings-store.js";
 
 export interface SubagentsSettings {
   maxConcurrent?: number;
@@ -55,7 +55,7 @@ export interface SettingsAppliers {
 
 export type SettingsEmit = (event: string, payload: unknown) => void;
 
-function sanitize(raw: unknown): SubagentsSettings {
+export function sanitize(raw: unknown): SubagentsSettings {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
   const out: Record<string, unknown> = {};
@@ -80,9 +80,27 @@ export function loadSettings(cwd: string = process.cwd()): SubagentsSettings {
   return { ...readSettingsFile(globalSettingsPath()), ...readSettingsFile(projectSettingsPath(cwd)) };
 }
 
+function defaultSettings(): Required<SubagentsSettings> {
+  return Object.fromEntries(SETTING_KEYS.map((key) => [key, SETTING_SPECS[key].default])) as Required<SubagentsSettings>;
+}
+
 export function effectiveSettings(cwd: string = process.cwd()): Required<SubagentsSettings> {
-  const defaults = Object.fromEntries(SETTING_KEYS.map((key) => [key, SETTING_SPECS[key].default]));
-  return { ...defaults, ...loadSettings(cwd) } as Required<SubagentsSettings>;
+  return { ...defaultSettings(), ...loadSettings(cwd) };
+}
+
+export type LayerSettings =
+  | { ok: true; exists: boolean; own: SubagentsSettings }
+  | { ok: false; reason: string };
+
+export function readLayerSettings(layer: SettingsLayer, cwd: string): LayerSettings {
+  const read = readLayerFile(layer, cwd);
+  return read.ok ? { ok: true, exists: read.exists, own: sanitize(read.data) } : read;
+}
+
+export function layerValues(layer: SettingsLayer, cwd: string): Required<SubagentsSettings> {
+  if (layer === "project") return effectiveSettings(cwd);
+  const global = readLayerSettings("global", cwd);
+  return { ...defaultSettings(), ...(global.ok ? global.own : {}) };
 }
 
 export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers): void {

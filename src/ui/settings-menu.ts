@@ -1,21 +1,21 @@
+import { existsSync } from "node:fs";
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
-import { isScopeModelsEnabled } from "../config/model-scope.js";
-import { getDefaultMaxTurns, getGraceTurns, getRememberAgents } from "../config/runner-defaults.js";
-import type { RuntimeSettings, SettingsPersistence } from "../config/runtime-settings.js";
+import { Container, Key, matchesKey, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
+import type { SettingsPersistence } from "../config/runtime-settings.js";
+import { layerValues, readLayerSettings, type SubagentsSettings } from "../config/settings.js";
 import { describeRange, SETTING_SPECS } from "../config/settings-defaults.js";
-import type { AgentManager } from "../manager/agent-manager.js";
-import { getOutputTranscriptDefault } from "../platform/output-file.js";
-import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
-import { getMaxSubagentDepth } from "../tool/nested-tools.js";
+import { layerPath, type SettingsLayer } from "../config/settings-store.js";
 import { parseSettingChange } from "./settings-changes.js";
-import { SETTING_ROWS } from "./settings-rows.js";
+import { buildItems, displayValue } from "./settings-rows.js";
 
 export interface SettingsMenuDeps {
-  settings: Readonly<RuntimeSettings>;
-  manager: Pick<AgentManager, "getMaxConcurrent" | "getMaxConcurrentForeground">;
+  cwd: string;
   settingsPersist: Pick<SettingsPersistence, "notifyApplied">;
-  isStrictAgentFiles: () => boolean;
+}
+
+export interface SettingsMenuState {
+  layer?: SettingsLayer;
+  selected?: string;
 }
 
 const NUMERIC_SETTING_IDS = ["maxConcurrent", "maxConcurrentForeground", "defaultMaxTurns", "graceTurns", "maxSubagentDepth"] as const;
@@ -37,97 +37,92 @@ function promptLabel(id: NumericSettingId): string {
   return `${NUMERIC_PROMPT_LABELS[id]} (${describeRange(SETTING_SPECS[id])})`;
 }
 
-function readNumericSetting(id: NumericSettingId, manager: SettingsMenuDeps["manager"]): string {
-  switch (id) {
-    case "maxConcurrent": return String(manager.getMaxConcurrent());
-    case "maxConcurrentForeground": return String(manager.getMaxConcurrentForeground());
-    case "defaultMaxTurns": return String(getDefaultMaxTurns() ?? 0);
-    case "graceTurns": return String(getGraceTurns());
-    case "maxSubagentDepth": return String(getMaxSubagentDepth());
-  }
+const SWITCH_LAYER = "\0tab";
+
+const otherLayer = (layer: SettingsLayer): SettingsLayer => (layer === "global" ? "project" : "global");
+
+export function initialLayer(cwd: string): SettingsLayer {
+  return existsSync(layerPath("project", cwd)) ? "project" : "global";
 }
 
-const onOff = (enabled: boolean): string => (enabled ? "on" : "off");
-
-function readSetting(id: string, deps: SettingsMenuDeps): string {
-  const { settings, manager, isStrictAgentFiles } = deps;
-  if (isNumericSettingId(id)) return readNumericSetting(id, manager);
-  switch (id) {
-    case "joinMode": return settings.defaultJoinMode;
-    case "backgroundByDefault": return onOff(settings.backgroundByDefault);
-    case "scopeModels": return onOff(isScopeModelsEnabled());
-    case "strictAgentFiles": return onOff(isStrictAgentFiles());
-    case "outputTranscript": return onOff(getOutputTranscriptDefault());
-    case "worktreeIsolation": return onOff(isWorktreeIsolationEnabled());
-    case "reportUsage": return onOff(settings.reportUsage);
-    case "showCost": return onOff(settings.showCost);
-    case "showModel": return onOff(settings.showModel);
-    case "viewerMarkdown": return settings.viewerMarkdown;
-    case "fleetView": return onOff(settings.fleetView);
-    case "agentMentions": return settings.agentMentionMode;
-    case "rememberAgents": return onOff(getRememberAgents());
-    case "widgetMode": return settings.widgetMode;
-    default: return settings.toolDescriptionMode;
-  }
-}
-
-export function applySettingValue(ctx: ExtensionCommandContext, deps: SettingsMenuDeps, id: string, value: string): void {
+export function applySettingValue(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  layer: SettingsLayer,
+  id: string,
+  value: string,
+): void {
   const parsed = parseSettingChange(id, value);
   if (!parsed) return;
   if (!parsed.ok) {
     ctx.ui.notify(parsed.message, "warning");
     return;
   }
-  deps.settingsPersist.notifyApplied(ctx, parsed.message, { layer: "project", key: parsed.key, value: parsed.value });
+  const project = readLayerSettings("project", deps.cwd);
+  const overridden = layer === "global" && project.ok && parsed.key in project.own;
+  const message = overridden
+    ? `${parsed.message}. This project overrides it, so the change does not reach this project.`
+    : parsed.message;
+  deps.settingsPersist.notifyApplied(ctx, message, { layer, key: parsed.key, value: parsed.value });
 }
 
-export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Promise<void> {
-  const { manager } = deps;
+function currentText(values: Required<SubagentsSettings>, id: NumericSettingId): string {
+  return displayValue(values[id]);
+}
 
-  function buildItems(): SettingItem[] {
-    return SETTING_ROWS.map((row) => {
-      const currentValue = readSetting(row.id, deps);
-      return {
-        id: row.id,
-        label: row.label,
-        description: row.description,
-        currentValue,
-        values: row.values ? [...row.values] : [currentValue],
-      };
-    });
-  }
+export async function showSettings(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  state: SettingsMenuState = {},
+): Promise<void> {
+  const layer = state.layer ?? initialLayer(deps.cwd);
+  const values = layerValues(layer, deps.cwd);
+  const file = readLayerSettings(layer, deps.cwd);
+  const readOnlyReason = file.ok ? undefined : file.reason;
+  const items = buildItems(values);
+  let currentIndex = Math.max(0, items.findIndex((item) => item.id === state.selected));
 
-  let list: SettingsList;
-  let currentIndex = 0;
-
-  const result = await ctx.ui.custom<string | undefined>((_tui, _theme, _kb, done) => {
-    const items = buildItems();
-
-    list = new SettingsList(
+  const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
+    const list = new SettingsList(
       items,
       items.length + 2,
       getSettingsListTheme(),
       (id, newValue) => {
-        applySettingValue(ctx, deps, id, newValue);
+        applySettingValue(ctx, deps, layer, id, newValue);
       },
       () => done(undefined as undefined),
     );
 
+    const scope = (name: SettingsLayer): string =>
+      name === layer ? theme.fg("accent", theme.bold(name)) : theme.fg("dim", name);
+
     const container = new Container();
     container.addChild(new Text("⚙  Subagent Settings", 0, 0));
+    container.addChild(new Text(`Scope: ${scope("global")} | ${scope("project")}`, 0, 0));
+    if (readOnlyReason) container.addChild(new Text(theme.fg("error", `${readOnlyReason}. Read-only until the file is fixed.`), 0, 0));
     container.addChild(new Spacer(1));
     container.addChild(list);
+    container.addChild(new Text(theme.fg("dim", "tab scope"), 0, 0));
 
     return {
       render: (w: number) => container.render(w),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
+        if (matchesKey(data, Key.tab)) {
+          done(SWITCH_LAYER);
+          return;
+        }
         if (matchesKey(data, "up")) {
-          currentIndex = Math.max(0, currentIndex - 1);
+          currentIndex = (currentIndex + items.length - 1) % items.length;
         } else if (matchesKey(data, "down")) {
-          currentIndex = Math.min(items.length - 1, currentIndex + 1);
+          currentIndex = (currentIndex + 1) % items.length;
         }
 
+        const editing = matchesKey(data, Key.enter) || data === " " || matchesKey(data, "left") || matchesKey(data, "right");
+        if (editing && readOnlyReason) {
+          ctx.ui.notify(`${readOnlyReason}. Fix the file first.`, "warning");
+          return;
+        }
         if (matchesKey(data, Key.enter) && isNumericSettingId(items[currentIndex].id)) {
           done(items[currentIndex].id);
           return;
@@ -137,21 +132,24 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
     };
   });
 
-  if (isNumericSettingId(result)) {
-    const current = readNumericSetting(result, manager);
-    const label = promptLabel(result);
+  const selected = items[currentIndex]?.id;
+  if (result === SWITCH_LAYER) {
+    await showSettings(ctx, deps, { layer: otherLayer(layer), selected });
+    return;
+  }
+  if (!isNumericSettingId(result)) return;
 
-    let input: string | undefined = await ctx.ui.input(label, current);
-    while (input != null) {
-      const trimmed = input.trim();
-      const parsed = parseSettingChange(result, trimmed);
-      if (parsed?.ok) {
-        applySettingValue(ctx, deps, result, trimmed);
-        await showSettings(ctx, deps);
-        return;
-      }
-      if (parsed) ctx.ui.notify(parsed.message, "warning");
-      input = await ctx.ui.input(label, trimmed);
+  const label = promptLabel(result);
+  let input: string | undefined = await ctx.ui.input(label, currentText(values, result));
+  while (input != null) {
+    const trimmed = input.trim();
+    const parsed = parseSettingChange(result, trimmed);
+    if (parsed?.ok) {
+      applySettingValue(ctx, deps, layer, result, trimmed);
+      await showSettings(ctx, deps, { layer, selected: result });
+      return;
     }
+    if (parsed) ctx.ui.notify(parsed.message, "warning");
+    input = await ctx.ui.input(label, trimmed);
   }
 }

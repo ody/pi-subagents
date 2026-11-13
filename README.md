@@ -699,14 +699,22 @@ Runtime tuning values set via `/agents` → Settings persist across pi restarts:
 
 Two files, merged on load:
 
-- **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults. Edit by hand; the `/agents` menu never writes here.
-- **Project:** `<cwd>/.pi/subagents.json` — per-project overrides. Written by `/agents` → Settings.
+- **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults.
+- **Project:** `<cwd>/.pi/subagents.json` — per-project overrides.
+
+`/agents` → Settings edits either file.
+
+- The header reads `Scope: global | project`, and the footer advertises `tab scope`. `tab` switches layers at any time.
+- The menu opens on the project layer when `<cwd>/.pi/subagents.json` exists, and on the global layer when it does not.
+- The global layer shows the global file's value, or the default for an unset key. A change writes the global file. When the project overrides that key, the notification says the change does not reach this project.
+- The project layer shows the effective value of every row, and a change writes the project file.
+- A layer file that exists and does not parse shows its parse error. That layer stays read-only until you fix the file.
 
 A menu change writes one key to one file. It keeps every other key in that file, including unknown keys and the whole `policy`. It never writes a file that exists and does not parse, and it warns with the file name instead. After the write, the extension recomputes the effective settings from both files and applies them live.
 
 ### Precedence
 
-Project overrides global on any field present in both. A menu change never copies an inherited global value into the project file, so a later edit to the global file still applies. Missing fields fall back to the defaults in the table above.
+Project overrides global on any field present in both. A menu change never copies an inherited global value into the project file, so a later edit to the global file still applies. A project file that already holds a full snapshot stays as it is, and every key in it is an override. Missing fields fall back to the defaults in the table above.
 
 ### Nested depth
 

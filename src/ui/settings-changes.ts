@@ -40,7 +40,7 @@ const PARSERS: Record<string, Parser> = {
   maxSubagentDepth: integer("maxSubagentDepth", (n) =>
     n <= 1 ? "Nested delegation disabled" : `Nested depth set to ${n}. Applies to agents started from now on.`,
   ),
-  joinMode: choice("defaultJoinMode", (v) => `Default join mode set to ${v}`),
+  defaultJoinMode: choice("defaultJoinMode", (v) => `Default join mode set to ${v}`),
   backgroundByDefault: toggle("backgroundByDefault", (enabled) =>
     enabled
       ? "agent calls run in the background unless they pass run_in_background: false"
