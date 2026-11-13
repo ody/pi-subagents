@@ -523,7 +523,7 @@ Launch a sub-agent.
 | `prompt_mode` | `"append"` \| `"replace"` | no | Ephemeral only. Default `append` |
 | `model` | string | no | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly (`.`/`-` and a trailing date stamp interchangeable) with provider fallback |
 | `thinking` | string | no | Thinking level: off, minimal, low, medium, high, xhigh, max (availability depends on pi version and model) |
-| `max_turns` | number | no | Max agentic turns; `0` is unlimited. Overrides the agent's frontmatter; omit to use it, then `defaultMaxTurns` |
+| `max_turns` | number | no | Max agentic turns; `0` means no limit. Overrides the agent's frontmatter; omit to use it, then `defaultMaxTurns` |
 | `run_in_background` | boolean | no | Overrides the agent's frontmatter; otherwise follows `backgroundByDefault`. `false` blocks and returns the result inline. The parameter description states the current default and is re-registered when the setting changes |
 | `resume` | string | no | Agent ID to resume a previous session |
 | `isolated` | boolean | no | No extension/MCP tools |
@@ -780,7 +780,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - The `Ephemeral nesting` row appears in both layers and writes `policy.ephemeralNesting` only. It leaves every other part of `policy` as it was, and `r` removes the key.
 - The row shows the effective value. On the project layer it refuses to turn on while the global file has it off, because a project can only narrow.
 - A change fires `subagents:settings_changed` with the `policy` payload.
-- `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
+- `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy fails to parse). The ping reply is the only copy that is always current.
 
 ### Strict agent files
 
@@ -845,7 +845,7 @@ Three things to know about the numbers:
 
 - The extension reports every token component, `cacheRead` included. The cached prefix genuinely is re-read and re-billed on every call. pi counts it the same way for the session's own messages. Withholding it would make a subagent's rows count differently from every other row in one total. The extension's *own* token displays still leave it out. That is a different question: there it inflates a reading of how much work the agent did.
 - Cost is pi's own per-message figure, priced from the model's listed rates. A model pi has no rates for contributes zero rather than an estimate.
-- The context-window percentage is untouched. pi derives it from assistant messages alone, so a delegating session's context doesn't appear to fill up faster.
+- The context-window percentage does not change. pi derives it from assistant messages alone, so a delegating session's context doesn't appear to fill up faster.
 
 Agents that finish in the background have no tool result of their own to ride on, so the next call you make carries their spend. The footer catches up on the following call, not the moment they finish.
 
@@ -1073,7 +1073,7 @@ A top-level RPC spawn renders in the widget and FleetView while it runs. It show
 
 With [Model Scope](#model-scope) on, the extension refuses an override that resolves outside `enabledModels`. The error envelope lists the allowed models, exactly as for a caller-supplied `agent({ model })`. `null` means unset: the agent inherits, same as omitting the field.
 
-`options.agentConfig` carries the agent definition inline instead of naming a registered type. Only `systemPrompt` is required, and omitted fields default the way omitted frontmatter does. `type` then only names the run: the extension does not resolve it, and the definition never enters the registry, so the `agent` tool and `/agents` never see it. See [`docs/rpc.md`](docs/rpc.md#inline-agent-definitions).
+`options.agentConfig` carries the agent definition inline instead of naming a registered type. Only `systemPrompt` is mandatory, and omitted fields default the way omitted frontmatter does. `type` then only names the run: the extension does not resolve it, and the definition never enters the registry, so the `agent` tool and `/agents` never see it. See [`docs/rpc.md`](docs/rpc.md#inline-agent-definitions).
 
 `options.cwd` runs the agent in a different working directory than the parent session. It takes an absolute path to an existing directory — anything else returns an error envelope; `null` means unset.
 
