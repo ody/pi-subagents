@@ -45,7 +45,7 @@ async function dispatchLiveMention(
   }
 
   if (record.session) {
-    const config = getAgentConfig(record.type);
+    const config = record.agentConfig ?? getAgentConfig(record.type);
     const resumedRecord = await deps.startBackgroundResume(ctx, record, mention.message, {
       outputTranscript: config?.outputTranscript ?? getOutputTranscriptDefault(),
       maxTurns: normalizeMaxTurns(config?.maxTurns ?? getDefaultMaxTurns()),
@@ -74,19 +74,24 @@ async function resumeTombstone(
     return handled;
   }
 
-  deps.reloadCustomAgents();
-  const dispatch = resolveSpawnType(entry.type);
-  if (!dispatch.ok) {
-    ctx.ui.notify(`Could not resume ${target} — the ${entry.type} agent is no longer available.`, "warning");
-    return handled;
+  let type = entry.type;
+  if (!entry.agentConfig) {
+    deps.reloadCustomAgents();
+    const dispatch = resolveSpawnType(entry.type);
+    if (!dispatch.ok) {
+      ctx.ui.notify(`Could not resume ${target} — the ${entry.type} agent is no longer available.`, "warning");
+      return handled;
+    }
+    type = dispatch.type;
   }
 
   try {
-    const id = deps.spawnResolved(pi, ctx, dispatch.type, mention.message, {
+    const id = deps.spawnResolved(pi, ctx, type, mention.message, {
       description: entry.description,
       reclaim: { handle: entry.handle, alias: entry.alias },
       resumeSessionFile: entry.sessionFile,
       isBackground: true,
+      ...(entry.agentConfig && { agentConfig: entry.agentConfig, ephemeral: { handleSeed: entry.handle } }),
     });
     await deps.manager.awaitStartup(id);
     ctx.ui.notify(`Resuming ${target}`, "info");
