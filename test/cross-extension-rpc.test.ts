@@ -88,6 +88,20 @@ describe("cross-extension RPC", () => {
       );
     });
 
+    it("reports modelReplaced and filtered only when the record carries them", async () => {
+      registerRpcHandlers(deps);
+      vi.mocked(manager.getRecord).mockReturnValue({ modelReplaced: "anthropic/blocked", filtered: ["tool bash"] });
+      const reply = vi.fn();
+      events.on("subagents:rpc:spawn:reply:req-mr", reply);
+      events.emit("subagents:rpc:spawn", { requestId: "req-mr", type: "general-purpose", prompt: "x" });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(reply).toHaveBeenCalledWith({
+        success: true,
+        data: { id: "agent-42", filtered: ["tool bash"], modelReplaced: "anthropic/blocked" },
+      });
+    });
+
     it("passes options through to manager.spawn", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();

@@ -44,7 +44,9 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 **Silently overwritten** — `onToolActivity`, `onTextDelta`, `onTurnEnd`, `onSessionCreated` and `onAssistantUsage` are replaced by the activity tracker's own (`src/index.ts:693`). Every programmatic spawn passes through one funnel so none can supply half-wired callbacks; a half-wired tracker renders worse than none, which is the bug behind a row that reads `thinking…` for an agent's whole life.
 
-**Capability policy.** `spawnTopLevel` also deletes a `capability` verdict a caller supplies, then runs `checkCapabilityPolicy` itself. The RPC handler passes the raw `agentConfig` next to the normalized one, so a field the caller wrote is refused when it is outside the policy, and a field the boundary defaulted (`extensions`, `skills`) is filtered. The registry `spawn` never normalizes, so every field of its `agentConfig` counts as supplied. The spawn reply is `{ id, filtered? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
+**Capability policy.** `spawnTopLevel` also deletes a `capability` verdict a caller supplies, then runs `checkCapabilityPolicy` itself. The RPC handler passes the raw `agentConfig` next to the normalized one, so a field the caller wrote is refused when it is outside the policy, and a field the boundary defaulted (`extensions`, `skills`) is filtered. The registry `spawn` never normalizes, so every field of its `agentConfig` counts as supplied. The spawn reply is `{ id, filtered?, modelReplaced? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
+
+**Model scope.** `modelReplaced` is the out-of-scope model, such as `anthropic/claude-opus-4-6`, that the scope check replaced with the session model. It appears only after a replacement, and `PROTOCOL_VERSION` stays `2`. A caller-supplied out-of-scope `model` still fails the spawn with the allowed list.
 
 Three things that are not obvious from the tables:
 
