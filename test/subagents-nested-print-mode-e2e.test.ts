@@ -7,6 +7,7 @@ import { registerAgents } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import {
   agentCall,
+  contextToolNames,
   type FauxResponder,
   type PrintModeRun,
   runPrintMode,
@@ -32,7 +33,7 @@ function userPrompt(ctx: Context): string {
 }
 
 function tools(ctx: Context): string[] {
-  return (ctx.tools ?? []).map((tool) => tool.name);
+  return contextToolNames(ctx);
 }
 
 function toolResults(ctx: Context, name: string): string[] {

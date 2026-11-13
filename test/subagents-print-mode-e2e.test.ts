@@ -7,6 +7,8 @@ import {
   agentCall,
   agentToolCalls,
   agentToolResults,
+  contextSystemPrompt,
+  contextToolNames,
   conversationText,
   invokedToolNames,
   type PrintModeRun,
@@ -99,7 +101,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
   it("the hold condition is load-bearing: it keeps a BACKGROUND child alive (vs abandoned without it)", async () => {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
     const respond = async (ctx: Context) => {
-      const isParent = (ctx.tools ?? []).some((t) => t.name === "agent");
+      const isParent = contextToolNames(ctx).includes("agent");
       if (!isParent) {
         await sleep(80);
         return "CHILD_BG_RAN";
@@ -147,7 +149,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
         }),
         parentFinal: "Reported.",
         subagent: (ctx: Context) =>
-          `child saw: ${ctx.systemPrompt?.includes(MARKER) ? MARKER : "MISSING"}`,
+          `child saw: ${contextSystemPrompt(ctx).includes(MARKER) ? MARKER : "MISSING"}`,
       }),
     });
 
@@ -180,7 +182,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
         }),
         parentFinal: "Reported.",
         subagent: (ctx: Context) =>
-          `child saw: ${ctx.systemPrompt?.includes(MARKER) ? MARKER : "MISSING"}`,
+          `child saw: ${contextSystemPrompt(ctx).includes(MARKER) ? MARKER : "MISSING"}`,
       }),
     });
 

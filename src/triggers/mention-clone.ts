@@ -3,12 +3,13 @@ import {
   buildSessionContext,
   createAgentSession,
   type ExtensionContext,
+  type ModelRuntime,
   SessionManager,
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { runInChildSessionContext } from "../session/child-context.js";
 import { FORCED_BACKGROUND } from "../tool/invocation-config.js";
-import type { SubagentType, ThinkingLevel } from "../types.js";
+import type { SubagentType } from "../types.js";
 import { agentMentionReminder } from "./mention.js";
 
 export interface MentionCloneOptions {
@@ -39,7 +40,7 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
   let refusal: string | undefined;
   const cloneAgentTool: ToolDefinition = {
     ...agentTool,
-    execute: (_cloneToolCallId, params, signal, onUpdate, _cloneCtx) => {
+    execute: (_cloneToolCallId, params, signal, onUpdate, cloneCtx) => {
       const requested = (params as { subagent_type?: unknown }).subagent_type;
       if (typeof requested !== "string" || requested.trim().toLowerCase() !== type.toLowerCase()) {
         return Promise.resolve({
@@ -70,35 +71,33 @@ export async function runMentionClone(opts: MentionCloneOptions): Promise<Mentio
         { ...(params as Record<string, unknown>), [FORCED_BACKGROUND]: true } as typeof params,
         signal,
         onUpdate,
-        ctx,
+        Object.assign(Object.create(ctx), { tools: cloneCtx.tools, executeTool: cloneCtx.executeTool }),
       );
     },
   };
 
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
   try {
-    const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: unknown }).runtime;
+    const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime: ModelRuntime }).runtime;
     const conversation = buildSessionContext(
       ctx.sessionManager.getEntries(),
       ctx.sessionManager.getLeafId(),
     );
-    const thinkingLevel = (ctx as { thinkingLevel?: ThinkingLevel }).thinkingLevel;
     const created = await runInChildSessionContext(() =>
       createAgentSession({
         cwd: ctx.cwd,
         sessionManager: SessionManager.inMemory(ctx.cwd),
         model: ctx.model as Model<never> | undefined,
-        ...(thinkingLevel && { thinkingLevel }),
-        modelRegistry: ctx.modelRegistry,
-        ...(parentModelRuntime !== undefined && { modelRuntime: parentModelRuntime as never }),
+        ...(ctx.thinkingLevel && { thinkingLevel: ctx.thinkingLevel }),
+        modelRuntime: parentModelRuntime,
         tools: [cloneAgentTool.name],
         customTools: [cloneAgentTool],
-      } as Parameters<typeof createAgentSession>[0]),
+      }),
     );
     session = created.session;
 
     const systemPrompt = ctx.getSystemPrompt?.();
-    if (systemPrompt) session.agent.state.systemPrompt = systemPrompt;
+    if (systemPrompt) session.agent.state.messages.push({ role: "system", content: systemPrompt, timestamp: Date.now() });
 
     session.agent.state.messages.push(...conversation.messages);
 

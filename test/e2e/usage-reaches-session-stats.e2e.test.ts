@@ -29,7 +29,6 @@ describe("subagent usage reaches the parent session's stats (real pi)", () => {
       cwd,
       sessionManager: SessionManager.inMemory(cwd),
       model: model as any,
-      modelRegistry: backend.modelRegistry,
       modelRuntime: backend.modelRuntime,
       tools: [],
     } as any);
@@ -73,9 +72,11 @@ describe("subagent usage reaches the parent session's stats (real pi)", () => {
   });
 
   it("leaves the context-window percentage alone", async () => {
+    const baseline = await realSession();
     const session = await realSession();
     try {
-      const before = session.getSessionStats().contextUsage?.percent ?? null;
+      baseline.sessionManager.appendMessage(toolResultCarrying(undefined) as any);
+      const before = baseline.getSessionStats().contextUsage?.percent ?? null;
 
       const pool = new PendingUsagePool();
       pool.add({ input: 150_000, output: 400, cacheWrite: 100, cost: 1.5 });
@@ -83,6 +84,7 @@ describe("subagent usage reaches the parent session's stats (real pi)", () => {
 
       expect(session.getSessionStats().contextUsage?.percent ?? null).toBe(before);
     } finally {
+      baseline.dispose?.();
       session.dispose?.();
     }
   });

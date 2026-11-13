@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   agentCall,
   agentToolResults,
+  contextToolNames,
   type PrintModeRun,
   runPrintMode,
 } from "./helpers/print-mode-runner.js";
@@ -48,7 +49,7 @@ describe.skipIf(LIVE)("maxConcurrentForeground e2e (real pi agent loop)", () => 
       cwd: projectDir(settings),
       live: false,
       respond: async (context: Context) => {
-        const isParent = (context.tools ?? []).some(t => t.name === "agent");
+        const isParent = contextToolNames(context).includes("agent");
         if (isParent) {
           const alreadySpawned = context.messages.some(
             m => m.role === "toolResult" && (m as { toolName?: string }).toolName === "agent",

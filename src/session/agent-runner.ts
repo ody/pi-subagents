@@ -11,6 +11,7 @@ import {
   DefaultResourceLoader,
   type ExtensionAPI,
   getAgentDir,
+  type ModelRuntime,
   type ResourceDiagnostic,
   SessionManager,
   SettingsManager,
@@ -331,17 +332,13 @@ export async function runAgent(
   const settingsManager = SettingsManager.create(configCwd, agentDir);
   const sessionManager = createRunSessionManager(ctx, options, agentConfig, effectiveCwd, settingsManager);
 
-  const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime?: unknown }).runtime;
-  const sessionOpts: Parameters<typeof createAgentSession>[0] & {
-    modelRegistry: ExtensionContext["modelRegistry"];
-    modelRuntime?: unknown;
-  } = {
+  const parentModelRuntime = (ctx.modelRegistry as unknown as { runtime: ModelRuntime }).runtime;
+  const sessionOpts: Parameters<typeof createAgentSession>[0] = {
     cwd: effectiveCwd,
     agentDir,
     sessionManager,
     settingsManager,
-    modelRegistry: ctx.modelRegistry,
-    ...(parentModelRuntime !== undefined && { modelRuntime: parentModelRuntime as never }),
+    modelRuntime: parentModelRuntime,
     model,
     tools: sessionTools,
     customTools: nestedTools,
