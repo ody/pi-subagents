@@ -27,7 +27,7 @@ export function mentionRoster(
     const handle = record.alias ?? record.handle!;
     taken.add(handle.toLowerCase());
     if (record.handle) taken.add(record.handle.toLowerCase());
-    targets.push({ kind: "record", handle, record, typeLabel: record.displayName ?? displayNameOf(record.type) });
+    targets.push({ kind: "record", handle, record, typeLabel: record.displayName ?? record.agentConfig?.displayName ?? displayNameOf(record.type) });
   }
 
   for (const entry of manager.listTombstones()) {
@@ -35,7 +35,7 @@ export function mentionRoster(
     if (taken.has(handle.toLowerCase())) continue;
     taken.add(handle.toLowerCase());
     taken.add(entry.handle.toLowerCase());
-    targets.push({ kind: "tombstone", handle, entry, typeLabel: displayNameOf(entry.type) });
+    targets.push({ kind: "tombstone", handle, entry, typeLabel: entry.agentConfig?.displayName ?? displayNameOf(entry.type) });
   }
 
   for (const type of types) {

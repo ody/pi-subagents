@@ -55,6 +55,15 @@ function tombstone(over: Partial<AgentTombstone> = {}): AgentTombstone {
   };
 }
 
+describe("ephemeral roster labels", () => {
+  it("labels a remembered ephemeral agent with its display name", () => {
+    const config = { displayName: "Auth Audit" } as AgentTombstone["agentConfig"];
+    const roster = mentionRoster(managerWithTombstones(tombstone({ handle: "auth-audit", type: "ephemeral-0123abcd", agentConfig: config })), []);
+
+    expect(roster).toMatchObject([{ kind: "tombstone", typeLabel: "Auth Audit" }]);
+  });
+});
+
 const suggest = (provider: ReturnType<typeof createMentionProvider>, line: string) =>
   provider.getSuggestions([line], 0, line.length, { signal: new AbortController().signal });
 
