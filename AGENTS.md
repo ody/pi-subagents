@@ -12,7 +12,7 @@ pi extension providing sub-agents (`agent` tool, `/agents` menu), packaged as `@
 
 Each entry: the rule an agent must not break, and its ADR.
 
-- **Upstream.** Hard fork: never merge, rebase onto, cherry-pick from, or add a remote for the upstream repository, and never keep or shape code, docs, or tests for upstream or Claude Code compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
+- **Upstream.** Hard fork: never merge, rebase onto, cherry-pick from, or add a remote for the upstream repository. Never keep or shape code, docs, or tests for upstream or Claude Code compatibility. [ADR 0002](docs/decisions/0002-hard-fork-from-upstream.md)
 - **No workflows.** Never add workflow orchestration to this repo, and never change `subagents:rpc:*` channels or lifecycle events for top-level agents while removing it. [ADR 0003](docs/decisions/0003-no-workflow-orchestration.md)
 - **File structure.** Split source files along cohesion seams, never to hit a number. Over 500 lines needs a `Size:` header reason, and 800 lines or 40 KB is the cap. Never create `utils.ts`, `part2.ts` or one-caller fragments, and never compress code to fit. [ADR 0004](docs/decisions/0004-source-file-structure.md)
 - **Directory structure.** Every `src/` file lives in the concern directory that owns it, never in a layer or `core/`, `utils/`, `helpers/`, `misc/` or `part2/`. A directory holds two or more files, and the `README.md` `src/` map lists every file. [ADR 0006](docs/decisions/0006-source-directory-structure.md)
@@ -35,7 +35,7 @@ Each entry: the rule an agent must not break, and its ADR.
 ## Code style
 
 - Biome's formatter is off. Match the surrounding code. Biome lint is the only style enforcement.
-- File size is enforced by `test/file-size.test.ts`, and function complexity over 30 by `test/complexity.test.ts`. [ADR 0004](docs/decisions/0004-source-file-structure.md)
+- `test/file-size.test.ts` enforces file size, and `test/complexity.test.ts` enforces function complexity over 30. [ADR 0004](docs/decisions/0004-source-file-structure.md)
 - No comments in `src/` or `test/`, except `Size:` headers, `biome-ignore` reasons and a shebang. Say it with names, types and test titles. [ADR 0010](docs/decisions/0010-no-code-comments.md)
 - No `any` unless unavoidable.
 - Top-level imports only. No `await import()` and no `import("pkg").Type`.
@@ -48,7 +48,7 @@ Each entry: the rule an agent must not break, and its ADR.
 
 - Packages pi provides at runtime (`@earendil-works/pi-*`, `typebox`, `@sinclair/typebox`) go in `peerDependencies`, never `dependencies`. A copy under `dependencies` can load a second runtime module and break schema and `instanceof` checks.
 - `typebox` and `@sinclair/typebox` peers use `"*"`. `@earendil-works/pi-*` peers use `>=1.0.0`.
-- The pi floor is `>=1.0.0` by choice: nothing older is tested. Never add shims, version gates, or comments for pi below it. Revisit when CI returns.
+- The pi floor is `>=1.0.0` by choice: we test nothing older. Never add shims, version gates, or comments for pi below it. Revisit when CI returns.
 - Pinned copies for typecheck and tests go in `devDependencies`, at or above the floor.
 - Third-party runtime packages pi does not provide stay in `dependencies`.
 
