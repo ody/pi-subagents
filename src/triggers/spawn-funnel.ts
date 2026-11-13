@@ -1,7 +1,9 @@
-import { resolveSpawnType } from "../agents/agent-types.js";
+import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import { resolveCapability } from "../config/capability-policy.js";
 import { resolveEffectiveMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
+import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
+import { resolveIsolation } from "../tool/invocation-config.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
 
 export interface SpawnFunnelDeps {
@@ -34,6 +36,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       return manager.spawn(piRef, ctxRef, type, prompt, {
         ...options,
         capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? inline),
+        isolation: resolveIsolation(inline.isolation, options?.isolation, isWorktreeIsolationEnabled()),
         maxTurns: resolveEffectiveMaxTurns(type, options.maxTurns, inline),
       });
     }
@@ -43,6 +46,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     return manager.spawn(piRef, ctxRef, dispatch.type, prompt, {
       ...options,
       capability: capabilityFor(ctxRef, dispatch.type, options),
+      isolation: resolveIsolation(getAgentConfig(dispatch.type)?.isolation, options?.isolation, isWorktreeIsolationEnabled()),
       maxTurns: options?.maxTurns ?? resolveEffectiveMaxTurns(dispatch.type, options?.maxTurns),
     });
   };

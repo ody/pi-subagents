@@ -27,6 +27,11 @@ interface AgentInvocationParams {
   isolation?: unknown;
 }
 
+export function resolveIsolation(fileValue: unknown, callerValue: unknown, worktreeAllowed: boolean): IsolationMode | undefined {
+  const requested = fileValue ?? callerValue;
+  return requested === "worktree" && worktreeAllowed ? "worktree" : undefined;
+}
+
 export const FORCED_BACKGROUND = Symbol("pi-subagents:forced-background");
 
 interface ResolveOptions {
@@ -50,8 +55,7 @@ export function resolveAgentInvocationConfig(
   isolation?: IsolationMode;
   overridden?: { thinking?: ThinkingLevel; model?: string; maxTurns?: number; runInBackground?: boolean };
 } {
-  const requested = agentConfig?.isolation ?? params.isolation;
-  const isolation = requested === "worktree" && opts?.worktreeAllowed !== false ? "worktree" : undefined;
+  const isolation = resolveIsolation(agentConfig?.isolation, params.isolation, opts?.worktreeAllowed !== false);
 
   const displaced = <T,>(fileValue: T | undefined, callerValue: T | undefined): T | undefined =>
     fileValue != null && callerValue != null && fileValue !== callerValue ? fileValue : undefined;
