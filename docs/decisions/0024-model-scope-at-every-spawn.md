@@ -35,5 +35,4 @@ Done check: `npx vitest run test/model-scope.test.ts` passes. It covers:
 
 - An agent file that pins an out-of-scope model keeps working on the session model, and the user gets told.
 - A user who selects an out-of-scope session model can still run agents that name no model.
-- ADR 0011's Context paragraph about where `checkModelScope` does not run becomes false. Whoever accepts this draft trims that paragraph.
 - Revisit if scoping should become a `policy` field alongside tools, extensions, and skills.
