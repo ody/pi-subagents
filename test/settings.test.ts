@@ -5,14 +5,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAndEmitLoaded,
   applySettings,
+  effectiveSettings,
   loadSettings,
   persistToastFor,
   type SettingsAppliers,
   saveAndEmitChanged,
-  saveSettings,
 } from "../src/config/settings.js";
+import { SETTING_KEYS, SETTING_SPECS, type SettingSpec } from "../src/config/settings-defaults.js";
+import { setLayerKey } from "../src/config/settings-store.js";
 
 const NO_POLICY = { global: {}, project: {}, ephemeralNesting: true };
+
+function saveSettings(s: Record<string, unknown>, cwd: string): boolean {
+  const file = join(cwd, ".pi", "subagents.json");
+  if (existsSync(file)) rmSync(file);
+  return Object.entries(s).every(([key, value]) => setLayerKey("project", cwd, key, value).ok);
+}
+
+function spyAppliers(): SettingsAppliers {
+  const calls = new Map<string | symbol, ReturnType<typeof vi.fn>>();
+  return new Proxy({}, {
+    get: (_t, name) => {
+      if (!calls.has(name)) calls.set(name, vi.fn());
+      return calls.get(name);
+    },
+  }) as SettingsAppliers;
+}
 
 describe("settings persistence", () => {
   let globalDir: string;
@@ -710,20 +728,120 @@ describe("settings persistence", () => {
   });
 
   describe("saveAndEmitChanged", () => {
-    it("persists, emits with persisted=true, and returns info toast on success", () => {
-      const emit = vi.fn();
-      const snapshot = { maxConcurrent: 5, graceTurns: 2 };
+    const change = (layer: "global" | "project", key: string, value: unknown) =>
+      ({ layer, key, value }) as Parameters<typeof saveAndEmitChanged>[0];
 
-      const toast = saveAndEmitChanged(snapshot, "Max concurrency set to 5", emit, projectDir);
+    it("persists one key, applies the effective settings, emits, and returns an info toast", () => {
+      const emit = vi.fn();
+      const appliers = spyAppliers();
+      writeProject({ graceTurns: 2 });
+
+      const toast = saveAndEmitChanged(
+        change("project", "maxConcurrent", 5),
+        "Max concurrency set to 5",
+        emit,
+        appliers,
+        projectDir,
+      );
 
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: snapshot,
+        settings: { ...effectiveSettings(projectDir), maxConcurrent: 5, graceTurns: 2 },
         persisted: true,
+        layer: "project",
         policy: NO_POLICY,
       });
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
-      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual(snapshot);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ graceTurns: 2, maxConcurrent: 5 });
+      expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(5);
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(2);
+    });
+
+    it("keeps a global edit live after a different key saves to the project", () => {
+      writeGlobal({ maxConcurrent: 16 });
+      saveAndEmitChanged(change("project", "graceTurns", 3), "ok", vi.fn(), spyAppliers(), projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ graceTurns: 3 });
+
+      writeGlobal({ maxConcurrent: 32 });
+      const appliers = spyAppliers();
+      saveAndEmitChanged(change("project", "showCost", true), "ok", vi.fn(), appliers, projectDir);
+      expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(32);
+    });
+
+    it("writes the global file for a global change and leaves the project file alone", () => {
+      writeProject({ maxConcurrent: 2 });
+      const emit = vi.fn();
+      const appliers = spyAppliers();
+      saveAndEmitChanged(change("global", "graceTurns", 9), "ok", emit, appliers, projectDir);
+      expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ graceTurns: 9 });
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 2 });
+      expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(2);
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(9);
+    });
+
+    it("keeps unknown keys and the policy in the file", () => {
+      const policy = { tools: { deny: ["bash"] }, ephemeralNesting: false };
+      writeProject({ maxConcurrent: 3, policy, futureKey: { a: 1 } });
+      saveAndEmitChanged(change("project", "maxConcurrent", 7), "ok", vi.fn(), spyAppliers(), projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 7, policy, futureKey: { a: 1 } });
+    });
+
+    it("does not write a layer file that fails to parse, and warns naming it", () => {
+      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        writeFileSync(globalFile(), "{ broken");
+        const emit = vi.fn();
+        const toast = saveAndEmitChanged(change("global", "graceTurns", 4), "ok", emit, spyAppliers(), projectDir);
+        expect(readFileSync(globalFile(), "utf-8")).toBe("{ broken");
+        expect(spy).toHaveBeenCalledWith(expect.stringContaining(globalFile()));
+        expect(toast.level).toBe("warning");
+        expect(emit).toHaveBeenCalledWith(
+          "subagents:settings_changed",
+          expect.objectContaining({ persisted: false }),
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("removes the key on a reset and applies the inherited value live", () => {
+      writeGlobal({ graceTurns: 9 });
+      writeProject({ graceTurns: 2, showCost: true });
+      const appliers = spyAppliers();
+      const emit = vi.fn();
+      saveAndEmitChanged(change("project", "graceTurns", undefined), "ok", emit, appliers, projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ showCost: true });
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(9);
+      expect(emit).toHaveBeenCalledWith(
+        "subagents:settings_changed",
+        expect.objectContaining({ persisted: true, settings: expect.objectContaining({ graceTurns: 9 }) }),
+      );
+    });
+
+    it("names the global layer and carries the effective settings of both files and the defaults", () => {
+      writeProject({ maxConcurrent: 2 });
+      const emit = vi.fn();
+      saveAndEmitChanged(change("global", "graceTurns", 9), "ok", emit, spyAppliers(), projectDir);
+      const payload = emit.mock.calls[0][1];
+      expect(emit.mock.calls[0][0]).toBe("subagents:settings_changed");
+      expect(payload.layer).toBe("global");
+      expect(payload.settings).toEqual({ ...effectiveSettings(projectDir), maxConcurrent: 2, graceTurns: 9 });
+      expect(Object.keys(payload.settings).sort()).toEqual([...SETTING_KEYS].sort());
+    });
+
+    it("returns a global reset to the default live", () => {
+      writeGlobal({ graceTurns: 9, futureKey: true });
+      const appliers = spyAppliers();
+      saveAndEmitChanged(change("global", "graceTurns", undefined), "ok", vi.fn(), appliers, projectDir);
+      expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ futureKey: true });
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(SETTING_SPECS.graceTurns.default);
+    });
+
+    it("does not trim a project file that holds a full snapshot", () => {
+      const snapshot = { maxConcurrent: 10, graceTurns: 5, showCost: false, widgetMode: "all" };
+      writeProject(snapshot);
+      saveAndEmitChanged(change("project", "showCost", true), "ok", vi.fn(), spyAppliers(), projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ ...snapshot, showCost: true });
     });
 
     it("emits with persisted=false and returns warning toast on save failure", () => {
@@ -732,14 +850,16 @@ describe("settings persistence", () => {
       const emit = vi.fn();
       try {
         const toast = saveAndEmitChanged(
-          { maxConcurrent: 5 },
+          change("project", "maxConcurrent", 5),
           "Max concurrency set to 5",
           emit,
+          spyAppliers(),
           filePosingAsCwd,
         );
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-          settings: { maxConcurrent: 5 },
+          settings: { ...effectiveSettings(projectDir), maxConcurrent: 5 },
           persisted: false,
+          layer: "project",
           policy: NO_POLICY,
         });
         expect(toast).toEqual({
@@ -749,6 +869,64 @@ describe("settings persistence", () => {
       } finally {
         rmSync(filePosingAsCwd, { force: true });
       }
+    });
+  });
+
+  describe("defaults and bounds table", () => {
+    it("has an entry for every setting the appliers handle", () => {
+      const called = new Set<string>();
+      const appliers = new Proxy({}, { get: (_t, name) => () => called.add(String(name)) }) as SettingsAppliers;
+      const everything = Object.fromEntries(SETTING_KEYS.map((key) => [key, SETTING_SPECS[key].default]));
+      applySettings(everything, appliers);
+      expect(called.size).toBe(SETTING_KEYS.length);
+    });
+
+    it("returns every default when no file sets a key", () => {
+      const effective = effectiveSettings(projectDir);
+      for (const key of SETTING_KEYS) expect(effective[key]).toBe(SETTING_SPECS[key].default);
+    });
+
+    it("lets a file override a default", () => {
+      writeGlobal({ maxConcurrent: 16 });
+      writeProject({ graceTurns: 2 });
+      expect(effectiveSettings(projectDir)).toMatchObject({ maxConcurrent: 16, graceTurns: 2, widgetMode: "all" });
+    });
+
+    const integerKeys = SETTING_KEYS.filter((key) => SETTING_SPECS[key].kind === "integer");
+    const enumKeys = SETTING_KEYS.filter((key) => SETTING_SPECS[key].kind === "enum");
+    const booleanKeys = SETTING_KEYS.filter((key) => SETTING_SPECS[key].kind === "boolean");
+    const specOf = (key: (typeof SETTING_KEYS)[number]) => SETTING_SPECS[key] as SettingSpec;
+    const loaded = (key: string, value: unknown) => {
+      writeProject({ [key]: value });
+      return (loadSettings(projectDir) as Record<string, unknown>)[key];
+    };
+
+    it.each(integerKeys)("%s keeps its bounds and drops anything outside", (key) => {
+      const spec = specOf(key) as Extract<SettingSpec, { kind: "integer" }>;
+      expect(loaded(key, spec.min)).toBe(spec.min);
+      expect(loaded(key, spec.max)).toBe(spec.max);
+      expect(loaded(key, spec.min - 1)).toBeUndefined();
+      expect(loaded(key, spec.max + 1)).toBeUndefined();
+      expect(loaded(key, spec.min + 0.5)).toBeUndefined();
+      expect(loaded(key, String(spec.min))).toBeUndefined();
+    });
+
+    it.each(enumKeys)("%s keeps its values and drops others", (key) => {
+      const spec = specOf(key) as Extract<SettingSpec, { kind: "enum" }>;
+      for (const value of spec.values) expect(loaded(key, value)).toBe(value);
+      expect(loaded(key, "nope")).toBeUndefined();
+      expect(loaded(key, 1)).toBeUndefined();
+    });
+
+    it.each(booleanKeys)("%s keeps booleans and drops other types", (key) => {
+      expect(loaded(key, true)).toBe(true);
+      expect(loaded(key, false)).toBe(false);
+      expect(loaded(key, "true")).toBeUndefined();
+    });
+
+    it("drops one bad value without affecting the other keys", () => {
+      writeProject({ maxConcurrent: 5000, graceTurns: 3 });
+      expect(loadSettings(projectDir)).toEqual({ graceTurns: 3 });
     });
   });
 });

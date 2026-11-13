@@ -1,36 +1,22 @@
-// Size: the menu's item list and the per-setting handler table both enumerate the same 20 settings, so they change together.
-
+import { existsSync } from "node:fs";
 import { type ExtensionCommandContext, getSettingsListTheme } from "@earendil-works/pi-coding-agent";
-import { Container, Key, matchesKey, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
-import { isScopeModelsEnabled, setScopeModelsEnabled } from "../config/model-scope.js";
-import { getDefaultMaxTurns, getGraceTurns, getRememberAgents, setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "../config/runner-defaults.js";
-import type { RuntimeSettings, SettingsPersistence } from "../config/runtime-settings.js";
-import type { SettingsAppliers, ToolDescriptionMode } from "../config/settings.js";
-import type { AgentManager } from "../manager/agent-manager.js";
-import { getOutputTranscriptDefault, setOutputTranscriptDefault } from "../platform/output-file.js";
-import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../platform/worktree.js";
-import { getMaxSubagentDepth, setMaxSubagentDepth } from "../tool/nested-tools.js";
-import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
+import { Container, Key, matchesKey, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
+import { layerEphemeralNesting } from "../config/capability-policy-config.js";
+import type { SettingsPersistence } from "../config/runtime-settings.js";
+import { layerValues, readLayerSettings } from "../config/settings.js";
+import { describeRange, SETTING_SPECS } from "../config/settings-defaults.js";
+import { layerPath, readLayerFile, type SettingsLayer } from "../config/settings-store.js";
+import { parseSettingChange } from "./settings-changes.js";
+import { buildItems, displayValue, type RowId, type RowSource, type RowValues, rowSources, SETTING_ROWS } from "./settings-rows.js";
 
 export interface SettingsMenuDeps {
-  settings: Readonly<RuntimeSettings>;
-  appliers: Pick<
-    SettingsAppliers,
-    | "setDefaultJoinMode"
-    | "setBackgroundByDefault"
-    | "setStrictAgentFiles"
-    | "setToolDescriptionMode"
-    | "setFleetView"
-    | "setAgentMentions"
-    | "setWidgetMode"
-    | "setReportUsage"
-    | "setShowCost"
-    | "setShowModel"
-    | "setViewerMarkdown"
-  >;
-  manager: Pick<AgentManager, "getMaxConcurrent" | "getMaxConcurrentForeground" | "setMaxConcurrent" | "setMaxConcurrentForeground">;
+  cwd: string;
   settingsPersist: Pick<SettingsPersistence, "notifyApplied">;
-  isStrictAgentFiles: () => boolean;
+}
+
+export interface SettingsMenuState {
+  layer?: SettingsLayer;
+  selected?: string;
 }
 
 const NUMERIC_SETTING_IDS = ["maxConcurrent", "maxConcurrentForeground", "defaultMaxTurns", "graceTurns", "maxSubagentDepth"] as const;
@@ -41,369 +27,161 @@ function isNumericSettingId(id: string | undefined): id is NumericSettingId {
 }
 
 const NUMERIC_PROMPT_LABELS: Record<NumericSettingId, string> = {
-  maxConcurrent: "Max concurrency (1+)",
-  maxConcurrentForeground: "Max foreground concurrency (0 = unlimited)",
-  defaultMaxTurns: "Default max turns (0 = unlimited)",
-  graceTurns: "Grace turns (1+)",
-  maxSubagentDepth: "Nested depth (0/1 = nesting off)",
+  maxConcurrent: "Max concurrency",
+  maxConcurrentForeground: "Max foreground concurrency, 0 = unlimited",
+  defaultMaxTurns: "Default max turns, 0 = unlimited",
+  graceTurns: "Grace turns",
+  maxSubagentDepth: "Nested depth, 0 or 1 = nesting off",
 };
 
-function readNumericSetting(id: NumericSettingId, manager: SettingsMenuDeps["manager"]): string {
-  switch (id) {
-    case "maxConcurrent": return String(manager.getMaxConcurrent());
-    case "maxConcurrentForeground": return String(manager.getMaxConcurrentForeground());
-    case "defaultMaxTurns": return String(getDefaultMaxTurns() ?? 0);
-    case "graceTurns": return String(getGraceTurns());
-    case "maxSubagentDepth": return String(getMaxSubagentDepth());
+function promptLabel(id: NumericSettingId): string {
+  return `${NUMERIC_PROMPT_LABELS[id]} (${describeRange(SETTING_SPECS[id])})`;
+}
+
+const SWITCH_LAYER = "\0tab";
+const REFRESH = "\0refresh";
+
+function layerOwn(layer: SettingsLayer, cwd: string): object {
+  const read = readLayerSettings(layer, cwd);
+  const own = read.ok ? read.own : {};
+  return layerEphemeralNesting(layer, cwd) === undefined ? own : { ...own, ephemeralNesting: true };
+}
+
+function projectSources(cwd: string): Record<string, RowSource> {
+  return rowSources(layerOwn("project", cwd), layerOwn("global", cwd));
+}
+
+function rowValues(layer: SettingsLayer, cwd: string): RowValues {
+  const global = layerEphemeralNesting("global", cwd) !== false;
+  const project = layerEphemeralNesting("project", cwd) !== false;
+  return { ...layerValues(layer, cwd), ephemeralNesting: layer === "global" ? global : global && project };
+}
+
+const otherLayer = (layer: SettingsLayer): SettingsLayer => (layer === "global" ? "project" : "global");
+
+export function initialLayer(cwd: string): SettingsLayer {
+  return existsSync(layerPath("project", cwd)) ? "project" : "global";
+}
+
+export function applySettingValue(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  layer: SettingsLayer,
+  id: string,
+  value: string,
+): void {
+  const parsed = parseSettingChange(id, value);
+  if (!parsed) return;
+  if (!parsed.ok) {
+    ctx.ui.notify(parsed.message, "warning");
+    return;
   }
-}
-
-type SettingId =
-  | "maxConcurrent" | "maxConcurrentForeground" | "defaultMaxTurns" | "graceTurns" | "maxSubagentDepth"
-  | "joinMode" | "backgroundByDefault" | "scopeModels" | "strictAgentFiles"
-  | "outputTranscript" | "worktreeIsolation"
-  | "toolDescriptionMode" | "reportUsage" | "showCost" | "showModel" | "viewerMarkdown"
-  | "fleetView" | "agentMentions" | "rememberAgents" | "widgetMode";
-
-function settingHandlers(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Map<string, (value: string) => void> {
-  const { appliers, manager, settingsPersist } = deps;
-  const handlers: Record<SettingId, (value: string) => void> = {
-    maxConcurrent: (value) => {
-      const n = parseInt(value, 10);
-      if (n >= 1) {
-        manager.setMaxConcurrent(n);
-        settingsPersist.notifyApplied(ctx, `Max concurrency set to ${n}`);
-      }
-    },
-    maxConcurrentForeground: (value) => {
-      const n = parseInt(value, 10);
-      if (n >= 0) {
-        manager.setMaxConcurrentForeground(n);
-        settingsPersist.notifyApplied(ctx, n === 0
-          ? "Max foreground concurrency set to unlimited"
-          : `Max foreground concurrency set to ${n}`);
-      }
-    },
-    defaultMaxTurns: (value) => {
-      const n = parseInt(value, 10);
-      if (n === 0) {
-        setDefaultMaxTurns(undefined);
-        settingsPersist.notifyApplied(ctx, "Default max turns set to unlimited");
-      } else if (n >= 1) {
-        setDefaultMaxTurns(n);
-        settingsPersist.notifyApplied(ctx, `Default max turns set to ${n}`);
-      }
-    },
-    graceTurns: (value) => {
-      const n = parseInt(value, 10);
-      if (n >= 1) {
-        setGraceTurns(n);
-        settingsPersist.notifyApplied(ctx, `Grace turns set to ${n}`);
-      }
-    },
-    maxSubagentDepth: (value) => {
-      const n = parseInt(value, 10);
-      if (n >= 0) {
-        setMaxSubagentDepth(n);
-        settingsPersist.notifyApplied(
-          ctx,
-          n <= 1
-            ? "Nested delegation disabled"
-            : `Nested depth set to ${n}. Applies to agents started from now on.`,
-        );
-      }
-    },
-    joinMode: (value) => {
-      appliers.setDefaultJoinMode(value as JoinMode);
-      settingsPersist.notifyApplied(ctx, `Default join mode set to ${value}`);
-    },
-    backgroundByDefault: (value) => {
-      const enabled = value === "on";
-      appliers.setBackgroundByDefault(enabled);
-      settingsPersist.notifyApplied(
-        ctx,
-        enabled
-          ? "agent calls run in the background unless they pass run_in_background: false"
-          : "agent calls block and return inline unless they pass run_in_background: true",
-      );
-    },
-    scopeModels: (value) => {
-      const enabled = value === "on";
-      setScopeModelsEnabled(enabled);
-      settingsPersist.notifyApplied(ctx, `Scope models ${enabled ? "enabled" : "disabled"}`);
-    },
-    strictAgentFiles: (value) => {
-      const enabled = value === "on";
-      appliers.setStrictAgentFiles(enabled);
-      settingsPersist.notifyApplied(ctx, `Strict agent files ${enabled ? "enabled" : "disabled"}. Takes effect on next pi session.`);
-    },
-    outputTranscript: (value) => {
-      const enabled = value === "on";
-      setOutputTranscriptDefault(enabled);
-      settingsPersist.notifyApplied(ctx, `Output transcript ${enabled ? "enabled" : "disabled"} by default`);
-    },
-    worktreeIsolation: (value) => {
-      const enabled = value === "on";
-      setWorktreeIsolationEnabled(enabled);
-      settingsPersist.notifyApplied(
-        ctx,
-        `Worktree isolation ${enabled ? "enabled" : "disabled"}. Tool parameter updates on next pi session.`,
-      );
-    },
-    toolDescriptionMode: (value) => {
-      appliers.setToolDescriptionMode(value as ToolDescriptionMode);
-      settingsPersist.notifyApplied(ctx, `Tool description set to ${value}. Takes effect on next pi session.`);
-    },
-    reportUsage: (value) => {
-      const enabled = value === "on";
-      appliers.setReportUsage(enabled);
-      settingsPersist.notifyApplied(
-        ctx,
-        enabled
-          ? "Subagent usage now counted in this session's totals"
-          : "Subagent usage no longer counted in this session's totals",
-      );
-    },
-    showCost: (value) => {
-      const enabled = value === "on";
-      appliers.setShowCost(enabled);
-      settingsPersist.notifyApplied(ctx, `Cost display ${enabled ? "enabled" : "disabled"}`);
-    },
-    showModel: (value) => {
-      const enabled = value === "on";
-      appliers.setShowModel(enabled);
-      settingsPersist.notifyApplied(ctx, `Model display ${enabled ? "enabled" : "disabled"}`);
-    },
-    viewerMarkdown: (value) => {
-      appliers.setViewerMarkdown(value as ViewerMarkdownMode);
-      settingsPersist.notifyApplied(ctx, `Viewer markdown set to ${value}`);
-    },
-    fleetView: (value) => {
-      const enabled = value === "on";
-      appliers.setFleetView(enabled);
-      settingsPersist.notifyApplied(ctx, `Fleet view ${enabled ? "enabled" : "disabled"}`);
-    },
-    agentMentions: (value) => {
-      const mode = value as AgentMentionMode;
-      appliers.setAgentMentions(mode);
-      settingsPersist.notifyApplied(
-        ctx,
-        mode === "off"
-          ? "Agent mentions disabled"
-          : mode === "model"
-            ? "Agent mentions on — a conversation clone starts a mentioned agent off-screen"
-            : "Agent mentions on — a mentioned agent starts here, with no model call",
-      );
-    },
-    rememberAgents: (value) => {
-      const enabled = value === "on";
-      setRememberAgents(enabled);
-      settingsPersist.notifyApplied(ctx, `Remember agents ${enabled ? "enabled" : "disabled"}`);
-    },
-    widgetMode: (value) => {
-      appliers.setWidgetMode(value as WidgetMode);
-      settingsPersist.notifyApplied(ctx, `Widget set to ${value}`);
-    },
-  };
-  return new Map(Object.entries(handlers));
-}
-
-export function applySettingValue(ctx: ExtensionCommandContext, deps: SettingsMenuDeps, id: string, value: string): void {
-  settingHandlers(ctx, deps).get(id)?.(value);
-}
-
-export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsMenuDeps): Promise<void> {
-  const { settings, manager, isStrictAgentFiles } = deps;
-
-  function buildItems(): SettingItem[] {
-    const mc = readNumericSetting("maxConcurrent", manager);
-    const mcf = readNumericSetting("maxConcurrentForeground", manager);
-    const dmt = readNumericSetting("defaultMaxTurns", manager);
-    const gt = readNumericSetting("graceTurns", manager);
-    const msd = readNumericSetting("maxSubagentDepth", manager);
-
-    return [
-      {
-        id: "maxConcurrent",
-        label: "Max concurrency",
-        description: "Max concurrent background agents (Enter to type)",
-        currentValue: mc,
-        values: [mc],
-      },
-      {
-        id: "maxConcurrentForeground",
-        label: "Max foreground concurrency",
-        description: "Max concurrent foreground (blocking) agents (0 = unlimited, Enter to type)",
-        currentValue: mcf,
-        values: [mcf],
-      },
-      {
-        id: "defaultMaxTurns",
-        label: "Default max turns",
-        description: "Default max turns before wrap-up (0 = unlimited, Enter to type)",
-        currentValue: dmt,
-        values: [dmt],
-      },
-      {
-        id: "graceTurns",
-        label: "Grace turns",
-        description: "Grace turns after wrap-up steer (Enter to type)",
-        currentValue: gt,
-        values: [gt],
-      },
-      {
-        id: "maxSubagentDepth",
-        label: "Nested depth",
-        description: "Hard cap on nested delegation — main is 0, its subagents 1 (0/1 = nesting off, Enter to type)",
-        currentValue: msd,
-        values: [msd],
-      },
-      {
-        id: "joinMode",
-        label: "Join mode",
-        description: "Default join mode for background agents",
-        currentValue: settings.defaultJoinMode,
-        values: ["smart", "async", "group"],
-      },
-      {
-        id: "backgroundByDefault",
-        label: "Background by default",
-        description: "An agent call that doesn't say runs detached (off = blocks the turn and returns inline)",
-        currentValue: settings.backgroundByDefault ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "scopeModels",
-        label: "Scope models",
-        description: "Validate subagent models against scoped models (/scoped-models)",
-        currentValue: isScopeModelsEnabled() ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "strictAgentFiles",
-        label: "Strict agent files",
-        description: "Fail startup on an unreadable/unparseable agent .md instead of skipping it with a warning",
-        currentValue: isStrictAgentFiles() ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "outputTranscript",
-        label: "Output transcript",
-        description: "Write each subagent's .output transcript by default. A custom agent's output_transcript frontmatter overrides this.",
-        currentValue: getOutputTranscriptDefault() ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "worktreeIsolation",
-        label: "Worktree isolation",
-        description:
-          "Allow isolation: worktree to copy the repo. Off refuses worktrees on every path immediately — for repos where a copy costs too much time or disk — and drops the `isolation` param from the agent tool spec on next pi session.",
-        currentValue: isWorktreeIsolationEnabled() ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "reportUsage",
-        label: "Report usage to session",
-        description:
-          "Add subagent tokens and cost to this session's own totals, so pi's footer and /cost stop reading a delegating session as nearly free. Reported on the next tool result (agents that finish in the background are counted on the one after). Context-window % is unaffected.",
-        currentValue: settings.reportUsage ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "showCost",
-        label: "Show cost",
-        description:
-          "Show an estimated `~$0.0042` beside subagent token counts in the widget, fleet view, results and notifications. Priced by pi from the model's rates — omitted entirely for a model it has no rates for.",
-        currentValue: settings.showCost ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "showModel",
-        label: "Show model",
-        description:
-          "Name the model driving each agent, and the thinking level it is running at, on the widget's running rows. The agent tool result and the conversation viewer show the pair either way — this adds it to the widget, where the row is already dense.",
-        currentValue: settings.showModel ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "viewerMarkdown",
-        label: "Viewer markdown",
-        description:
-          "How much of the conversation viewer renders as Markdown. assistant = assistant text only (default); all = tool results too, for tools that emit Markdown — accepting that a Markdown pass over a diff or a log eats `#` comments, swallows a `---` line and re-fences indented output; off = everything verbatim. `m` in the viewer cycles the same setting (footer: raw / md / md+).",
-        currentValue: settings.viewerMarkdown,
-        values: ["off", "assistant", "all"],
-      },
-      {
-        id: "fleetView",
-        label: "Fleet view",
-        description: "Navigable main+subagents tree below the editor (↓/← to navigate, Enter to view)",
-        currentValue: settings.fleetView ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "agentMentions",
-        label: "Agent mentions",
-        description: "Route `@handle message` at the prompt to that agent. model = an off-screen clone of this conversation calls the agent tool, so the agent gets a context-written prompt, a transcript and per-tool detail, and the chat stays clean; direct = started here from your text, no model call. Messaging and resuming are direct either way.",
-        currentValue: settings.agentMentionMode,
-        values: ["model", "direct", "off"],
-      },
-      {
-        id: "rememberAgents",
-        label: "Remember agents",
-        description: "Persist subagent sessions so `@handle` can resume one long after it finished (they also appear in /resume)",
-        currentValue: getRememberAgents() ? "on" : "off",
-        values: ["on", "off"],
-      },
-      {
-        id: "widgetMode",
-        label: "Widget",
-        description: "Above-editor agent widget: all = every agent; background = hide foreground (they already render inline); off = hide the widget.",
-        currentValue: settings.widgetMode,
-        values: ["all", "background", "off"],
-      },
-      {
-        id: "toolDescriptionMode",
-        label: "Tool description",
-        description: "agent tool description sent to the LLM: full (rich, default), compact (~75% fewer tokens, for small/local models), or custom (.pi/agent-tool-description.md with {{placeholders}})",
-        currentValue: settings.toolDescriptionMode,
-        values: ["full", "compact", "custom"],
-      },
-    ];
+  if (layer === "project" && parsed.key === "ephemeralNesting" && parsed.value === true && layerEphemeralNesting("global", deps.cwd) === false) {
+    ctx.ui.notify("Ephemeral nesting is off in the global file, and a project can only narrow it. Turn it on in the global layer first.", "warning");
+    return;
   }
+  const message = `${parsed.message}${overrideNotice(layer, parsed.key, parsed.value, deps.cwd)}`;
+  deps.settingsPersist.notifyApplied(ctx, message, { layer, key: parsed.key, value: parsed.value });
+}
 
-  let list: SettingsList;
-  let currentIndex = 0;
+function projectOverrides(key: string, value: unknown, cwd: string): boolean {
+  if (key === "ephemeralNesting") return layerEphemeralNesting("project", cwd) === false && value !== false;
+  const project = readLayerSettings("project", cwd);
+  return project.ok && key in project.own;
+}
 
-  const result = await ctx.ui.custom<string | undefined>((_tui, _theme, _kb, done) => {
-    const items = buildItems();
+function overrideNotice(layer: SettingsLayer, key: string, value: unknown, cwd: string): string {
+  const overridden = layer === "global" && projectOverrides(key, value, cwd);
+  return overridden ? ". This project overrides it, so the change does not reach this project." : "";
+}
 
-    list = new SettingsList(
-      items,
-      items.length + 2,
+export function resetSettingValue(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  layer: SettingsLayer,
+  id: RowId,
+): boolean {
+  const file = readLayerFile(layer, deps.cwd);
+  if (!file.ok || !fileSetsRow(file.data, id)) return false;
+  const label = SETTING_ROWS.find((row) => row.id === id)?.label ?? id;
+  const outcome = layer === "project" ? "now inherits" : "is back to the default";
+  const message = `${label} ${outcome}${overrideNotice(layer, id, undefined, deps.cwd)}`;
+  deps.settingsPersist.notifyApplied(ctx, message, { layer, key: id, value: undefined });
+  return true;
+}
+
+function fileSetsRow(data: Record<string, unknown>, id: RowId): boolean {
+  if (id !== "ephemeralNesting") return id in data;
+  const policy = data.policy;
+  return typeof policy === "object" && policy !== null && id in policy;
+}
+
+function currentText(values: RowValues, id: NumericSettingId): string {
+  return displayValue(values[id]);
+}
+
+export async function showSettings(
+  ctx: ExtensionCommandContext,
+  deps: SettingsMenuDeps,
+  state: SettingsMenuState = {},
+): Promise<void> {
+  const layer = state.layer ?? initialLayer(deps.cwd);
+  const values = rowValues(layer, deps.cwd);
+  const file = readLayerSettings(layer, deps.cwd);
+  const readOnlyReason = file.ok ? undefined : file.reason;
+  const rowIds = SETTING_ROWS.map((row) => row.id);
+  let currentIndex = Math.max(0, rowIds.findIndex((id) => id === state.selected));
+  const sources = layer === "project" ? projectSources(deps.cwd) : undefined;
+
+  const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
+    const list = new SettingsList(
+      buildItems(values, sources, (text) => theme.fg("dim", text)),
+      rowIds.length + 2,
       getSettingsListTheme(),
       (id, newValue) => {
-        applySettingValue(ctx, deps, id, newValue);
+        applySettingValue(ctx, deps, layer, id, newValue);
+        if (layer === "project") done(REFRESH);
       },
       () => done(undefined as undefined),
     );
+    list.selectItem(rowIds[currentIndex]);
+
+    const scope = (name: SettingsLayer): string =>
+      name === layer ? theme.fg("accent", theme.bold(name)) : theme.fg("dim", name);
 
     const container = new Container();
     container.addChild(new Text("⚙  Subagent Settings", 0, 0));
+    container.addChild(new Text(`Scope: ${scope("global")} | ${scope("project")}`, 0, 0));
+    if (readOnlyReason) container.addChild(new Text(theme.fg("error", `${readOnlyReason}. Read-only until the file is fixed.`), 0, 0));
     container.addChild(new Spacer(1));
     container.addChild(list);
+    container.addChild(new Text(theme.fg("dim", "tab scope · r reset"), 0, 0));
 
     return {
       render: (w: number) => container.render(w),
       invalidate: () => container.invalidate(),
       handleInput: (data: string) => {
+        if (matchesKey(data, Key.tab)) {
+          done(SWITCH_LAYER);
+          return;
+        }
         if (matchesKey(data, "up")) {
-          currentIndex = Math.max(0, currentIndex - 1);
+          currentIndex = (currentIndex + rowIds.length - 1) % rowIds.length;
         } else if (matchesKey(data, "down")) {
-          currentIndex = Math.min(items.length - 1, currentIndex + 1);
+          currentIndex = (currentIndex + 1) % rowIds.length;
         }
 
-        if (matchesKey(data, Key.enter) && isNumericSettingId(items[currentIndex].id)) {
-          done(items[currentIndex].id);
+        const editing = data === "r" || matchesKey(data, Key.enter) || data === " " || matchesKey(data, "left") || matchesKey(data, "right");
+        if (editing && readOnlyReason) {
+          ctx.ui.notify(`${readOnlyReason}. Fix the file first.`, "warning");
+          return;
+        }
+        if (data === "r") {
+          if (resetSettingValue(ctx, deps, layer, rowIds[currentIndex])) done(REFRESH);
+          return;
+        }
+        if (matchesKey(data, Key.enter) && isNumericSettingId(rowIds[currentIndex])) {
+          done(rowIds[currentIndex]);
           return;
         }
         list.handleInput?.(data);
@@ -411,20 +189,28 @@ export async function showSettings(ctx: ExtensionCommandContext, deps: SettingsM
     };
   });
 
-  if (isNumericSettingId(result)) {
-    const current = readNumericSetting(result, manager);
-    const label = NUMERIC_PROMPT_LABELS[result];
+  const selected = rowIds[currentIndex];
+  if (result === SWITCH_LAYER) {
+    await showSettings(ctx, deps, { layer: otherLayer(layer), selected });
+    return;
+  }
+  if (result === REFRESH) {
+    await showSettings(ctx, deps, { layer, selected });
+    return;
+  }
+  if (!isNumericSettingId(result)) return;
 
-    let input: string | undefined = await ctx.ui.input(label, current);
-    while (input != null) {
-      const trimmed = input.trim();
-      const n = Number(trimmed);
-      if (trimmed !== "" && Number.isInteger(n)) {
-        applySettingValue(ctx, deps, result, String(n));
-        await showSettings(ctx, deps);
-        return;
-      }
-      input = await ctx.ui.input(label, trimmed);
+  const label = promptLabel(result);
+  let input: string | undefined = await ctx.ui.input(label, currentText(values, result));
+  while (input != null) {
+    const trimmed = input.trim();
+    const parsed = parseSettingChange(result, trimmed);
+    if (parsed?.ok) {
+      applySettingValue(ctx, deps, layer, result, trimmed);
+      await showSettings(ctx, deps, { layer, selected: result });
+      return;
     }
+    if (parsed) ctx.ui.notify(parsed.message, "warning");
+    input = await ctx.ui.input(label, trimmed);
   }
 }
