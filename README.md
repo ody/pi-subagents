@@ -523,7 +523,7 @@ Launch a sub-agent.
 | `model` | string | no | Model — `provider/modelId` or fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly (`.`/`-` and a trailing date stamp interchangeable) with provider fallback |
 | `thinking` | string | no | Thinking level: off, minimal, low, medium, high, xhigh, max (availability depends on pi version and model) |
 | `max_turns` | number | no | Max agentic turns; `0` is unlimited. Overrides the agent's frontmatter; omit to use it, then `defaultMaxTurns` |
-| `run_in_background` | boolean | no | Overrides the agent's frontmatter; otherwise follows `backgroundByDefault`. `false` blocks and returns the result inline. The parameter description states the default for the setting's value at startup |
+| `run_in_background` | boolean | no | Overrides the agent's frontmatter; otherwise follows `backgroundByDefault`. `false` blocks and returns the result inline. The parameter description states the current default and is re-registered when the setting changes |
 | `resume` | string | no | Agent ID to resume a previous session |
 | `isolated` | boolean | no | No extension/MCP tools |
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when `worktreeIsolation: false` |
@@ -797,7 +797,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 
 ### Background by default
 
-`backgroundByDefault`, default `true`: what an `agent` call that doesn't say means. Toggle via `/agents → Settings → Background by default`; applied live.
+`backgroundByDefault`, default `true`: what an `agent` call that doesn't say means. Toggle via `/agents → Settings → Background by default`; applied live. The `agent` tool is registered again on a change, so the `run_in_background` parameter description states the new default.
 
 - On: the agent runs detached, the call returns its ID immediately, and a completion notification carries a preview of the result (`get_subagent_result` for the full text).
 - `false`: restores the previous behaviour, where an unqualified spawn blocked the turn and returned its output inline.
