@@ -226,7 +226,6 @@ The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets sw
 | Input | Goes to |
 | --- | --- |
 | `@reviewer fix the flaky test` | the `reviewer` agent |
-| `@agent-reviewer fix the flaky test` | the same agent — Claude Code's manual spelling, accepted as a synonym |
 | `@main @reviewer is not a mention` | the main model, with the leading `@main` and its trailing space stripped — the escape hatch |
 | `@reviewer` (no message) | the main model — a bare handle is never a send |
 | `hey @reviewer look at this` | the main model — only a **leading** mention is routed |
@@ -235,11 +234,10 @@ The grammar mirrors Claude Code's, and is deliberately narrow so nothing gets sw
 
 While an agent is live its handle addresses *it*, so `@reviewer` never starts a second reviewer alongside a running one — use the `agent` tool for deliberate parallelism. `@<agent-id>` works too.
 
-Four rules decide what a handle can name:
+Three rules decide what a handle can name:
 
 - `main` is reserved and can never be an agent's handle. A type slugging to it gets `main-2`.
 - Handles are capped at 64 characters.
-- A handle written as typed always wins over the `@agent-` form, so an agent genuinely called `agent-reviewer` stays reachable.
 - [Nested subagents](#nested-subagents) are not addressable. They are absent from every programmatic top-level surface and only their owner may steer them *by tool*, so a handle that would name one starts a fresh top-level agent instead of reaching through that boundary. They are still visible and steerable by hand in [FleetView](#fleetview) and `/agents → Agents`.
 
 Suggestions list live agents first, then resumable ones, then startable types — and then pi's own file rows, in the same popup: `@` stays the file picker it always was, and the handles are added to it rather than replacing it. Disable the whole thing via `/agents → Settings → Agent mentions`.
@@ -372,13 +370,11 @@ All fields are optional — sensible defaults for everything.
 - Any value works except one containing `:`, which Claude Code reserves for plugin-scoped identifiers — such a file is skipped with a warning.
 - Two files may declare the same name; the later load wins, as a filename clash always did.
 
-`color` sets the badge in the agent tool header, widget, FleetView, and conversation viewer. Accepted values:
+`color` sets the badge in the agent tool header, widget, FleetView, and conversation viewer. Accepted value:
 
-- Claude Code's `red`, `blue`, `green`, `yellow`, `purple`, `orange`, `pink`, `cyan` (the values its own default theme uses).
-- Quoted six-digit hex such as `"#8B5CF6"`.
-- Agency Agents aliases: `amber`, `teal`, `indigo`, `gold`, `neon-green`, `neon-cyan`, `metallic-blue`, `violet`, `rose`, `lime`, `gray`/`grey`, `fuchsia`, `slate`, `navy`.
+- Quoted six-digit hex such as `"#8B5CF6"`. Color names are not accepted.
 
-Badge text is black or white, whichever clears 4.5:1 against the rendered background — Claude Code uses one inverse color for every badge. Invalid values render no badge and preserve each surface's existing theme foreground.
+Badge text is black or white, whichever clears 4.5:1 against the rendered background. Invalid values render no badge and preserve each surface's existing theme foreground.
 
 The caller can override four fields of a named agent for one run: `model`, `thinking`, `max_turns`, and `run_in_background`. Precedence is the `agent` tool parameter, then frontmatter, then the default (the session model, pi's default thinking level, `defaultMaxTurns`, and `backgroundByDefault`; nested calls default to foreground). A caller `max_turns` of `0` means unlimited and is not re-resolved from the file. Every other field binds the agent: `inherit_context`, `isolated`, and `isolation` only fill what the file leaves unspecified, and `isolation: off` still refuses a worktree.
 
@@ -1248,7 +1244,7 @@ src/
     output-file.ts    # Streaming output file transcripts for agent sessions
 
   ui/
-    agent-color.ts        # Claude Code/Agency Agents name color parsing and badge rendering
+    agent-color.ts        # Hex color parsing and badge rendering
     agent-widget.ts       # Persistent widget: spinners, activity, status icons, theming
     widget-layout.ts      # Pure widget body layout: overflow prioritization and tree-connector fix-up
     agent-format.ts       # Display helpers: token/cost/duration formatters, activity text, Theme and AgentDetails types
