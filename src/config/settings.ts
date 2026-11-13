@@ -1,10 +1,10 @@
 // Size: the SubagentsSettings interface documents every field (about half the file); sanitize, load/save and apply all change together whenever a setting is added.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
-import { policyEventPayload, readProjectPolicyRaw } from "./capability-policy-config.js";
+import { policyEventPayload } from "./capability-policy-config.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
+import { type SettingsLayer, setLayerKey } from "./settings-store.js";
 
 export interface SubagentsSettings {
   maxConcurrent?: number;
@@ -171,23 +171,6 @@ export function loadSettings(cwd: string = process.cwd()): SubagentsSettings {
   return { ...readSettingsFile(globalSettingsPath()), ...readSettingsFile(projectSettingsPath(cwd)) };
 }
 
-export function saveSettings(s: SubagentsSettings, cwd: string = process.cwd()): boolean {
-  const path = projectSettingsPath(cwd);
-  const existing = readProjectPolicyRaw(cwd);
-  if (!existing.ok) {
-    console.warn(`[pi-subagents] Not saving settings: ${existing.reason}. Fix the file so its policy is not lost.`);
-    return false;
-  }
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    const body = existing.policy === undefined ? s : { ...s, policy: existing.policy };
-    writeFileSync(path, JSON.stringify(body, null, 2), "utf-8");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers): void {
   if (typeof s.maxConcurrent === "number") appliers.setMaxConcurrent(s.maxConcurrent);
   if (typeof s.maxConcurrentForeground === "number") {
@@ -235,13 +218,23 @@ export function applyAndEmitLoaded(
   return settings;
 }
 
+export interface SettingChange {
+  layer: SettingsLayer;
+  key: keyof SubagentsSettings;
+  value: unknown;
+}
+
 export function saveAndEmitChanged(
-  snapshot: SubagentsSettings,
+  change: SettingChange,
   successMsg: string,
   emit: SettingsEmit,
+  appliers: SettingsAppliers,
   cwd: string = process.cwd(),
 ): { message: string; level: "info" | "warning" } {
-  const persisted = saveSettings(snapshot, cwd);
-  emit("subagents:settings_changed", { settings: snapshot, persisted, policy: policyEventPayload(cwd) });
+  const persisted = setLayerKey(change.layer, cwd, change.key, change.value).ok;
+  const effective = loadSettings(cwd);
+  const settings = persisted ? effective : { ...effective, ...sanitize({ [change.key]: change.value }) };
+  applySettings(settings, appliers);
+  emit("subagents:settings_changed", { settings, persisted, policy: policyEventPayload(cwd) });
   return persistToastFor(successMsg, persisted);
 }

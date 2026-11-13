@@ -137,15 +137,3 @@ export function policyEventPayload(cwd: string): PolicyEventPayload {
   if (problems.length > 0) payload.malformed = problems;
   return payload;
 }
-
-export function readProjectPolicyRaw(cwd: string): { ok: true; policy: unknown } | { ok: false; reason: string } {
-  const path = projectSettingsPath(cwd);
-  if (!existsSync(path)) return { ok: true, policy: undefined };
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-    if (!isRecord(parsed)) return { ok: false, reason: `${path} must contain a JSON object` };
-    return { ok: true, policy: parsed.policy };
-  } catch (err) {
-    return { ok: false, reason: `${path} cannot be parsed (${describeError(err)})` };
-  }
-}

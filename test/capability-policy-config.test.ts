@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadCapabilityPolicy, policyEventPayload } from "../src/config/capability-policy-config.js";
-import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged, saveSettings } from "../src/config/settings.js";
+import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged } from "../src/config/settings.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 
 describe("capability policy configuration", () => {
@@ -91,23 +91,36 @@ describe("capability policy configuration", () => {
     expect(loaded.problems[0]).toContain("cannot be parsed");
   });
 
-  it("saving settings writes the project policy back unchanged", () => {
+  const appliers = () => new Proxy({}, { get: () => () => {} }) as SettingsAppliers;
+  const changeMax = (layer: "global" | "project", n: number) =>
+    saveAndEmitChanged({ layer, key: "maxConcurrent", value: n }, "ok", vi.fn(), appliers(), projectDir);
+
+  it("saving one key leaves the policy of that layer unchanged", () => {
     const policy = { tools: { deny: ["bash"] }, ephemeralNesting: false };
     writeProject({ maxConcurrent: 3, policy });
-    expect(saveSettings({ maxConcurrent: 7 }, projectDir)).toBe(true);
+    expect(changeMax("project", 7).level).toBe("info");
     expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 7, policy });
   });
 
+  it("saving a global key leaves the global policy unchanged", () => {
+    const policy = { skills: { deny: ["x"] } };
+    writeGlobal({ policy });
+    expect(changeMax("global", 7).level).toBe("info");
+    expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ maxConcurrent: 7, policy });
+  });
+
   it("saving settings adds no policy key when the file has none", () => {
-    expect(saveSettings({ maxConcurrent: 7 }, projectDir)).toBe(true);
+    expect(changeMax("project", 7).level).toBe("info");
     expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 7 });
   });
 
-  it("saving settings refuses when the project file does not parse", () => {
-    writeProject("{ broken");
-    expect(saveSettings({ maxConcurrent: 7 }, projectDir)).toBe(false);
-    expect(readFileSync(projectFile(), "utf-8")).toBe("{ broken");
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(projectFile()));
+  it.each(["project", "global"] as const)("saving settings refuses when the %s file does not parse", (layer) => {
+    if (layer === "project") writeProject("{ broken");
+    else writeGlobal("{ broken");
+    const file = layer === "project" ? projectFile() : globalFile();
+    expect(changeMax(layer, 7).level).toBe("warning");
+    expect(readFileSync(file, "utf-8")).toBe("{ broken");
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(file));
   });
 
   it("carries the policy in settings_loaded and settings_changed", () => {
@@ -116,7 +129,7 @@ describe("capability policy configuration", () => {
     const emit = vi.fn();
     const appliers = new Proxy({}, { get: () => () => {} }) as SettingsAppliers;
     applyAndEmitLoaded(appliers, emit, projectDir);
-    saveAndEmitChanged({ maxConcurrent: 2 }, "ok", emit, projectDir);
+    saveAndEmitChanged({ layer: "project", key: "maxConcurrent", value: 2 }, "ok", emit, appliers, projectDir);
     const expected = { global: { skills: { deny: ["x"] } }, project: {}, ephemeralNesting: false };
     expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", expect.objectContaining({ policy: expected }));
     expect(emit).toHaveBeenCalledWith("subagents:settings_changed", expect.objectContaining({ policy: expected }));

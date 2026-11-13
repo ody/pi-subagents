@@ -51,8 +51,7 @@ export default function (pi: ExtensionAPI) {
   const getViewerMarkdown = () => settings.viewerMarkdown;
   const setViewerMarkdown = (m: ViewerMarkdownMode): void => { settings.setViewerMarkdownMode(m); };
   function chooseViewerMarkdown(mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext): void {
-    setViewerMarkdown(mode);
-    settingsPersist.persist(ctx, `Viewer markdown set to ${mode}`);
+    settingsPersist.persist(ctx, `Viewer markdown set to ${mode}`, { layer: "project", key: "viewerMarkdown", value: mode });
   }
   const pendingUsage = new PendingUsagePool();
 
@@ -102,12 +101,6 @@ export default function (pi: ExtensionAPI) {
   }, (_record, usage) => {
     if (settings.reportUsage) pendingUsage.add(usage);
   });
-
-  const settingsPersist = createSettingsPersistence(
-    settings,
-    { manager },
-    (event, payload) => pi.events.emit(event, payload),
-  );
 
   const MANAGER_KEY = Symbol.for("pi-subagents:manager");
   const { spawnResolved, spawnTopLevel, resolveAgentRef } = createSpawnFunnel({ manager, reloadCustomAgents });
@@ -284,6 +277,7 @@ export default function (pi: ExtensionAPI) {
     setShowModel,
     setViewerMarkdown,
   };
+  const settingsPersist = createSettingsPersistence(appliers, (event, payload) => pi.events.emit(event, payload));
   applyAndEmitLoaded(appliers, (event, payload) => pi.events.emit(event, payload));
 
   const agentTool = createAgentTool(pi, {
@@ -321,7 +315,6 @@ export default function (pi: ExtensionAPI) {
     chooseViewerMarkdown,
     showSettings: (ctx) => showSettings(ctx, {
       settings,
-      appliers,
       manager,
       settingsPersist,
       isStrictAgentFiles: () => strictAgentFiles,

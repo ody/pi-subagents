@@ -9,10 +9,26 @@ import {
   persistToastFor,
   type SettingsAppliers,
   saveAndEmitChanged,
-  saveSettings,
 } from "../src/config/settings.js";
+import { setLayerKey } from "../src/config/settings-store.js";
 
 const NO_POLICY = { global: {}, project: {}, ephemeralNesting: true };
+
+function saveSettings(s: Record<string, unknown>, cwd: string): boolean {
+  const file = join(cwd, ".pi", "subagents.json");
+  if (existsSync(file)) rmSync(file);
+  return Object.entries(s).every(([key, value]) => setLayerKey("project", cwd, key, value).ok);
+}
+
+function spyAppliers(): SettingsAppliers {
+  const calls = new Map<string | symbol, ReturnType<typeof vi.fn>>();
+  return new Proxy({}, {
+    get: (_t, name) => {
+      if (!calls.has(name)) calls.set(name, vi.fn());
+      return calls.get(name);
+    },
+  }) as SettingsAppliers;
+}
 
 describe("settings persistence", () => {
   let globalDir: string;
@@ -710,20 +726,86 @@ describe("settings persistence", () => {
   });
 
   describe("saveAndEmitChanged", () => {
-    it("persists, emits with persisted=true, and returns info toast on success", () => {
-      const emit = vi.fn();
-      const snapshot = { maxConcurrent: 5, graceTurns: 2 };
+    const change = (layer: "global" | "project", key: string, value: unknown) =>
+      ({ layer, key, value }) as Parameters<typeof saveAndEmitChanged>[0];
 
-      const toast = saveAndEmitChanged(snapshot, "Max concurrency set to 5", emit, projectDir);
+    it("persists one key, applies the effective settings, emits, and returns an info toast", () => {
+      const emit = vi.fn();
+      const appliers = spyAppliers();
+      writeProject({ graceTurns: 2 });
+
+      const toast = saveAndEmitChanged(
+        change("project", "maxConcurrent", 5),
+        "Max concurrency set to 5",
+        emit,
+        appliers,
+        projectDir,
+      );
 
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: snapshot,
+        settings: { maxConcurrent: 5, graceTurns: 2 },
         persisted: true,
         policy: NO_POLICY,
       });
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
-      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual(snapshot);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ graceTurns: 2, maxConcurrent: 5 });
+      expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(5);
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(2);
+    });
+
+    it("keeps a global edit live after a different key saves to the project", () => {
+      writeGlobal({ maxConcurrent: 16 });
+      saveAndEmitChanged(change("project", "graceTurns", 3), "ok", vi.fn(), spyAppliers(), projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ graceTurns: 3 });
+
+      writeGlobal({ maxConcurrent: 32 });
+      const appliers = spyAppliers();
+      saveAndEmitChanged(change("project", "showCost", true), "ok", vi.fn(), appliers, projectDir);
+      expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(32);
+    });
+
+    it("writes the global file for a global change and leaves the project file alone", () => {
+      writeProject({ maxConcurrent: 2 });
+      const emit = vi.fn();
+      const appliers = spyAppliers();
+      saveAndEmitChanged(change("global", "graceTurns", 9), "ok", emit, appliers, projectDir);
+      expect(JSON.parse(readFileSync(globalFile(), "utf-8"))).toEqual({ graceTurns: 9 });
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 2 });
+      expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(2);
+      expect(appliers.setGraceTurns).toHaveBeenCalledWith(9);
+    });
+
+    it("keeps unknown keys and the policy in the file", () => {
+      const policy = { tools: { deny: ["bash"] }, ephemeralNesting: false };
+      writeProject({ maxConcurrent: 3, policy, futureKey: { a: 1 } });
+      saveAndEmitChanged(change("project", "maxConcurrent", 7), "ok", vi.fn(), spyAppliers(), projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ maxConcurrent: 7, policy, futureKey: { a: 1 } });
+    });
+
+    it("does not write a layer file that fails to parse, and warns naming it", () => {
+      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        writeFileSync(globalFile(), "{ broken");
+        const emit = vi.fn();
+        const toast = saveAndEmitChanged(change("global", "graceTurns", 4), "ok", emit, spyAppliers(), projectDir);
+        expect(readFileSync(globalFile(), "utf-8")).toBe("{ broken");
+        expect(spy).toHaveBeenCalledWith(expect.stringContaining(globalFile()));
+        expect(toast.level).toBe("warning");
+        expect(emit).toHaveBeenCalledWith(
+          "subagents:settings_changed",
+          expect.objectContaining({ persisted: false }),
+        );
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it("does not trim a project file that holds a full snapshot", () => {
+      const snapshot = { maxConcurrent: 10, graceTurns: 5, showCost: false, widgetMode: "all" };
+      writeProject(snapshot);
+      saveAndEmitChanged(change("project", "showCost", true), "ok", vi.fn(), spyAppliers(), projectDir);
+      expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ ...snapshot, showCost: true });
     });
 
     it("emits with persisted=false and returns warning toast on save failure", () => {
@@ -732,9 +814,10 @@ describe("settings persistence", () => {
       const emit = vi.fn();
       try {
         const toast = saveAndEmitChanged(
-          { maxConcurrent: 5 },
+          change("project", "maxConcurrent", 5),
           "Max concurrency set to 5",
           emit,
+          spyAppliers(),
           filePosingAsCwd,
         );
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
