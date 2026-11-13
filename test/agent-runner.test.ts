@@ -123,6 +123,7 @@ import {
 } from "../src/session/agent-runner.js";
 import { SUBAGENT_TOOL_NAMES } from "../src/session/extension-scope.js";
 import { buildAgentPrompt } from "../src/session/prompts.js";
+import { normalizeInlineAgentConfig } from "../src/triggers/cross-extension-rpc.js";
 import { grant } from "./helpers/capability.js";
 
 function runAgent(ctx: any, type: string, prompt: string, options: Omit<RunOptions, "capability"> & Partial<Pick<RunOptions, "capability">>) {
@@ -240,6 +241,21 @@ describe("agent-runner inline agentConfig", () => {
     expect(getAgentConfig).not.toHaveBeenCalled();
     expect(getConfig).not.toHaveBeenCalled();
     expect(getToolNamesForType).not.toHaveBeenCalled();
+  });
+
+  it("keeps an inline RPC agent in memory unless its config sets persistSession", async () => {
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = normalizeInlineAgentConfig("advisor", { systemPrompt: "s" });
+    await runAgent(ctx, "advisor", "go", { pi, agentConfig });
+    expect(sessionManagerInMemory).toHaveBeenCalled();
+    expect(sessionManagerCreate).not.toHaveBeenCalled();
+
+    sessionManagerInMemory.mockClear();
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const persisted = normalizeInlineAgentConfig("advisor", { systemPrompt: "s", persistSession: true });
+    await runAgent(ctx, "advisor", "go", { pi, agentConfig: persisted });
+    expect(sessionManagerCreate).toHaveBeenCalled();
+    expect(sessionManagerInMemory).not.toHaveBeenCalled();
   });
 
   it("takes the turn limit from the inline config", () => {
@@ -748,6 +764,37 @@ describe("agent-runner session persistence", () => {
     createAgentSession.mockResolvedValue({ session: createSession("OK").session });
 
     await runAgent(ctx, "Explore", "go", { pi, nested: true });
+
+    expect(sessionManagerInMemory).toHaveBeenCalled();
+    expect(sessionManagerCreate).not.toHaveBeenCalled();
+  });
+
+  it("persists a top-level ephemeral agent under rememberAgents", async () => {
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = makeAgentConfig({ name: "ephemeral-0123abcd", systemPrompt: "" });
+
+    await runAgent(ctx, "ephemeral-0123abcd", "go", { pi, agentConfig } as any);
+
+    expect(sessionManagerCreate).toHaveBeenCalled();
+    expect(sessionManagerInMemory).not.toHaveBeenCalled();
+  });
+
+  it("keeps a top-level ephemeral agent in memory when rememberAgents is off", async () => {
+    setRememberAgents(false);
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = makeAgentConfig({ name: "ephemeral-0123abcd", systemPrompt: "" });
+
+    await runAgent(ctx, "ephemeral-0123abcd", "go", { pi, agentConfig } as any);
+
+    expect(sessionManagerInMemory).toHaveBeenCalled();
+    expect(sessionManagerCreate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a nested ephemeral agent in memory", async () => {
+    createAgentSession.mockResolvedValue({ session: createSession("OK").session });
+    const agentConfig = makeAgentConfig({ name: "ephemeral-0123abcd", systemPrompt: "" });
+
+    await runAgent(ctx, "ephemeral-0123abcd", "go", { pi, agentConfig, nested: true } as any);
 
     expect(sessionManagerInMemory).toHaveBeenCalled();
     expect(sessionManagerCreate).not.toHaveBeenCalled();

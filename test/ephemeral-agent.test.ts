@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,6 +11,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import { BUILTIN_TOOL_NAMES, getAllTypes, getAvailableTypes } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import subagentsExtension from "../src/index.js";
+import { AgentManager } from "../src/manager/agent-manager.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { getDisplayName, getPromptModeLabel } from "../src/ui/agent-format.js";
@@ -64,7 +66,6 @@ describe("an omitted subagent_type", () => {
       description: "find auth files",
       systemPrompt: "",
       promptMode: "append",
-      persistSession: false,
       extensions: true,
       skills: true,
       allowedSubagents: [],
@@ -252,24 +253,130 @@ describe("identity", () => {
     expect(getAvailableTypes()).not.toContain(type);
   });
 
-  it("leaves no tombstone, so an evicted agent cannot be reopened by handle", async () => {
+  async function evictAfterRun(sessionFile: string | undefined, params: Record<string, unknown> = {}) {
+    const { tool, registry, lifecycle } = boot({ agentMentions: "direct" });
+    let manager: AgentManager | undefined;
+    const spawn = AgentManager.prototype.spawn;
+    vi.spyOn(AgentManager.prototype, "spawn").mockImplementation(function (this: AgentManager, ...args: Parameters<AgentManager["spawn"]>) {
+      manager = this;
+      return spawn.apply(this, args);
+    });
+    const session = {
+      dispose: vi.fn(),
+      messages: [],
+      subscribe: vi.fn(() => () => {}),
+      getActiveToolNames: vi.fn(() => []),
+      sessionManager: { getSessionFile: () => sessionFile },
+    };
+    vi.mocked(runAgent).mockImplementation((async (_ctx: any, _type: string, _prompt: string, opts: any) => {
+      opts.onSessionCreated?.(session);
+      return { responseText: "done", session, aborted: false, steered: false };
+    }) as any);
+    const id = idOf(await run(tool, { name: "auth-audit", ...params }));
+    await flush();
+    const record = registry().getRecord(id);
+    const config = record.agentConfig;
+    record.completedAt = Date.now() - 11 * 60_000;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(registry().getRecord(id)).toBeUndefined();
+    return { config, lifecycle, registry, mention: manager?.resolveMention("auth-audit") };
+  }
+
+  const reopen = async (lifecycle: Map<string, any>, uiCtx = ctx()) => {
+    vi.mocked(runAgent).mockClear();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
+    const result = await lifecycle.get("input")({ type: "input", text: "@auth-audit again", source: "interactive" }, uiCtx);
+    await flush();
+    return { result, uiCtx };
+  };
+
+  const sessionPath = () => join(tmpdir(), "auth-audit-session.jsonl");
+
+  it("reopens a remembered ephemeral agent under the same type and handle with its stored config", async () => {
     vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
     try {
-      const { tool, registry, lifecycle } = boot({ agentMentions: "direct" });
-      vi.mocked(runAgent).mockResolvedValue({
-        responseText: "done",
-        session: { dispose: vi.fn(), messages: [], subscribe: vi.fn(() => () => {}), getActiveToolNames: vi.fn(() => []) },
-        aborted: false,
-        steered: false,
-      } as any);
-      const id = idOf(await run(tool, { name: "auth-audit" }));
-      await flush();
-      const record = registry().getRecord(id);
-      record.completedAt = Date.now() - 11 * 60_000;
-      await vi.advanceTimersByTimeAsync(60_000);
-      expect(registry().getRecord(id)).toBeUndefined();
-      const result = await lifecycle.get("input")({ type: "input", text: "@auth-audit again", source: "interactive" }, ctx());
-      expect(result).toEqual({ action: "continue" });
+      writeFileSync(sessionPath(), "");
+      const { config, lifecycle, registry } = await evictAfterRun(sessionPath(), { tools: ["read"] });
+      const { result, uiCtx } = await reopen(lifecycle);
+
+      expect(result).toEqual({ action: "handled" });
+      const [, type, prompt, options] = lastRun();
+      expect(type).toBe(config.name);
+      expect(prompt).toBe("again");
+      expect(options.agentConfig).toBe(config);
+      expect(options.resumeSessionFile).toBe(sessionPath());
+      expect(options.capability.capabilities.builtinToolNames).toEqual(["read"]);
+      expect(registry().getRecord(options.agentId)).toMatchObject({ handle: "auth-audit", type: config.name, displayName: "Auth Audit" });
+      expect(uiCtx.ui.notify).toHaveBeenCalledWith("Resuming @auth-audit", "info");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("filters a stored tool that the policy now denies and tells the user", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
+    try {
+      writeFileSync(sessionPath(), "");
+      const { lifecycle } = await evictAfterRun(sessionPath(), { tools: ["read", "bash"] });
+      writeFileSync(join(process.cwd(), ".pi", "subagents.json"), JSON.stringify({ agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
+      const { uiCtx } = await reopen(lifecycle);
+
+      expect(lastRun()[3].capability.capabilities.builtinToolNames).toEqual(["read"]);
+      expect(uiCtx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/removed tool bash/), "warning");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("refuses a reopen when the policy empties the stored tool list", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
+    try {
+      writeFileSync(sessionPath(), "");
+      const { lifecycle } = await evictAfterRun(sessionPath(), { tools: ["bash"] });
+      writeFileSync(join(process.cwd(), ".pi", "subagents.json"), JSON.stringify({ agentMentions: "direct", policy: { tools: { deny: ["bash"] } } }));
+      const { uiCtx } = await reopen(lifecycle);
+
+      expect(vi.mocked(runAgent)).not.toHaveBeenCalled();
+      expect(uiCtx.ui.notify).toHaveBeenCalledWith(expect.stringMatching(/^Could not resume @auth-audit/), "warning");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("steers a live ephemeral agent by handle", async () => {
+    const { tool, lifecycle } = boot({ agentMentions: "direct" });
+    const steer = vi.fn().mockResolvedValue(undefined);
+    const session = { steer, dispose: vi.fn(), messages: [], subscribe: vi.fn(() => () => {}), getActiveToolNames: vi.fn(() => []) };
+    vi.mocked(runAgent).mockImplementation((async (_ctx: any, _type: string, _prompt: string, opts: any) => {
+      opts.onSessionCreated?.(session);
+      return new Promise(() => {});
+    }) as any);
+    await run(tool, { name: "auth-audit" });
+    await flush();
+    const uiCtx = ctx();
+    const result = await lifecycle.get("input")({ type: "input", text: "@auth-audit check logs", source: "interactive" }, uiCtx);
+
+    expect(result).toEqual({ action: "handled" });
+    expect(steer).toHaveBeenCalledWith("check logs");
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith("Sent to @auth-audit", "info");
+  });
+
+  it("stores the built config on the record and copies it to the tombstone after eviction", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
+    try {
+      const { config, mention } = await evictAfterRun("/sessions/auth-audit.jsonl");
+      expect(config).toMatchObject({ systemPrompt: "", promptMode: "append" });
+      expect(mention).toMatchObject({ kind: "tombstone", entry: { agentConfig: config } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves no tombstone when the session was not persisted", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "Date"] });
+    try {
+      const { mention } = await evictAfterRun(undefined);
+      expect(mention).toBeUndefined();
     } finally {
       vi.useRealTimers();
     }
@@ -303,7 +410,7 @@ describe("a nested ephemeral spawn", () => {
     const calls = vi.mocked(runAgent).mock.calls as any[][];
     expect(calls).toHaveLength(2);
     expect(calls[1][1]).toMatch(/^ephemeral-[0-9a-f]{8}$/);
-    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Inner Helper", persistSession: false, systemPrompt: "" });
+    expect(calls[1][3].agentConfig).toMatchObject({ displayName: "Inner Helper", systemPrompt: "" });
     expect(calls[1][3].capability.capabilities.builtinToolNames).toEqual(["read"]);
     expect(calls[1][3].maxTurns).toBe(0);
     expect(calls[1][3].thinkingLevel).toBe("high");

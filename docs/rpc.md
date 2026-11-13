@@ -80,7 +80,6 @@ pi.events.emit("subagents:rpc:spawn", {
       builtinToolNames: [],
       extensions: false,
       skills: false,
-      persistSession: false,
     },
   },
 });
@@ -88,7 +87,7 @@ pi.events.emit("subagents:rpc:spawn", {
 
 Three things to know:
 
-- **Sessions persist by default.** `rememberAgents` writes top-level agent sessions to disk. Set `persistSession: false` for a one-shot agent whose transcript nobody will reopen.
+- **An inline agent does not persist by default.** It writes a session to disk only when its `agentConfig` sets `persistSession: true`. `rememberAgents` does not apply to it.
 - **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders under a generic name next to its `description`.
 - **An evicted inline agent cannot be reopened by `@handle`.** Reopening resolves the type against the registry and refuses when nothing is registered under that name. A registered agent with the same name would be reopened instead, so pick a type no agent file uses. A live record whose session still exists resumes normally, under the tools it was created with.
 

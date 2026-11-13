@@ -265,7 +265,7 @@ describe("a nested ephemeral child", () => {
     const { options, result } = await spawnChild(undefined);
     expect(result.isError).toBe(false);
     expect(spawnAndWait).toHaveBeenCalledTimes(1);
-    expect(options.agentConfig).toMatchObject({ name: expect.stringMatching(/^ephemeral-[0-9a-f]{8}$/), systemPrompt: "", persistSession: false });
+    expect(options.agentConfig).toMatchObject({ name: expect.stringMatching(/^ephemeral-[0-9a-f]{8}$/), systemPrompt: "" });
     expect(options.ephemeral).toEqual({ handleSeed: "child" });
     expect(capabilitiesOf(options).allowedSubagents).toEqual([]);
   });
