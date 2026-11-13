@@ -748,6 +748,7 @@ describe("settings persistence", () => {
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
         settings: { ...effectiveSettings(projectDir), maxConcurrent: 5, graceTurns: 2 },
         persisted: true,
+        layer: "project",
         policy: NO_POLICY,
       });
       expect(toast).toEqual({ message: "Max concurrency set to 5", level: "info" });
@@ -817,6 +818,17 @@ describe("settings persistence", () => {
       );
     });
 
+    it("names the global layer and carries the effective settings of both files and the defaults", () => {
+      writeProject({ maxConcurrent: 2 });
+      const emit = vi.fn();
+      saveAndEmitChanged(change("global", "graceTurns", 9), "ok", emit, spyAppliers(), projectDir);
+      const payload = emit.mock.calls[0][1];
+      expect(emit.mock.calls[0][0]).toBe("subagents:settings_changed");
+      expect(payload.layer).toBe("global");
+      expect(payload.settings).toEqual({ ...effectiveSettings(projectDir), maxConcurrent: 2, graceTurns: 9 });
+      expect(Object.keys(payload.settings).sort()).toEqual([...SETTING_KEYS].sort());
+    });
+
     it("returns a global reset to the default live", () => {
       writeGlobal({ graceTurns: 9, futureKey: true });
       const appliers = spyAppliers();
@@ -847,6 +859,7 @@ describe("settings persistence", () => {
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
           settings: { ...effectiveSettings(projectDir), maxConcurrent: 5 },
           persisted: false,
+          layer: "project",
           policy: NO_POLICY,
         });
         expect(toast).toEqual({

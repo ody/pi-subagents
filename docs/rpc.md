@@ -201,6 +201,21 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. It is read from disk on every ping, so it is the only copy that is always current, and it carries a `malformed` list of problems when the policy is malformed and every spawn is denied. `subagents:settings_loaded` and `subagents:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 
+## Settings events
+
+`subagents:settings_loaded` fires once at init. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
+
+`subagents:settings_changed` fires when the `/agents` menu changes or resets a setting. Its payload is `{ settings, persisted, layer, policy }`:
+
+| Field | Meaning |
+| --- | --- |
+| `settings` | The effective settings, recomputed from both files and the defaults. Every `SubagentsSettings` key is present. |
+| `persisted` | `false` when the write failed, so the change holds for this session only. |
+| `layer` | `"global"` or `"project"`, the layer the change wrote to. |
+| `policy` | `{ global, project, ephemeralNesting }`, as in the ping reply. |
+
+A global change that the project overrides still fires the event, with `layer: "global"` and an effective `settings` that did not change. `PROTOCOL_VERSION` stays `2`.
+
 Everything added since shipped **without a bump**, because all of it is additive: stop's ownership refusal, string-`model` resolution, `scopeModels` enforcement, and the whole `consume` channel.
 
 > A `ping` that answers `2` does not tell you whether `consume` exists, whether model scope is enforced, or whether stop checks ownership.

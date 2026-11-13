@@ -167,6 +167,6 @@ export function saveAndEmitChanged(
   const effective = effectiveSettings(cwd);
   const settings = persisted ? effective : { ...effective, ...sanitize({ [change.key]: change.value }) };
   applySettings(settings, appliers);
-  emit("subagents:settings_changed", { settings, persisted, policy: policyEventPayload(cwd) });
+  emit("subagents:settings_changed", { settings, persisted, layer: change.layer, policy: policyEventPayload(cwd) });
   return persistToastFor(successMsg, persisted);
 }
