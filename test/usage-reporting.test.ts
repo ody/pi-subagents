@@ -1,3 +1,4 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
@@ -40,9 +41,22 @@ describe("reporting subagent usage back to the parent session", () => {
       settings,
       agentFiles: { "general-purpose": "---\ndescription: general-purpose\n---\n\nYou are general-purpose." },
     });
-    const { pi, tools, lifecycle } = makePi();
+    const { pi, tools, lifecycle, commands } = makePi();
     subagentsExtension(pi);
-    return { pi, tools, lifecycle };
+    return { pi, tools, lifecycle, commands };
+  }
+
+  async function toggleReportUsage(commands: Map<string, any>) {
+    const reportUsageRow = 11;
+    initTheme();
+    const select = vi.fn().mockResolvedValueOnce("Settings").mockResolvedValue(undefined);
+    const custom = vi.fn((factory: any) => new Promise(resolve => {
+      const component = factory({}, {}, {}, resolve);
+      for (let i = 0; i < reportUsageRow; i++) component.handleInput("\x1b[B");
+      component.handleInput("\r");
+      component.handleInput("\x1b");
+    }));
+    await commands.get("agents").handler("", ctx({ ui: { ...ctx().ui, select, custom } }));
   }
 
   beforeEach(() => {
@@ -123,6 +137,19 @@ describe("reporting subagent usage back to the parent session", () => {
     const real = await spawn(tools, "tc-2");
     expect(real.usage.cost.total).toBe(0.0123);
     expect(real.usage.totalTokens).toBe(160);
+  });
+
+  it("drains the pool when the setting turns off, so the next result carries no usage", async () => {
+    const { tools, commands } = boot({ reportUsage: true });
+    runSpending({ input: 100, output: 50, cacheWrite: 10, cost: 0.0123 });
+    expect((await spawn(tools, undefined)).usage).toBeUndefined();
+
+    await toggleReportUsage(commands);
+    await toggleReportUsage(commands);
+
+    runSpendingNothing();
+    const next = await spawn(tools, "tc-2");
+    expect(next.usage).toBeUndefined();
   });
 
   it("attaches nothing when a run produced no usage at all", async () => {
