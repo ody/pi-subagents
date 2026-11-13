@@ -1,8 +1,6 @@
-> DRAFT: not accepted, not current truth.
+# 0022. The capability policy lives in subagents.json, a project can only narrow it, and the menu edits ephemeral nesting
 
-# NNNN. The capability policy lives in subagents.json, a project can only narrow it, and the menu edits ephemeral nesting
-
-Replaces: 0012-capability-policy-configuration, last present in 9cf4a10
+Replaces: 0012-capability-policy-configuration, last present in 503bd9e
 
 ## Context
 
@@ -10,7 +8,7 @@ Settings load from the global `~/.pi/agent/subagents.json` and the project `.pi/
 
 The loader reads a file that fails to parse as `{}`, which would drop a project's restrictions. `checkModelScope` re-reads `enabledModels` on every call. The settings events fire at init and when the menu saves.
 
-The settings menu edits either layer (see the settings layers ADR). The model can write the config files directly, so keeping `policy` out of the menu protects nothing.
+The settings menu edits either layer (see ADR 0021). The model can write the config files directly, so keeping `policy` out of the menu protects nothing.
 
 ## Decision
 

@@ -4,15 +4,15 @@
 
 Nothing bounds which tools, extensions, or skills a new agent gets. Agent files are written by users or shipped by skills, so a file is not trusted. An RPC or registry inline definition can already choose any of them.
 
-`scopeModels` bounds models only. `checkModelScope` runs when the `agent` tool, the nested `agent` tool, or `subagents:rpc:spawn` resolve a caller `model`. It does not run on `@handle` direct starts and tombstone reopens, or on the registry `spawn`.
+`scopeModels` bounds models only, and ADR 0024 sets where its check runs.
 
 No single funnel exists. The `agent` tool, the nested tool, and the creation wizard call `AgentManager.spawn` or `spawnAndWait` directly. RPC, the registry entry, and mentions go through `spawnResolved`. Every new session ends in `spawnAgent`, and `runAgent` re-reads the agent's config by type when it launches.
 
-Today the `agent` tools take no tools, extensions, or skills parameters, so a call from them carries no caller-supplied capability values until ADR 0015 (ephemeral agents) adds them. This is accepted together with ADR 0013 (delegation ceiling) and ADR 0015, and ADR 0017 (no shipped default agents) removes the wizard spawn site.
+The `agent` tools take tools, extensions, and skills parameters only for an ephemeral agent (ADR 0023), so only those calls carry caller-supplied capability values. ADR 0013 (delegation ceiling) builds on this, and ADR 0017 (no shipped default agents) removes the wizard spawn site.
 
 ## Decision
 
-A policy allows or denies tools, extensions, and skills for every new agent. Its file format and merge rules are ADR 0012's. No policy allows everything.
+A policy allows or denies tools, extensions, and skills for every new agent. Its file format and merge rules are ADR 0022's. No policy allows everything.
 
 Matching:
 
@@ -47,7 +47,7 @@ Done check: `npx vitest run test/capability-policy.test.ts` passes. It asserts r
 ## Consequences
 
 - With no policy a fresh install behaves as it does today.
-- An inline definition that names a denied value is refused, so that extension's spawn fails. An extension can read the effective policy first, per ADR 0012.
+- An inline definition that names a denied value is refused, so that extension's spawn fails. An extension can read the effective policy first, per ADR 0022.
 - A filtered file default leaves an agent with fewer tools than its author wrote, and the filter notice is the only signal.
 - Rejected: enforcing only in `spawnAgent`, which cannot tell caller values from file values. Rejected: refusing file values, which would make one restrictive policy break every shipped skill agent.
 - Revisit if policy needs per-agent rules, or if extension denial must stop load-time code.

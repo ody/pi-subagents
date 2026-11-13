@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Model scope bounds the model of every new agent
+# 0024. Model scope bounds the model of every new agent
 
 ## Context
 

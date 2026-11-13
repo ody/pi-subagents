@@ -4,7 +4,7 @@
 
 A nested child's own file could grant tools, extensions, skills, or `allowed_subagents` that its parent lacked. A restricted orchestrator could then escalate through its children. When pi builds the parent's session, the manager records its effective capabilities on the parent's `AgentRecord`, and the nested tool reads them from there.
 
-This builds on ADR 0011 (capability policy) and ADR 0015 (ephemeral agents). It uses ADR 0011's expansion rules.
+This builds on ADR 0011 (capability policy) and ADR 0023 (ephemeral agents). It uses ADR 0011's expansion rules.
 
 ## Decision
 

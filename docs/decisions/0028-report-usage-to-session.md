@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Subagent spend counts toward the session's totals only on request
+# 0028. Subagent spend counts toward the session's totals only on request
 
 ## Context
 

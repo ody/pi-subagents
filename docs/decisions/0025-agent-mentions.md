@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A mention addresses an agent from the prompt, in one of three modes
+# 0025. A mention addresses an agent from the prompt, in one of three modes
 
 ## Context
 
@@ -8,7 +6,7 @@
 
 Starting through the model needs a context-written prompt and a real `agent` call. A call from the main session would put the call and its result in the user's chat. `runMentionClone` (`src/triggers/mention-clone.ts`) avoids that. It runs an in-memory clone of the conversation with a wrapped `agent` tool and discards the clone after the call.
 
-ADR 0014 and ADR 0015 set what the clone's tool may override and refuse. ADR 0007 limits handles to top-level agents. An ephemeral agent (ADR 0015) is a top-level agent with a handle but no registry entry. Mentions must treat it like any other handle.
+ADR 0014 and ADR 0023 set what the clone's tool may override and refuse. ADR 0007 limits handles to top-level agents. An ephemeral agent (ADR 0023) is a top-level agent with a handle but no registry entry. Mentions must treat it like any other handle.
 
 ## Decision
 
@@ -20,7 +18,7 @@ ADR 0014 and ADR 0015 set what the clone's tool may override and refuse. ADR 000
 - Messaging a live agent and resuming a finished one are direct in `model` and `direct`, but only in the TUI. Outside the TUI, `direct` passes every mention to the main model, and `model` passes messages to and resumes of existing agents to the main model. Only a start runs through the clone.
 - The wrapped tool refuses a second start for one mention.
 - A handle resolves to a live record first, then to a tombstone, then to a registered type.
-- An ephemeral agent works like any other top-level agent. A mention can message a live one and reopen a remembered one. It has a handle, and its tombstone carries its built config (the ephemeral agents ADR).
+- An ephemeral agent works like any other top-level agent. A mention can message a live one and reopen a remembered one. It has a handle, and its tombstone carries its built config (ADR 0023).
 - A reopen of an ephemeral agent skips type resolution and runs the stored config. The capability policy filters it as it filters an agent file's values.
 - A mention cannot start an ephemeral agent. A handle that matches no live record, no tombstone, and no registered type is not a mention, and the prompt reaches the main model.
 - The `@` suggestion list shows live and remembered ephemeral agents beside registered ones in its live and resumable groups. It never lists an ephemeral type as startable.

@@ -1,10 +1,8 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A switch turns worktree isolation off for every path
+# 0029. A switch turns worktree isolation off for every path
 
 ## Context
 
-`isolation: "worktree"` copies the repo for an agent. On a large repo the copy costs time and disk. ADR 0015 notes that `isolation` is conditional on `worktreeIsolation`.
+`isolation: "worktree"` copies the repo for an agent. On a large repo the copy costs time and disk. ADR 0023 notes that `isolation` is conditional on `worktreeIsolation`.
 
 With the switch off, `isolationParam` drops the parameter from the `agent` and nested tool schemas. The tool description loses the guideline. `agent-start.ts` skips `createWorktree` and runs the agent normally.
 
