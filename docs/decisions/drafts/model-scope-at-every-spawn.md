@@ -8,7 +8,7 @@
 
 It runs only where a call resolves a model. Those places are the `agent` tool (`src/tool/agent-call-resolution.ts`), the nested `agent` tool (`src/tool/nested-tools.ts`), and `subagents:rpc:spawn` for a caller-supplied model (`src/triggers/cross-extension-rpc.ts`). It does not run on `@handle` direct starts, tombstone reopens, or the registry `spawn`.
 
-For a model that is not caller-supplied, such as an agent file's pin, the check only warns, and the agent runs on the out-of-scope model.
+A model that the caller did not supply, such as an agent file's pin, only draws a warning. The agent then runs on the out-of-scope model.
 
 ## Decision
 

@@ -10,7 +10,7 @@ The menu edits only the project file, and `saveSettings` writes the merged value
 
 The menu also accepts numbers that `sanitize` rejects at load, so a saved value can vanish on the next start.
 
-pi's `/model` selector is the model for the layout. `tab` switches between its two lists at any time. It opens on the scoped list when the user has scoped models, and on the full list when not.
+pi's `/model` selector is the model for the layout. Its header reads `Scope: all | scoped`, with the broad list on the left. `tab` switches between the two lists at any time. It opens on the scoped list when the user has scoped models, and on the full list when not.
 
 ## Decision
 
@@ -18,7 +18,7 @@ The effective value of a key is the project value, else the global value, else t
 
 The menu shows one layer at a time:
 
-- The header reads `Scope: project | global` and the footer advertises `tab scope`, as `/model` does. `tab` switches layers at any time.
+- The header reads `Scope: global | project`, with the global layer on the left as `all` is on `/model`. The footer advertises `tab scope`. `tab` switches layers at any time.
 - The menu opens on the project layer when `<cwd>/.pi/subagents.json` exists, and on the global layer when it does not.
 - The global layer shows the global file's values, with the default for an unset key. A change writes the global file. When the project overrides that key, the notification says the change does not reach this project.
 - The project layer shows the effective value of every row. The menu marks a row the project file sets as a project value, and as overriding global when the global file also sets it. It dims a row the project does not set and marks it inherited. A change writes the project file and makes that key an override.
