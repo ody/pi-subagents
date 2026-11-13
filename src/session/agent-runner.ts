@@ -81,6 +81,7 @@ export interface RunOptions {
   cwd?: string;
   worktreeBase?: string;
   configCwd?: string;
+  notify?: (message: string, level: "warning") => void;
   onToolActivity?: (activity: ToolActivity) => void;
   onTextDelta?: (delta: string, fullText: string) => void;
   onSessionCreated?: (session: AgentSession) => void;
@@ -303,12 +304,12 @@ export async function runAgent(
     });
   }
 
-  const policyWarnings = unknownPolicyEntries(
+  const policyWarnings = await unknownPolicyEntries(
     policy,
     configCwd,
-    () => discoverKnown(configCwd, agentDir, discoveredExtensions),
+    () => discoverKnown(policy, configCwd, agentDir, discoveredExtensions),
   );
-  for (const message of policyWarnings) options.onToolActivity?.({ type: "end", toolName: `policy-warning:${message}` });
+  for (const message of policyWarnings) options.notify?.(message, "warning");
 
   const warnings = extensionConfigWarnings({
     type,
