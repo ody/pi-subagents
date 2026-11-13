@@ -16,7 +16,7 @@ An empty registry is workable only with ephemeral agents, so this builds on ADR 
 The extension ships no agent definitions. Registered agents come from user files and skills only.
 
 - No source file defines an agent configuration, and `DEFAULT_AGENT_NAMES` does not exist. `AgentConfig` has no `isDefault` field and no `"default"` source, and `/agents` offers no Reset to default.
-- `fallbackSubagent` and `disableDefaultAgents` do not exist, and the settings events drop them. `PROTOCOL_VERSION` stays `2`. A persisted key is ignored.
+- `fallbackSubagent` and `disableDefaultAgents` do not exist, and the settings events drop them. `PROTOCOL_VERSION` stays `2`. The loader ignores a persisted key.
 - A type that does not resolve to exactly one enabled agent is an error that lists the enabled types. Only the `agent` tool's message suggests omitting the type for a one-off agent. An empty `type` on `subagents:rpc:spawn` without `agentConfig` is an error envelope.
 - `fellBackFrom` and `fallbackNote` do not exist. Stored references to a removed type fail at use with the type named.
 - `getConfig` for an unregistered type returns a fixed generic display config that names no agent type and carries no prompt-mode label. `runAgent` with neither an inline definition nor a registered type throws.
@@ -28,6 +28,6 @@ Done check: `npm run check` passes, and `grep -rni "default-agents\|DEFAULT_AGEN
 ## Consequences
 
 - A fresh install has no named agents until the user or a skill adds one.
-- An extension that spawns a default type through `subagents:rpc:spawn`, or relies on the implicit fallback for an unknown type, now gets an error envelope and must pass an inline definition.
+- An extension that spawns a default type through `subagents:rpc:spawn` now gets an error envelope. So does one that relies on the implicit fallback for an unknown type. Both must pass an inline definition.
 - Rejected: shipping the defaults but off by default, which keeps the code paths and settings this removes. Rejected: shipping them as a bundled skill, since users then get the same generic agents under another name.
 - Revisit if users routinely hand-install the same generic agent.
