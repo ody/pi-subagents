@@ -3,6 +3,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { SETTING_SPECS } from "../config/settings-defaults.js";
 
 export interface WorktreeInfo {
   path: string;
@@ -11,7 +12,7 @@ export interface WorktreeInfo {
   workPath: string;
 }
 
-let worktreeIsolationEnabled = true;
+let worktreeIsolationEnabled = SETTING_SPECS.worktreeIsolation.default;
 
 export function setWorktreeIsolationEnabled(enabled: boolean): void {
   worktreeIsolationEnabled = enabled;

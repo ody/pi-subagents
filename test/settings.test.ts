@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyAndEmitLoaded,
   applySettings,
+  effectiveSettings,
   loadSettings,
   persistToastFor,
   type SettingsAppliers,
   saveAndEmitChanged,
 } from "../src/config/settings.js";
+import { SETTING_KEYS, SETTING_SPECS, type SettingSpec } from "../src/config/settings-defaults.js";
 import { setLayerKey } from "../src/config/settings-store.js";
 
 const NO_POLICY = { global: {}, project: {}, ephemeralNesting: true };
@@ -744,7 +746,7 @@ describe("settings persistence", () => {
 
       expect(emit).toHaveBeenCalledTimes(1);
       expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-        settings: { maxConcurrent: 5, graceTurns: 2 },
+        settings: { ...effectiveSettings(projectDir), maxConcurrent: 5, graceTurns: 2 },
         persisted: true,
         policy: NO_POLICY,
       });
@@ -821,7 +823,7 @@ describe("settings persistence", () => {
           filePosingAsCwd,
         );
         expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
-          settings: { maxConcurrent: 5 },
+          settings: { ...effectiveSettings(projectDir), maxConcurrent: 5 },
           persisted: false,
           policy: NO_POLICY,
         });
@@ -832,6 +834,64 @@ describe("settings persistence", () => {
       } finally {
         rmSync(filePosingAsCwd, { force: true });
       }
+    });
+  });
+
+  describe("defaults and bounds table", () => {
+    it("has an entry for every setting the appliers handle", () => {
+      const called = new Set<string>();
+      const appliers = new Proxy({}, { get: (_t, name) => () => called.add(String(name)) }) as SettingsAppliers;
+      const everything = Object.fromEntries(SETTING_KEYS.map((key) => [key, SETTING_SPECS[key].default]));
+      applySettings(everything, appliers);
+      expect(called.size).toBe(SETTING_KEYS.length);
+    });
+
+    it("returns every default when no file sets a key", () => {
+      const effective = effectiveSettings(projectDir);
+      for (const key of SETTING_KEYS) expect(effective[key]).toBe(SETTING_SPECS[key].default);
+    });
+
+    it("lets a file override a default", () => {
+      writeGlobal({ maxConcurrent: 16 });
+      writeProject({ graceTurns: 2 });
+      expect(effectiveSettings(projectDir)).toMatchObject({ maxConcurrent: 16, graceTurns: 2, widgetMode: "all" });
+    });
+
+    const integerKeys = SETTING_KEYS.filter((key) => SETTING_SPECS[key].kind === "integer");
+    const enumKeys = SETTING_KEYS.filter((key) => SETTING_SPECS[key].kind === "enum");
+    const booleanKeys = SETTING_KEYS.filter((key) => SETTING_SPECS[key].kind === "boolean");
+    const specOf = (key: (typeof SETTING_KEYS)[number]) => SETTING_SPECS[key] as SettingSpec;
+    const loaded = (key: string, value: unknown) => {
+      writeProject({ [key]: value });
+      return (loadSettings(projectDir) as Record<string, unknown>)[key];
+    };
+
+    it.each(integerKeys)("%s keeps its bounds and drops anything outside", (key) => {
+      const spec = specOf(key) as Extract<SettingSpec, { kind: "integer" }>;
+      expect(loaded(key, spec.min)).toBe(spec.min);
+      expect(loaded(key, spec.max)).toBe(spec.max);
+      expect(loaded(key, spec.min - 1)).toBeUndefined();
+      expect(loaded(key, spec.max + 1)).toBeUndefined();
+      expect(loaded(key, spec.min + 0.5)).toBeUndefined();
+      expect(loaded(key, String(spec.min))).toBeUndefined();
+    });
+
+    it.each(enumKeys)("%s keeps its values and drops others", (key) => {
+      const spec = specOf(key) as Extract<SettingSpec, { kind: "enum" }>;
+      for (const value of spec.values) expect(loaded(key, value)).toBe(value);
+      expect(loaded(key, "nope")).toBeUndefined();
+      expect(loaded(key, 1)).toBeUndefined();
+    });
+
+    it.each(booleanKeys)("%s keeps booleans and drops other types", (key) => {
+      expect(loaded(key, true)).toBe(true);
+      expect(loaded(key, false)).toBe(false);
+      expect(loaded(key, "true")).toBeUndefined();
+    });
+
+    it("drops one bad value without affecting the other keys", () => {
+      writeProject({ maxConcurrent: 5000, graceTurns: 3 });
+      expect(loadSettings(projectDir)).toEqual({ graceTurns: 3 });
     });
   });
 });

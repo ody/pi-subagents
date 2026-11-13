@@ -2,10 +2,6 @@ import { statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import type { AgentRecord } from "../types.js";
 
-export const DEFAULT_MAX_CONCURRENT = 10;
-
-export const DEFAULT_MAX_CONCURRENT_FOREGROUND = 0;
-
 export function assertValidSpawnCwd(cwd: unknown): asserts cwd is string | undefined | null {
   if (cwd == null) return;
   if (typeof cwd !== "string" || !isAbsolute(cwd)) {

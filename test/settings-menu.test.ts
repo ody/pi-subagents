@@ -58,18 +58,23 @@ describe("applySettingValue numeric settings", () => {
     expect(lastCall()).toEqual({ message, change: { layer: "project", key: id, value } });
   });
 
-  it("rejects out-of-range and non-numeric values", () => {
-    for (const [id, value] of [
-      ["maxConcurrent", "0"],
-      ["maxConcurrent", "-1"],
-      ["maxConcurrentForeground", "-1"],
-      ["defaultMaxTurns", "-3"],
-      ["graceTurns", "0"],
-      ["graceTurns", "-2"],
-      ["maxSubagentDepth", "-1"],
-      ["maxConcurrent", "abc"],
-    ]) apply(id, value);
+  it.each([
+    ["maxConcurrent", "0", "1 to 1024"],
+    ["maxConcurrent", "-1", "1 to 1024"],
+    ["maxConcurrent", "1025", "1 to 1024"],
+    ["maxConcurrentForeground", "-1", "0 to 1024"],
+    ["defaultMaxTurns", "-3", "0 to 10000"],
+    ["defaultMaxTurns", "10001", "0 to 10000"],
+    ["graceTurns", "0", "1 to 1000"],
+    ["graceTurns", "-2", "1 to 1000"],
+    ["maxSubagentDepth", "-1", "0 to 16"],
+    ["maxSubagentDepth", "17", "0 to 16"],
+    ["maxConcurrent", "abc", "1 to 1024"],
+    ["maxConcurrent", "", "1 to 1024"],
+  ])("rejects %s %j and names the range", (id, value, range) => {
+    apply(id, value);
     expect(notifyApplied).not.toHaveBeenCalled();
+    expect(notify).toHaveBeenCalledWith(`${id} must be a whole number from ${range}`, "warning");
   });
 });
 
@@ -125,8 +130,8 @@ describe("showSettings numeric prompt", () => {
   });
 
   it.each([
-    ["maxConcurrent", "Max concurrency (1+)", "4"],
-    ["maxConcurrentForeground", "Max foreground concurrency (0 = unlimited)", "2"],
+    ["maxConcurrent", "Max concurrency (1 to 1024)", "4"],
+    ["maxConcurrentForeground", "Max foreground concurrency, 0 = unlimited (0 to 1024)", "2"],
   ])("%s prompts with its label and current value", async (id, label, current) => {
     custom.mockResolvedValueOnce(id);
     input.mockResolvedValueOnce(undefined);
@@ -139,7 +144,8 @@ describe("showSettings numeric prompt", () => {
     input.mockResolvedValueOnce("abc").mockResolvedValueOnce(undefined);
     await showSettings(promptCtx, deps);
     expect(input).toHaveBeenCalledTimes(2);
-    expect(input).toHaveBeenNthCalledWith(2, "Grace turns (1+)", "abc");
+    expect(input).toHaveBeenNthCalledWith(2, "Grace turns (1 to 1000)", "abc");
+    expect(notify).toHaveBeenCalledWith("graceTurns must be a whole number from 1 to 1000", "warning");
     expect(notifyApplied).not.toHaveBeenCalled();
     expect(custom).toHaveBeenCalledTimes(1);
   });

@@ -25,6 +25,7 @@ import {
 import { type GrantedCapability, nestedFilteredNote, parentBound, resolveCapability } from "../config/capability-policy.js";
 import { resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
+import { SETTING_SPECS } from "../config/settings-defaults.js";
 import {
   createOutputFilePath,
   getOutputTranscriptDefault,
@@ -45,7 +46,7 @@ import { ephemeralParamShape } from "./ephemeral-params.js";
 import { describeOverrides, isolationParam, resolveAgentInvocationConfig } from "./invocation-config.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
 
-let maxSubagentDepth = 2;
+let maxSubagentDepth = SETTING_SPECS.maxSubagentDepth.default;
 
 export function getMaxSubagentDepth(): number { return maxSubagentDepth; }
 export function setMaxSubagentDepth(n: number): void { maxSubagentDepth = Math.max(0, Math.floor(n)); }
