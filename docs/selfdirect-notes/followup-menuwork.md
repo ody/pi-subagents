@@ -1,4 +1,0 @@
-- showSettings loop: `runMenu` and `editNumeric` extracted; `SettingsMenuState` kept as the entry argument only; behavior identical.
-- The row/spec drift test lives in test/settings-menu.test.ts. Integer rows have no `values`. Boolean rows are on/off. ephemeralNesting is the only row outside SETTING_SPECS.
-- Full-snapshot test (#95) found no bug: tab switches never write the project file. No src change made for it.
-- Worktree had no node_modules; symlinked the main checkout's (git-ignored, not committed).
