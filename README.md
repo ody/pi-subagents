@@ -31,7 +31,7 @@ A [pi](https://pi.dev) extension that brings **Claude Code-style autonomous sub-
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
 - **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
 - **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`, `subagents:rpc:consume`). Standardized reply envelopes with protocol versioning. Emits `subagents:ready` on session start. **[Full reference](docs/rpc.md)**
-- **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (from `/scoped-models`, honoring both global and project-local pi settings). A caller-supplied out-of-scope model gives a hard error to the orchestrator. A frontmatter-pinned out-of-scope model gives a warning and runs anyway (frontmatter pins only warn). Toggle via `/agents → Settings → Scope models`
+- **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (from `/scoped-models`, honoring both global and project-local pi settings). A caller-supplied out-of-scope model gives a hard error to the orchestrator. An out-of-scope model pinned in an agent file is replaced by the session model, with a warning toast and a note in the tool result. Toggle via `/agents → Settings → Scope models`
 
 ## Install
 
@@ -659,12 +659,13 @@ When on, the extension validates each subagent spawn's effective model against p
 | --- | --- |
 | Caller-supplied via `agent({ model: "..." })` | Hard error returned to the orchestrator, listing allowed models |
 | Caller-supplied via cross-extension RPC (`subagents:rpc:spawn`, e.g. pi-tasks `TaskExecute`) | Hard error returned to the calling extension, listing allowed models |
-| Pinned in agent frontmatter, with no caller `model` | Warning toast + the pinned model runs |
-| Parent-inherited (neither set) | Warning toast + parent's model runs |
+| Pinned in agent frontmatter, with no caller `model` | Warning toast + the session model runs instead; the `agent` tool result carries a note |
+| Session model (nothing pinned, or the pin does not resolve) | Never checked; the session model runs |
+| `agent({ resume })` of a live agent | Never checked; the agent keeps its session and model |
 
-**Design:** `scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin still runs when out of scope, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one. Winning the precedence contest against a pin does not buy it warn-only treatment.
+**Design:** `scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin outside the scope gives way to the session model, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one. Winning the precedence contest against a pin does not buy it a replacement instead of an error.
 
-**Nested spawns** ([nested subagents](#nested-subagents)) apply the same table against the parent's config root. The hard-error case is identical; the warning cases proceed silently, since a subagent session has no UI to toast to.
+**Nested spawns** ([nested subagents](#nested-subagents)) apply the same table against the parent's config root. The hard-error and replacement cases are identical, including the toast and the result note.
 
 **Pattern format:** the extension honors only exact `provider/modelId` entries (e.g. `anthropic/claude-haiku-4-5-20251001`). The extension silently drops glob patterns (`*sonnet*`), bare model IDs, and `:thinking` suffixes, which pi itself supports. pi's `/scoped-models` picker writes exact entries, so the limitation is invisible if you configure scope through the UI. Hand-edited globs produce an empty allowed set (scope check becomes a no-op).
 
