@@ -9,6 +9,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import { registerAgents } from "../src/agents/agent-types.js";
 import subagentsExtension from "../src/index.js";
 import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
+import { SETTING_ROWS } from "../src/ui/settings-rows.js";
 import { addUsage } from "../src/usage.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi } from "./helpers/boot-extension.js";
 import { grant } from "./helpers/capability.js";
@@ -47,7 +48,7 @@ describe("reporting subagent usage back to the parent session", () => {
   }
 
   async function toggleReportUsage(commands: Map<string, any>) {
-    const reportUsageRow = 11;
+    const reportUsageRow = SETTING_ROWS.findIndex((row) => row.id === "reportUsage");
     initTheme();
     const select = vi.fn().mockResolvedValueOnce("Settings").mockResolvedValue(undefined);
     const custom = vi.fn().mockResolvedValue(undefined).mockImplementationOnce((factory: any) => new Promise(resolve => {

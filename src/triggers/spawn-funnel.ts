@@ -69,7 +69,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       const options = scopedOptions(ctxRef, inline.displayName ?? type, rawOptions, inline.model);
       return manager.spawn(piRef, ctxRef, type, prompt, {
         ...options,
-        capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? (options.ephemeral ? undefined : inline), options.ephemeral !== undefined),
+        capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? (options.ephemeral ? undefined : inline), Boolean(options.ephemeral)),
         isolation: resolveIsolation(inline.isolation, options?.isolation, isWorktreeIsolationEnabled()),
         maxTurns: resolveEffectiveMaxTurns(type, options.maxTurns, inline),
       });
