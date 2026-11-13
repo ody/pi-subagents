@@ -11,6 +11,7 @@ import {
   DefaultResourceLoader,
   type ExtensionAPI,
   getAgentDir,
+  type LoadExtensionsResult,
   type ModelRuntime,
   type ResourceDiagnostic,
   SessionManager,
@@ -19,6 +20,8 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES, getAgentConfig } from "../agents/agent-types.js";
 import type { EffectiveCapabilities, GrantedCapability } from "../config/capability-policy.js";
+import { loadCapabilityPolicy } from "../config/capability-policy-config.js";
+import { discoverKnown, policyHasEntries, unknownPolicyEntries } from "../config/policy-unknown-entries.js";
 import { getGraceTurns, getRememberAgents, resolveEffectiveMaxTurns, turnLimitAction } from "../config/runner-defaults.js";
 import { detectEnv } from "../platform/env.js";
 import { createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager } from "../tool/nested-tools.js";
@@ -269,12 +272,19 @@ export async function runAgent(
   const plan = planExtensionLoad(extensions, excludeExtensions, configCwd);
   const { noExtensions, keepNames, excludeNames } = plan;
 
+  let discoveredExtensions: LoadExtensionsResult | undefined;
+  const policy = loadCapabilityPolicy(configCwd);
   const loader = new DefaultResourceLoader({
     cwd: configCwd,
     agentDir,
     noExtensions,
     additionalExtensionPaths: plan.additionalExtensionPaths,
-    extensionsOverride: plan.extensionsOverride,
+    extensionsOverride: policyHasEntries(policy)
+      ? base => {
+          discoveredExtensions = base;
+          return plan.extensionsOverride ? plan.extensionsOverride(base) : base;
+        }
+      : plan.extensionsOverride,
     noSkills,
     skillsOverride: skillsOverrideFor(capabilities),
     noPromptTemplates: true,
@@ -292,6 +302,13 @@ export async function runAgent(
       toolName: `tools-error:tool "${name}" requested by agent "${type}" is not a known built-in`,
     });
   }
+
+  const policyWarnings = unknownPolicyEntries(
+    policy,
+    configCwd,
+    () => discoverKnown(configCwd, agentDir, discoveredExtensions),
+  );
+  for (const message of policyWarnings) options.onToolActivity?.({ type: "end", toolName: `policy-warning:${message}` });
 
   const warnings = extensionConfigWarnings({
     type,

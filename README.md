@@ -747,7 +747,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - The extension narrows `skills: true` through the skill loader, and filters named skills before it preloads them. The same scope filters extension tools that register after spawn.
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
 - The extension reads the policy at each spawn, so an edit applies without a restart.
-- A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names nothing known only warns.
+- A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names no built-in tool, discovered extension, or discovered skill only warns, as a `policy-warning:` tool activity when an agent starts. The spawn proceeds. Skills come from the default skill directories.
 - Saving from `/agents → Settings` writes the project `policy` back unchanged. It refuses, with a warning, when the project file exists and does not parse.
 - `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy is malformed). The ping reply is the only copy that is always current.
 
@@ -1240,6 +1240,7 @@ src/
     settings-paths.ts # Paths of the global and project subagents.json
     capability-policy-config.ts # Read and validate the `policy` key of the global and project subagents.json
     capability-policy.ts # checkCapabilityPolicy: match declared tools, extensions, and skills against the policy
+    policy-unknown-entries.ts # Name the policy entries that match no known tool, extension, or skill
     runner-defaults.ts # Process-wide run defaults: max turns, grace turns, rememberAgents
     model-resolver.ts # Model resolution: exact provider/modelId with fuzzy fallback
     enabled-models.ts # Read pi's enabledModels settings (project over global)
