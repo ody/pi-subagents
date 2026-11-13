@@ -244,7 +244,11 @@ export default function (pi: ExtensionAPI) {
 
   function setDefaultJoinMode(mode: JoinMode) { settings.setJoinMode(mode); }
 
-  function setBackgroundByDefault(b: boolean) { settings.setBgDefault(b); }
+  let agentToolRegistered = false;
+  function setBackgroundByDefault(b: boolean) {
+    settings.setBgDefault(b);
+    if (agentToolRegistered) pi.registerTool(withUsageReporting(buildAgentTool(), usageReporting));
+  }
 
   function setToolDescriptionMode(mode: ToolDescriptionMode): void { settings.setToolDescMode(mode); }
 
@@ -281,7 +285,7 @@ export default function (pi: ExtensionAPI) {
   const settingsPersist = createSettingsPersistence(appliers, (event, payload) => pi.events.emit(event, payload));
   applyAndEmitLoaded(appliers, (event, payload) => pi.events.emit(event, payload));
 
-  const agentTool = createAgentTool(pi, {
+  const buildAgentTool = () => createAgentTool(pi, {
     manager,
     widget,
     fleet,
@@ -290,11 +294,13 @@ export default function (pi: ExtensionAPI) {
     reloadCustomAgents,
     settings,
   });
+  const agentTool = buildAgentTool();
 
   const usageReporting = { settings, pendingUsage };
 
   const registeredAgentTool = withUsageReporting(agentTool, usageReporting);
   pi.registerTool(registeredAgentTool);
+  agentToolRegistered = true;
 
   registerMentionInput(pi, {
     manager,
