@@ -142,12 +142,35 @@ export function displayValue(value: string | number | boolean): string {
   return typeof value === "boolean" ? (value ? "on" : "off") : String(value);
 }
 
-export function buildItems(values: Required<SubagentsSettings>): SettingItem[] {
+export type RowSource = "project" | "overriding" | "inherited";
+
+const SOURCE_TAGS: Record<RowSource, string> = {
+  project: "project",
+  overriding: "overrides global",
+  inherited: "inherited",
+};
+
+export function rowSources(project: SubagentsSettings, global: SubagentsSettings): Record<string, RowSource> {
+  return Object.fromEntries(
+    SETTING_ROWS.map((row) => {
+      if (!(row.id in project)) return [row.id, "inherited"];
+      return [row.id, row.id in global ? "overriding" : "project"];
+    }),
+  );
+}
+
+export function buildItems(
+  values: Required<SubagentsSettings>,
+  sources?: Record<string, RowSource>,
+  dim: (text: string) => string = (text) => text,
+): SettingItem[] {
   return SETTING_ROWS.map((row) => {
     const currentValue = displayValue(values[row.id]);
+    const source = sources?.[row.id];
+    const tagged = source ? `${row.label} (${SOURCE_TAGS[source]})` : row.label;
     return {
       id: row.id,
-      label: row.label,
+      label: source === "inherited" ? dim(tagged) : tagged,
       description: row.description,
       currentValue,
       values: row.values ? [...row.values] : [currentValue],

@@ -6,7 +6,7 @@ import { layerValues, readLayerSettings, type SubagentsSettings } from "../confi
 import { describeRange, SETTING_SPECS } from "../config/settings-defaults.js";
 import { layerPath, type SettingsLayer } from "../config/settings-store.js";
 import { parseSettingChange } from "./settings-changes.js";
-import { buildItems, displayValue } from "./settings-rows.js";
+import { buildItems, displayValue, type RowSource, rowSources, SETTING_ROWS } from "./settings-rows.js";
 
 export interface SettingsMenuDeps {
   cwd: string;
@@ -38,6 +38,13 @@ function promptLabel(id: NumericSettingId): string {
 }
 
 const SWITCH_LAYER = "\0tab";
+const REFRESH = "\0refresh";
+
+function projectSources(cwd: string): Record<string, RowSource> {
+  const project = readLayerSettings("project", cwd);
+  const global = readLayerSettings("global", cwd);
+  return rowSources(project.ok ? project.own : {}, global.ok ? global.own : {});
+}
 
 const otherLayer = (layer: SettingsLayer): SettingsLayer => (layer === "global" ? "project" : "global");
 
@@ -79,19 +86,22 @@ export async function showSettings(
   const values = layerValues(layer, deps.cwd);
   const file = readLayerSettings(layer, deps.cwd);
   const readOnlyReason = file.ok ? undefined : file.reason;
-  const items = buildItems(values);
-  let currentIndex = Math.max(0, items.findIndex((item) => item.id === state.selected));
+  const rowIds = SETTING_ROWS.map((row) => row.id);
+  let currentIndex = Math.max(0, rowIds.findIndex((id) => id === state.selected));
+  const sources = layer === "project" ? projectSources(deps.cwd) : undefined;
 
   const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
     const list = new SettingsList(
-      items,
-      items.length + 2,
+      buildItems(values, sources, (text) => theme.fg("dim", text)),
+      rowIds.length + 2,
       getSettingsListTheme(),
       (id, newValue) => {
         applySettingValue(ctx, deps, layer, id, newValue);
+        if (layer === "project") done(REFRESH);
       },
       () => done(undefined as undefined),
     );
+    list.selectItem(rowIds[currentIndex]);
 
     const scope = (name: SettingsLayer): string =>
       name === layer ? theme.fg("accent", theme.bold(name)) : theme.fg("dim", name);
@@ -113,9 +123,9 @@ export async function showSettings(
           return;
         }
         if (matchesKey(data, "up")) {
-          currentIndex = (currentIndex + items.length - 1) % items.length;
+          currentIndex = (currentIndex + rowIds.length - 1) % rowIds.length;
         } else if (matchesKey(data, "down")) {
-          currentIndex = (currentIndex + 1) % items.length;
+          currentIndex = (currentIndex + 1) % rowIds.length;
         }
 
         const editing = matchesKey(data, Key.enter) || data === " " || matchesKey(data, "left") || matchesKey(data, "right");
@@ -123,8 +133,8 @@ export async function showSettings(
           ctx.ui.notify(`${readOnlyReason}. Fix the file first.`, "warning");
           return;
         }
-        if (matchesKey(data, Key.enter) && isNumericSettingId(items[currentIndex].id)) {
-          done(items[currentIndex].id);
+        if (matchesKey(data, Key.enter) && isNumericSettingId(rowIds[currentIndex])) {
+          done(rowIds[currentIndex]);
           return;
         }
         list.handleInput?.(data);
@@ -132,9 +142,13 @@ export async function showSettings(
     };
   });
 
-  const selected = items[currentIndex]?.id;
+  const selected = rowIds[currentIndex];
   if (result === SWITCH_LAYER) {
     await showSettings(ctx, deps, { layer: otherLayer(layer), selected });
+    return;
+  }
+  if (result === REFRESH) {
+    await showSettings(ctx, deps, { layer, selected });
     return;
   }
   if (!isNumericSettingId(result)) return;

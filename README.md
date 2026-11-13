@@ -707,7 +707,11 @@ Two files, merged on load:
 - The header reads `Scope: global | project`, and the footer advertises `tab scope`. `tab` switches layers at any time.
 - The menu opens on the project layer when `<cwd>/.pi/subagents.json` exists, and on the global layer when it does not.
 - The global layer shows the global file's value, or the default for an unset key. A change writes the global file. When the project overrides that key, the notification says the change does not reach this project.
-- The project layer shows the effective value of every row, and a change writes the project file.
+- The project layer shows the effective value of every row, and a change writes the project file. It marks each row by source:
+  - `(project)`: the project file sets the key, and the global file does not.
+  - `(overrides global)`: both files set the key.
+  - `(inherited)`, dimmed: the project file does not set the key.
+- A change on the project layer makes that key a project override.
 - A layer file that exists and does not parse shows its parse error. That layer stays read-only until you fix the file.
 
 A menu change writes one key to one file. It keeps every other key in that file, including unknown keys and the whole `policy`. It never writes a file that exists and does not parse, and it warns with the file name instead. After the write, the extension recomputes the effective settings from both files and applies them live.
