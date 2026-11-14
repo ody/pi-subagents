@@ -22,6 +22,7 @@ Each entry: the rule an agent must not break, and its ADR.
 - **Ephemeral agents.** An agent call with no `subagent_type` builds an ephemeral agent that never enters the registry, and its values pass the capability policy. [ADR 0023](docs/decisions/0023-ephemeral-agents.md)
 - **Tool names.** Every registered tool name is lowercase, and the delegation tool is `agent`. [ADR 0016](docs/decisions/0016-agent-tool-name.md)
 - **No default agents.** Never ship an agent definition, a fallback agent, or an agent creation wizard in the extension. [ADR 0017](docs/decisions/0017-no-shipped-default-agents.md)
+- **Host tools.** Text the extension injects into a model's context, including results, notifications and the append-mode bridge, never names a host tool to use. [ADR 0020](docs/decisions/0020-host-facing-text-names-no-host-tools.md)
 - **Settings layers.** A menu change writes one key to the layer it shows. Never copy an inherited value into a file, and never write a file that fails to parse. [ADR 0021](docs/decisions/0021-settings-layers-and-menu.md)
 - **Model scope.** With `scopeModels` on, every spawn path runs on an in-scope model, and the session model is never checked. [ADR 0024](docs/decisions/0024-model-scope-at-every-spawn.md)
 - **Mentions.** Never treat input from another extension as a mention, and never fall back to a direct start after the clone's tool refuses a call. [ADR 0025](docs/decisions/0025-agent-mentions.md)

@@ -1,29 +1,43 @@
-# 0020. Text injected into the host session never prescribes host tools
+# 0020. Text this extension injects never prescribes host tools
 
 ## Context
 
-pi renders a tool's `promptGuidelines` inside the system prompt's `Guidelines:` block, next to the tool schemas. That is where the model decides which tool to call. The `agent` tool's second guideline used to end "Otherwise use direct tools (read, grep, find) when the target is already known". Naming three built-ins there overrode whatever tool policy the host session had set; a session that routes code search through an LSP-backed MCP server was told to grep.
+pi renders a tool's `promptGuidelines` in the system prompt's `<rules>` section, after the `<tools>` snippet list. The model decides which tool to call there, so this text outranks most other instructions.
 
-This extension is about delegation. Which tool reads a file in the host session is the host's call.
+This extension owns delegation. Which tool reads a file in the host session is the host's choice. A tool name in delegation text overrides a host policy, such as one that routes code search through an LSP-backed MCP server.
 
-The full `agent` tool description in `src/tool/agent-tool-description.ts` (section `## When not to use`) still says "use a direct tool — `read` for a known path, `grep`/`find` for a specific symbol or string", inherited from the Claude Code prompt alignment in `0800a8a`. It overrides host policy the same way.
+An append-mode sub-agent keeps the host's system prompt so that it follows the host's conventions (ADR 0023). Text the extension adds to that prompt overrides the same host policy.
 
 ## Decision
 
-Text this extension registers into the parent session never tells the model which non-subagent tools to use. That text is:
+Text this extension injects into a model's context never tells the model which non-subagent tool to use. That text is:
 
-- `promptGuidelines` and `promptSnippet` of every tool this extension registers, in `src/tool/`.
-- Tool and parameter `description` strings of those tools.
+- `description`, `promptSnippet`, `promptGuidelines`, and parameter `description` strings of every tool this extension registers, top-level and nested.
+- Text generated for `toolDescriptionMode` `"custom"`: `{{typeList}}`, `{{compactTypeList}}`, and `{{isolationGuideline}}`.
+- Every `content[].text` that the `agent`, nested `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools return.
+- `<task-notification>` messages and the mention reminder.
+- The append-mode `<sub_agent_context>` bridge and the fallback identity in `src/session/prompts.ts`.
 
 Rules:
 
-- Guidance may say when to delegate and when not to. For the not-delegated case, say "handle it yourself", never a tool name.
-- Naming this extension's own tools (`agent`, `get_subagent_result`, `steer_subagent`, `stop_subagent`) and agent types listed by the registry-generated type list is allowed.
-- Listing the tools a sub-agent type has, as the agent type list does, is allowed. It describes the sub-agent, not the host.
-- Replace-mode agent system prompts are out of scope. Those agents run in their own session with a tool set the agent definition chooses, so the definition owns their tool policy.
+- For work the model does not delegate, say "handle it yourself", never a tool name.
+- Text may name this extension's tools (`agent`, `get_subagent_result`, `steer_subagent`, `stop_subagent`) and registered agent types.
+- The type list may name the tools a sub-agent type has, in its `(Tools: …)` suffix. That describes the sub-agent, not the host.
 
-Done check: `npx vitest run test/host-facing-text.test.ts` passes. It asserts that the registered `promptGuidelines`, `promptSnippet`, and description strings contain no built-in tool name.
+Out of scope:
+
+- Replace-mode agent system prompts. The agent definition owns that session's tool policy.
+- Text the user or a sub-agent wrote, which the extension relays verbatim. That covers agent names, frontmatter `description`, and the user's prose in `agent-tool-description.md`. It also covers sub-agent output inside results and notifications.
+
+Done check: `npx vitest run test/host-facing-text.test.ts` passes. It asserts that no built-in tool name appears outside a `(Tools: …)` suffix in:
+
+- the strings of the registered tools in `full`, `compact`, and `custom` mode, and of the nested tools. The fixture registers at least one agent with a narrowed `tools:` list.
+- the output of `formatTaskNotification`, `getStatusNote`, `getForegroundOutcomeNote`, `filteredNote`, `nestedFilteredNote`, `modelReplacedNote`, and `agentMentionReminder`
+- the output of `buildAgentPrompt` in append mode, both with a parent system prompt and without one, less the parent system prompt
 
 ## Consequences
 
-- Reintroducing tool names in guidelines overrides host tool policy again, in the highest-attention position in the prompt.
+- A tool name in injected text overrides host tool policy from the highest-attention position in the prompt.
+- An append-mode sub-agent gets no tool advice from this extension, so it relies on the host prompt alone.
+- Rejected: tool names phrased as suggestions. The position in the prompt gives a suggestion the weight of a rule.
+- Revisit if pi gains a per-tool policy channel that resolves host tool choice outside prompt text.
