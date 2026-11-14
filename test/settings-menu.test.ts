@@ -88,10 +88,12 @@ describe("applySettingValue numeric settings", () => {
     ["maxConcurrent", "-1", "1 to 1024"],
     ["maxConcurrent", "1025", "1 to 1024"],
     ["maxConcurrentForeground", "-1", "0 to 1024"],
+    ["maxConcurrentForeground", "1025", "0 to 1024"],
     ["defaultMaxTurns", "-3", "0 to 10000"],
     ["defaultMaxTurns", "10001", "0 to 10000"],
     ["graceTurns", "0", "1 to 1000"],
     ["graceTurns", "-2", "1 to 1000"],
+    ["graceTurns", "1001", "1 to 1000"],
     ["maxSubagentDepth", "-1", "0 to 16"],
     ["maxSubagentDepth", "17", "0 to 16"],
     ["maxConcurrent", "abc", "1 to 1024"],
@@ -159,6 +161,9 @@ describe("showSettings numeric prompt", () => {
   it.each([
     ["maxConcurrent", "Max concurrency (1 to 1024)", "4"],
     ["maxConcurrentForeground", "Max foreground concurrency, 0 = unlimited (0 to 1024)", "2"],
+    ["defaultMaxTurns", "Default max turns, 0 = unlimited (0 to 10000)", "0"],
+    ["graceTurns", "Grace turns (1 to 1000)", "5"],
+    ["maxSubagentDepth", "Nested depth, 0 or 1 = nesting off (0 to 16)", "2"],
   ])("%s prompts with its label and current value", async (id, label, current) => {
     custom.mockResolvedValueOnce(id);
     input.mockResolvedValueOnce(undefined);
