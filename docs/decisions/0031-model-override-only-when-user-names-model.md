@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The model overrides an agent's model only when the user names one
+# 0031. The model overrides an agent's model only when the user names one
 
 ## Context
 

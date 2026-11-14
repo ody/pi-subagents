@@ -31,6 +31,8 @@ Each entry: the rule an agent must not break, and its ADR.
 - **Usage reporting.** Subagent usage reaches pi's totals only as `usage` on tool results, and only with `reportUsage` on. [ADR 0028](docs/decisions/0028-report-usage-to-session.md)
 - **Worktree switch.** With `worktreeIsolation` off, no path creates a worktree, and a worktree request downgrades without refusal. [ADR 0029](docs/decisions/0029-worktree-isolation-switch.md)
 - **Fleet view.** The fleet view never draws until `↓` at an empty prompt, renders directly above the editor, and closes only on `Esc`, `Enter` on `main`, or a non-fleet key. [ADR 0030](docs/decisions/0030-fleet-view-opens-on-demand.md)
+- **Model override.** Model-facing text never shows an agent's configured `model` or how model values rank. Every `model` parameter says to set it only when the user named a model. [ADR 0031](docs/decisions/0031-model-override-only-when-user-names-model.md)
+- **Agent fit.** Delegation text says to pass `subagent_type` only when a type's description fits the job, else build an ephemeral agent. It never says every call needs a type. [ADR 0032](docs/decisions/0032-registered-agent-only-when-it-fits.md)
 - **No comments.** Files under `src/` and `test/` carry no comments, only `Size:` headers, `biome-ignore` reasons and a shebang. Never add a comment, or carry its prose in a string or variable. [ADR 0010](docs/decisions/0010-no-code-comments.md)
 - **Git hooks.** Pre-commit checks live in tracked `.githooks/` and stay fast. Never run the full suite in the hook, skip it with `--no-verify`, or edit git config. [ADR 0005](docs/decisions/0005-git-hooks.md)
 

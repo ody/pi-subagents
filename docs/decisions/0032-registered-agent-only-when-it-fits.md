@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The model picks a registered agent only when its description fits the job
+# 0032. The model picks a registered agent only when its description fits the job
 
 ## Context
 
