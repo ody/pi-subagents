@@ -6,7 +6,7 @@ import { registerAgents } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import type { CapabilityDeclaration, EffectiveCapabilities } from "../src/config/capability-policy.js";
 import { createNestedSubagentTools, type NestedAgentManager } from "../src/tool/nested-tools.js";
-import { grant } from "./helpers/capability.js";
+import { grant } from "./harness/capability.js";
 
 let cwd: string;
 let agentDir: string;

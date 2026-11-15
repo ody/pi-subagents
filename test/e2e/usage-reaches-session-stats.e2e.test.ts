@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { createAgentSession, SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PendingUsagePool } from "../../src/usage.js";
-import { fauxModelBackend } from "../helpers/faux-model-backend.js";
-import { registerFauxProvider } from "../helpers/pi-ai.js";
+import { fauxModelBackend } from "../harness/faux-model-backend.js";
+import { registerFauxProvider } from "../harness/pi-ai.js";
 
 vi.setConfig({ testTimeout: 30_000 });
 

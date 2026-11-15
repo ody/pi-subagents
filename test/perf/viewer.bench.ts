@@ -1,6 +1,6 @@
 import { bench, describe } from "vitest";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
-import { makeSession, mountViewer } from "../helpers/perf-fixtures.js";
+import { makeSession, mountViewer } from "../harness/perf-fixtures.js";
 
 const SIZES = [50, 500, 5000];
 

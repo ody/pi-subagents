@@ -13,7 +13,7 @@ import { getDefaultMaxTurns, setDefaultMaxTurns } from "../src/config/runner-def
 import subagentsExtension from "../src/index.js";
 import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 import { runMentionClone } from "../src/triggers/mention-clone.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./harness/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;

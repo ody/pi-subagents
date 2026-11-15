@@ -7,7 +7,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 
 import subagentsExtension from "../src/index.js";
 import { runAgent, steerAgent } from "../src/session/agent-runner.js";
-import { ctx, flush, makePi, textOf } from "./helpers/boot-extension.js";
+import { ctx, flush, makePi, textOf } from "./harness/boot-extension.js";
 
 beforeEach(() => {
   vi.mocked(steerAgent).mockReset();

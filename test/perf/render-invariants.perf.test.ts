@@ -27,7 +27,7 @@ vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
 const { AgentWidget } = await import("../../src/ui/agent-widget.js");
 const { ConversationViewer } = await import("../../src/ui/conversation-viewer.js");
 const { makeActivity, makeFleet, makeSession, mountViewer, perfTheme, perfTui } = await import(
-  "../helpers/perf-fixtures.js"
+  "../harness/perf-fixtures.js"
 );
 
 beforeEach(() => {

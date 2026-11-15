@@ -7,7 +7,7 @@ import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import { isWorktreeIsolationEnabled, setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
 import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
-import { grant } from "./helpers/capability.js";
+import { grant } from "./harness/capability.js";
 
 let cwd: string;
 let savedSwitch: boolean;

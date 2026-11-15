@@ -124,7 +124,7 @@ import {
 import { SUBAGENT_TOOL_NAMES } from "../src/session/extension-scope.js";
 import { buildAgentPrompt } from "../src/session/prompts.js";
 import { normalizeInlineAgentConfig } from "../src/triggers/cross-extension-rpc.js";
-import { grant } from "./helpers/capability.js";
+import { grant } from "./harness/capability.js";
 
 function runAgent(ctx: any, type: string, prompt: string, options: Omit<RunOptions, "capability"> & Partial<Pick<RunOptions, "capability">>) {
   if (options.agentConfig) {

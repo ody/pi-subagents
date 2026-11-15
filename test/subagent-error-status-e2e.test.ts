@@ -9,7 +9,7 @@ import {
   type PrintModeRun,
   routeBySession,
   runPrintMode,
-} from "./helpers/print-mode-runner.js";
+} from "./harness/print-mode-runner.js";
 
 function agentToolResult(session: AgentSession): string {
   const msg = [...session.messages].reverse().find(

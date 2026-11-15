@@ -15,7 +15,7 @@ import { AgentManager } from "../src/manager/agent-manager.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { getDisplayName, getPromptModeLabel } from "../src/ui/agent-format.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./harness/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;

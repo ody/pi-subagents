@@ -7,7 +7,7 @@ import type { ModelRegistryRef } from "../src/config/enabled-models.js";
 import { checkModelScope, isScopeModelsEnabled, scopeModel, setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
-import { testAgent } from "./helpers/test-agents.js";
+import { testAgent } from "./harness/test-agents.js";
 
 const MODELS = [
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },

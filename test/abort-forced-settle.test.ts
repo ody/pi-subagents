@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GrantingAgentManager as AgentManager } from "./helpers/capability.js";
+import { GrantingAgentManager as AgentManager } from "./harness/capability.js";
 
 vi.mock("../src/session/agent-runner.js", () => ({
   runAgent: vi.fn(),

@@ -9,7 +9,7 @@ import {
   contextToolNames,
   type PrintModeRun,
   runPrintMode,
-} from "./helpers/print-mode-runner.js";
+} from "./harness/print-mode-runner.js";
 
 vi.setConfig({ testTimeout: 60_000 });
 

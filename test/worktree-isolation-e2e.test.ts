@@ -7,7 +7,7 @@ import { fauxToolCall } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
-import { agentCall, type FauxReply, type PrintModeRun, runPrintMode } from "./helpers/print-mode-runner.js";
+import { agentCall, type FauxReply, type PrintModeRun, runPrintMode } from "./harness/print-mode-runner.js";
 
 vi.setConfig({ testTimeout: 30_000 });
 

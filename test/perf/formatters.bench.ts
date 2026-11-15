@@ -8,7 +8,7 @@ import {
   formatTurns,
 } from "../../src/ui/agent-format.js";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../../src/usage.js";
-import { NOW, perfSession, perfTheme } from "../helpers/perf-fixtures.js";
+import { NOW, perfSession, perfTheme } from "../harness/perf-fixtures.js";
 
 const INVOCATION = {
   modelName: "sonnet 4.6",

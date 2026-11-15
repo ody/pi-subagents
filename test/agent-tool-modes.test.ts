@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
 import { type AgentToolDeps, createAgentTool } from "../src/tool/agent-tool.js";
-import { testAgents } from "./helpers/test-agents.js";
+import { testAgents } from "./harness/test-agents.js";
 
 function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: Record<string, any> } = {}) {
   const records: Record<string, any> = over.records ?? {};

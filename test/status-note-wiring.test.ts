@@ -7,7 +7,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
-import { grant } from "./helpers/capability.js";
+import { grant } from "./harness/capability.js";
 
 function makePi() {
   const tools = new Map<string, any>();

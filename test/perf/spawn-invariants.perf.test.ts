@@ -21,7 +21,7 @@ vi.mock("../../src/agents/custom-agents.js", async () => {
 import { registerAgents } from "../../src/agents/agent-types.js";
 import subagentsExtension from "../../src/index.js";
 import { runAgent } from "../../src/session/agent-runner.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi } from "../helpers/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi } from "../harness/boot-extension.js";
 
 let hermetic: Hermetic;
 

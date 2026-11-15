@@ -1,7 +1,7 @@
 import { afterAll, bench, describe } from "vitest";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { FleetList } from "../../src/ui/fleet-list.js";
-import { makeFleet, mountFleet, mountWidget } from "../helpers/perf-fixtures.js";
+import { makeFleet, mountFleet, mountWidget } from "../harness/perf-fixtures.js";
 
 const SIZES = [1, 10, 100];
 

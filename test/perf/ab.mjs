@@ -41,7 +41,7 @@ import { join } from "node:path";
 
 const REPO = process.cwd();
 const PERF_DIR = join("test", "perf");
-const FIXTURES = join("test", "helpers", "perf-fixtures.ts");
+const FIXTURES = join("test", "harness", "perf-fixtures.ts");
 
 function usage(message) {
   if (message) console.error(`\n  ${message}`);
@@ -174,7 +174,7 @@ try {
       cpSync(join(REPO, PERF_DIR, file), join(worktree, PERF_DIR, file));
     }
   }
-  mkdirSync(join(worktree, "test", "helpers"), { recursive: true });
+  mkdirSync(join(worktree, "test", "harness"), { recursive: true });
   cpSync(join(REPO, FIXTURES), join(worktree, FIXTURES));
 
   const head = new Map();

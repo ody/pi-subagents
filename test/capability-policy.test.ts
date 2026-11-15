@@ -22,8 +22,8 @@ import { runAgent } from "../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../src/triggers/spawn-funnel.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
-import { grant } from "./helpers/capability.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./harness/boot-extension.js";
+import { grant } from "./harness/capability.js";
 
 const OPEN: CapabilityDeclaration = { extensions: true, skills: true };
 

@@ -7,7 +7,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./helpers/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./harness/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;

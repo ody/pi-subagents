@@ -7,8 +7,8 @@ vi.mock("../src/session/agent-runner.js", async () => {
 
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
-import { ctx, flush, makePi, textOf } from "./helpers/boot-extension.js";
-import { grant } from "./helpers/capability.js";
+import { ctx, flush, makePi, textOf } from "./harness/boot-extension.js";
+import { grant } from "./harness/capability.js";
 
 const FORCED_SETTLE_GRACE_MS = 5_000;
 const NUDGE_HOLD_MS = 200;

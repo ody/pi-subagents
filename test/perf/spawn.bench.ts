@@ -12,7 +12,7 @@ import { registerAgents } from "../../src/agents/agent-types.js";
 import { loadCustomAgents } from "../../src/agents/custom-agents.js";
 import subagentsExtension from "../../src/index.js";
 import { runAgent } from "../../src/session/agent-runner.js";
-import { ctx, type Hermetic, hermeticDir, makePi } from "../helpers/boot-extension.js";
+import { ctx, type Hermetic, hermeticDir, makePi } from "../harness/boot-extension.js";
 
 function agentFile(i: number): string {
   return [

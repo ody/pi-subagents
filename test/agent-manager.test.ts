@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../src/types.js";
-import { GrantingAgentManager as AgentManager } from "./helpers/capability.js";
+import { GrantingAgentManager as AgentManager } from "./harness/capability.js";
 
 vi.mock("../src/session/agent-runner.js", () => ({
   runAgent: vi.fn(),

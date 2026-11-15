@@ -11,7 +11,7 @@ import {
   type FauxResponder,
   type PrintModeRun,
   runPrintMode,
-} from "./helpers/print-mode-runner.js";
+} from "./harness/print-mode-runner.js";
 
 vi.setConfig({ testTimeout: 30_000 });
 

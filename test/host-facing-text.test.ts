@@ -12,8 +12,8 @@ import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
 import { getForegroundOutcomeNote, getStatusNote } from "../src/tool/status-note.js";
 import { agentMentionReminder } from "../src/triggers/mention.js";
 import type { AgentRecord } from "../src/types.js";
-import { type Hermetic, hermeticDir, makePi } from "./helpers/boot-extension.js";
-import { testAgent } from "./helpers/test-agents.js";
+import { type Hermetic, hermeticDir, makePi } from "./harness/boot-extension.js";
+import { testAgent } from "./harness/test-agents.js";
 
 const BUILT_IN_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const NAME_ALTERNATION = BUILT_IN_TOOL_NAMES.join("|");

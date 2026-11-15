@@ -8,8 +8,8 @@ import { getAgentConfig, registerAgents } from "../src/agents/agent-types.js";
 import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { resolveAgentInvocationConfig } from "../src/tool/invocation-config.js";
-import { registeredCapability } from "./helpers/capability.js";
-import { registerFauxProvider } from "./helpers/pi-ai.js";
+import { registeredCapability } from "./harness/capability.js";
+import { registerFauxProvider } from "./harness/pi-ai.js";
 
 vi.setConfig({ testTimeout: 30_000 });
 

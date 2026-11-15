@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildAgentPrompt } from "../src/session/prompts.js";
 import type { AgentConfig, EnvInfo } from "../src/types.js";
-import { testAgent } from "./helpers/test-agents.js";
+import { testAgent } from "./harness/test-agents.js";
 
 const env: EnvInfo = {
   isGitRepo: true,

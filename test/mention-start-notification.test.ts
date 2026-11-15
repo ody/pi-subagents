@@ -9,7 +9,7 @@ vi.mock("../src/triggers/mention-clone.js", () => ({ runMentionClone: vi.fn() })
 import subagentsExtension from "../src/index.js";
 import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 import { runMentionClone } from "../src/triggers/mention-clone.js";
-import { ctx, type Hermetic, hermeticDir, makePi } from "./helpers/boot-extension.js";
+import { ctx, type Hermetic, hermeticDir, makePi } from "./harness/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;

@@ -7,8 +7,8 @@ import { loadCustomAgents } from "../src/agents/custom-agents.js";
 import { setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { encodeCwd } from "../src/platform/output-file.js";
 import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../src/tool/nested-tools.js";
-import { grant } from "./helpers/capability.js";
-import { testAgents } from "./helpers/test-agents.js";
+import { grant } from "./harness/capability.js";
+import { testAgents } from "./harness/test-agents.js";
 
 let cwd: string;
 let manager: NestedAgentManager;

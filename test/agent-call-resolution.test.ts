@@ -6,7 +6,7 @@ import { registerAgents } from "../src/agents/agent-types.js";
 import { setScopeModelsEnabled } from "../src/config/model-scope.js";
 import { detailBaseFor, resolveAgentCall } from "../src/tool/agent-call-resolution.js";
 import type { AgentRecord } from "../src/types.js";
-import { testAgent, testAgents } from "./helpers/test-agents.js";
+import { testAgent, testAgents } from "./harness/test-agents.js";
 
 const base = {
   displayName: "Explore",

@@ -11,8 +11,8 @@ import subagentsExtension from "../src/index.js";
 import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 import { SETTING_ROWS } from "../src/ui/settings-rows.js";
 import { addUsage } from "../src/usage.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi } from "./helpers/boot-extension.js";
-import { grant } from "./helpers/capability.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi } from "./harness/boot-extension.js";
+import { grant } from "./harness/capability.js";
 
 function runSpending(usage: { input: number; output: number; cacheWrite: number; cacheRead?: number; cost?: number }) {
   vi.mocked(runAgent).mockImplementation(async (_c: any, _t: any, _p: any, opts: any) => {

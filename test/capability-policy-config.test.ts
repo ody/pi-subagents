@@ -9,8 +9,8 @@ import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged } from ".
 import { runAgent } from "../src/session/agent-runner.js";
 import { registerRpcHandlers } from "../src/triggers/cross-extension-rpc.js";
 import type { AgentConfig } from "../src/types.js";
-import { registeredCapability } from "./helpers/capability.js";
-import { registerFauxProvider } from "./helpers/pi-ai.js";
+import { registeredCapability } from "./harness/capability.js";
+import { registerFauxProvider } from "./harness/pi-ai.js";
 
 describe("capability policy configuration", () => {
   let globalDir: string;
