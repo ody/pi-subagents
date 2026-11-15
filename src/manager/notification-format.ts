@@ -35,7 +35,7 @@ export function formatTaskNotification(record: AgentRecord, resultMaxLen: number
     record.toolCallId ? `<tool-use-id>${escapeXml(record.toolCallId)}</tool-use-id>` : null,
     record.outputFile ? `<output-file>${escapeXml(record.outputFile)}</output-file>` : null,
     `<status>${escapeXml(status)}</status>`,
-    `<summary>Agent "${escapeXml(record.description)}" ${record.status}${getStatusNote(record.status, record.stoppedBy)}</summary>`,
+    `<summary>Agent "${escapeXml(record.description)}" ${record.status}${getStatusNote(record.status, record.stopCause)}</summary>`,
     `<result>${escapeXml(resultPreview)}</result>`,
     `<usage><total_tokens>${totalTokens}</total_tokens><tool_uses>${record.toolUses}</tool_uses>${ctxXml}${compactXml}${costXml}<duration_ms>${durationMs}</duration_ms></usage>`,
     `</task-notification>`,

@@ -2,7 +2,7 @@ import { describeModel } from "../config/model-resolver.js";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { runAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { NestedAgentManager } from "../tool/nested-tools.js";
-import type { AgentActivity, AgentRecord } from "../types.js";
+import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
 import { assertValidSpawnCwd, type Pool } from "./agent-manager-rules.js";
 import type { SpawnArgs } from "./agent-spawn.js";
@@ -13,7 +13,7 @@ export interface StartDeps {
   startups: Map<string, Promise<void>>;
   worktreeRepos: Set<string>;
   poolFor: (record: AgentRecord) => Pool | undefined;
-  abort: (id: string) => boolean;
+  abort: (id: string, cause: StopCause) => boolean;
   noteToolActivity: (id: string, activity: ToolActivity) => void;
   settleRun: (record: AgentRecord) => void;
   acquireSlot: (pool: Pool | undefined) => void;
@@ -23,18 +23,13 @@ export interface StartDeps {
   onUsage?: (record: AgentRecord, usage: LifetimeUsage) => void;
 }
 
-export function armQueuedAbort(deps: StartDeps, id: string, signal?: AbortSignal): boolean {
-  if (signal === undefined) return true;
+export function armQueuedAbort(deps: StartDeps, id: string, signal: AbortSignal | undefined, cause: StopCause | undefined): boolean {
+  if (signal === undefined || cause === undefined) return true;
   if (signal.aborted) {
-    const record = deps.agents.get(id);
-    if (record) {
-      record.status = "stopped";
-      record.completedAt = Date.now();
-      deps.settleRun(record);
-    }
+    deps.abort(id, cause);
     return false;
   }
-  signal.addEventListener("abort", () => deps.abort(id), { once: true });
+  signal.addEventListener("abort", () => deps.abort(id, cause), { once: true });
   return true;
 }
 
@@ -110,9 +105,10 @@ export async function startAgent(
   deps.onStart?.(record);
 
   if (options.signal) {
-    if (options.signal.aborted) deps.abort(id);
+    const cause = options.signalCause!;
+    if (options.signal.aborted) deps.abort(id, cause);
     else {
-      const onParentAbort = () => deps.abort(id);
+      const onParentAbort = () => deps.abort(id, cause);
       options.signal.addEventListener("abort", onParentAbort, { once: true });
       record.detachParentSignal = () => options.signal!.removeEventListener("abort", onParentAbort);
     }

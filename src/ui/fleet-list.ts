@@ -270,7 +270,7 @@ export class FleetList {
           theme,
           done,
           () => {
-            if (this.manager.abort(record.id)) this.ui?.notify(`Stopped "${record.description}".`, "info");
+            if (this.manager.abort(record.id, "user")) this.ui?.notify(`Stopped "${record.description}".`, "info");
           },
           keybindings,
           (message: string) => this.manager.steer(record.id, message),

@@ -568,7 +568,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 
 ### `stop_subagent`
 
-Stop a running or queued background agent. This is the model's own lever to end a run. A human takes the same action with `x` in FleetView, the conversation viewer, or `/agents`, and `subagents:rpc:stop` gives it to another extension.
+Stop a running or queued background agent. The run records `stopCause` `agent`. This is the model's own lever to end a run. A human takes the same action with `x` in FleetView, the conversation viewer, or `/agents`, and `subagents:rpc:stop` gives it to another extension.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -619,7 +619,17 @@ Instead of hard-aborting at the turn limit, agents get a graceful shutdown:
 | `completed` | Finished naturally | `✓` green |
 | `steered` | Hit limit, wrapped up in time | `✓` yellow |
 | `aborted` | Grace period exceeded | `✗` red |
-| `stopped` | User-initiated abort | `■` dim |
+| `stopped` | Stopped on request. `stopCause` says by whom | `■` dim |
+
+Every `stopped` run has a `stopCause`. The status text the model reads names it. A run the user stopped is not restarted unless the user asks. A resume clears `stopCause`.
+
+| `stopCause` | Set by |
+| --- | --- |
+| `user` | `/agents`, FleetView, the conversation viewer, or the session's interrupted tool call |
+| `agent` | `stop_subagent` or its nested mirror |
+| `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
+| `owner` | The owner's settle, or the owning agent's interrupted tool call |
+| `shutdown` | Session shutdown |
 
 ## Concurrency
 
@@ -1102,7 +1112,7 @@ const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply) => {
 pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
 ```
 
-`abort()` on a running agent fires the run's `AbortController` and marks the record `"stopped"`. It also arms a 5 s grace timer that does not keep the process alive.
+`abort(id, cause)` on a running agent fires the run's `AbortController`, marks the record `"stopped"` and sets `record.stopCause`. A stop through this channel sets `extension`. It also arms a 5 s grace timer that does not keep the process alive.
 
 Every run settles exactly once, through one tail. The tail runs these steps in order:
 

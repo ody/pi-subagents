@@ -15,6 +15,7 @@ import type { AgentRecord } from "../../src/types.js";
 import { type Hermetic, hermeticDir, makePi } from "../harness/boot-extension.js";
 import { testAgent } from "../harness/test-agents.js";
 
+const STOP_CAUSES = ["user", "agent", "extension", "owner", "shutdown"] as const;
 const BUILT_IN_TOOL_NAMES = ["read", "bash", "edit", "write", "grep", "find", "ls"];
 const NAME_ALTERNATION = BUILT_IN_TOOL_NAMES.join("|");
 const TOOL_NAME_MENTION = new RegExp(
@@ -158,9 +159,9 @@ describe("host-facing text", () => {
 
   it("task notifications name no built-in tool in any status", () => {
     for (const status of STATUSES) {
-      for (const stoppedBy of ["user", "agent"] as const) {
-        const text = formatTaskNotification(record({ status, stoppedBy, error: "boom", result: "ok", outputFile: "/tmp/o", toolCallId: "t1" }), 10, true);
-        expect(text, `${status}/${stoppedBy}`).not.toMatch(TOOL_NAME_MENTION);
+      for (const stopCause of STOP_CAUSES) {
+        const text = formatTaskNotification(record({ status, stopCause, error: "boom", result: "ok", outputFile: "/tmp/o", toolCallId: "t1" }), 10, true);
+        expect(text, `${status}/${stopCause}`).not.toMatch(TOOL_NAME_MENTION);
       }
     }
     const truncated = formatTaskNotification(record({ result: "x".repeat(100) }), 10);
@@ -171,9 +172,9 @@ describe("host-facing text", () => {
 
   it("status notes name no built-in tool in any status", () => {
     for (const status of STATUSES) {
-      for (const stoppedBy of ["user", "agent"] as const) {
-        expect(getStatusNote(status, stoppedBy), `${status}/${stoppedBy}`).not.toMatch(TOOL_NAME_MENTION);
-        expect(getForegroundOutcomeNote(status, stoppedBy), `${status}/${stoppedBy}`).not.toMatch(TOOL_NAME_MENTION);
+      for (const stopCause of STOP_CAUSES) {
+        expect(getStatusNote(status, stopCause), `${status}/${stopCause}`).not.toMatch(TOOL_NAME_MENTION);
+        expect(getForegroundOutcomeNote(status, stopCause), `${status}/${stopCause}`).not.toMatch(TOOL_NAME_MENTION);
       }
     }
   });

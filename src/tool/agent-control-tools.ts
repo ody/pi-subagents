@@ -108,7 +108,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
 
       let output =
         `Agent: ${record.id}\n` +
-        `Type: ${getDisplayName(record)} | Status: ${record.status}${getStatusNote(record.status, record.stoppedBy)} | ${formatResultStats(record, settings.showCost)}\n` +
+        `Type: ${getDisplayName(record)} | Status: ${record.status}${getStatusNote(record.status, record.stopCause)} | ${formatResultStats(record, settings.showCost)}\n` +
         `Description: ${record.description}\n\n${resultBody(record)}`;
 
       if (record.status !== "running" && record.status !== "queued") {
@@ -191,15 +191,14 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
 
       if (record.status !== "running" && record.status !== "queued") {
         return textResult(
-          `Agent ${record.id} is not running (status: ${record.status}${getStatusNote(record.status, record.stoppedBy)}). ` +
+          `Agent ${record.id} is not running (status: ${record.status}${getStatusNote(record.status, record.stopCause)}). ` +
           `Its result is still available — use get_subagent_result.`,
         );
       }
 
       const wasRunning = record.status === "running";
       const displayName = getDisplayName(record);
-      record.stoppedBy = "agent";
-      manager.abort(record.id);
+      manager.abort(record.id, "agent");
 
       if (!wasRunning) {
         return textResult(`Agent ${record.id} (${displayName}) stopped before it started running. No output was produced.`);

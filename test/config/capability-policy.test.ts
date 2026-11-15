@@ -307,7 +307,7 @@ describe("capability policy at every spawn path", () => {
         spawn: spawnTopLevel,
         awaitStartup: id => manager.awaitStartup(id),
         getRecord: id => manager.getRecord(id),
-        abort: id => manager.abort(id),
+        abort: (id, cause) => manager.abort(id, cause),
         consumeResult: () => false,
       },
     });

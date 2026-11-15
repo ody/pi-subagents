@@ -190,7 +190,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     await ctx.ui.custom<undefined>(
       (tui, theme, keybindings, done) => {
         return new ConversationViewer(tui, session, record, activity, theme, done, () => {
-          if (manager.abort(record.id)) {
+          if (manager.abort(record.id, "user")) {
             ctx.ui.notify(`Stopped "${record.description}".`, "info");
           }
         }, keybindings, (message: string) => manager.steer(record.id, message), settings.showCost, () => settings.viewerMarkdown, (mode) => chooseViewerMarkdown(mode, ctx));

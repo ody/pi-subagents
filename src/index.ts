@@ -141,7 +141,7 @@ export default function (pi: ExtensionAPI) {
           spawn: spawnTopLevel,
           awaitStartup: (id) => manager.awaitStartup(id),
           getRecord: (id) => manager.getRecord(id),
-          abort: (id) => manager.abort(id),
+          abort: (id, cause) => manager.abort(id, cause),
           consumeResult: (id) => {
             const record = resolveAgentRef(id);
             if (!record || !isTopLevelAgent(record)) return false;

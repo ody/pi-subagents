@@ -134,6 +134,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
       isolation,
       invocation: agentInvocation,
       signal,
+      signalCause: "user",
       rootSessionId: ctx.sessionManager.getSessionId(),
       onQueued: (_id, ahead) => { queuedAhead = ahead; streamUpdate(); },
       ...fgCallbacks,
@@ -166,7 +167,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     if (costText) statsParts.push(costText);
   }
   return textResult(
-    `${capabilityNote}Agent completed in ${formatMs(durationMs)} (${statsParts.join(", ")})${getForegroundOutcomeNote(record.status, record.stoppedBy)}.\n\n` +
+    `${capabilityNote}Agent completed in ${formatMs(durationMs)} (${statsParts.join(", ")})${getForegroundOutcomeNote(record.status, record.stopCause)}.\n\n` +
     (record.result?.trim() || "No output."),
     details,
   );

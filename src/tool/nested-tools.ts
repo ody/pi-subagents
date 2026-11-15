@@ -38,6 +38,7 @@ import type {
   AgentInvocation,
   AgentRecord,
   IsolationMode,
+  StopCause,
   ThinkingLevel,
 } from "../types.js";
 import { addUsage } from "../usage.js";
@@ -67,6 +68,7 @@ interface NestedSpawnOptions {
   isolation?: IsolationMode;
   invocation?: AgentInvocation;
   signal?: AbortSignal;
+  signalCause?: StopCause;
   onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
   onSessionCreated?: (session: AgentSession) => void;
   depth: number;
@@ -94,8 +96,8 @@ export interface NestedAgentManager {
     onSpawned?: (id: string) => void,
   ): Promise<{ id: string; record: AgentRecord }>;
   getRecord(id: string): AgentRecord | undefined;
-  resume(id: string, prompt: string, signal?: AbortSignal): Promise<AgentRecord | undefined>;
-  abort(id: string): boolean;
+  resume(id: string, prompt: string, signal?: AbortSignal, options?: { signalCause?: StopCause }): Promise<AgentRecord | undefined>;
+  abort(id: string, cause: StopCause): boolean;
 }
 
 export interface NestedToolContext {
@@ -127,8 +129,8 @@ function formatRecord(record: AgentRecord, position: ResultPosition): string {
   }
   const text = record.result?.trim() || record.error?.trim() || "No output.";
   const note = position === "inline"
-    ? getForegroundOutcomeNote(record.status, record.stoppedBy)
-    : getStatusNote(record.status, record.stoppedBy);
+    ? getForegroundOutcomeNote(record.status, record.stopCause)
+    : getStatusNote(record.status, record.stopCause);
   return note ? `Nested agent${note}.\n\n${text}` : text;
 }
 
@@ -143,7 +145,7 @@ async function resumeOwned(
   if (!ownsRecord(existing, parentAgentId)) {
     return textResult(`Nested agent not found or not owned by this parent: "${id}".`, true);
   }
-  const resumed = await manager.resume(id, prompt, signal);
+  const resumed = await manager.resume(id, prompt, signal, { signalCause: "owner" });
   return resumed
     ? textResult(formatRecord(resumed, "inline"), resumed.status === "error")
     : textResult(`Failed to resume nested agent "${id}".`, true);
@@ -402,7 +404,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
           ctx,
           resolvedType,
           params.prompt,
-          { ...options, signal },
+          { ...options, signal, signalCause: "owner" },
           attachTranscript,
         );
         return textResult(note + formatRecord(record, "inline"), record.status === "error");
@@ -480,8 +482,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         return textResult(`Nested agent ${record.id} is not running (status: ${record.status}). Its result is still available.`);
       }
       const wasRunning = record.status === "running";
-      record.stoppedBy = "agent";
-      context.manager.abort(record.id);
+      context.manager.abort(record.id, "agent");
       return textResult(
         wasRunning
           ? `Nested agent ${record.id} stopped.`

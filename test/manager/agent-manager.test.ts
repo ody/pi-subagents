@@ -454,8 +454,8 @@ describe("AgentManager — Bug 3 clearCompleted", () => {
     expect(manager.getRecord(id1)).toBeDefined();
     expect(manager.getRecord(id2)).toBeDefined();
 
-    manager.abort(id1);
-    manager.abort(id2);
+    manager.abort(id1, "user");
+    manager.abort(id2, "user");
   });
 
   it("clearCompleted calls dispose on sessions of removed records", async () => {
@@ -621,7 +621,7 @@ describe("AgentManager — lifetime usage + compaction count are eagerly initial
     expect(record.lifetimeUsage).toEqual({ input: 0, output: 0, cacheWrite: 0, cost: 0 });
     expect(record.compactionCount).toBe(0);
 
-    manager.abort(id);
+    manager.abort(id, "user");
   });
 
   it("onAssistantUsage from runAgent accumulates into record.lifetimeUsage", async () => {
@@ -789,7 +789,7 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
     const id = manager.spawn(mockPi, mockCtx, "X", "stopped", {
       description: "stopped", isBackground: true, isolation: "worktree",
     });
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
 
     releaseCopy();
     await manager.awaitStartup(id);
@@ -992,7 +992,7 @@ describe("AgentManager — abort() state machine", () => {
 
   it("returns false for an unknown id (no record, no side-effects)", () => {
     manager = new AgentManager();
-    expect(manager.abort("does-not-exist")).toBe(false);
+    expect(manager.abort("does-not-exist", "user")).toBe(false);
   });
 
   it("removes a queued agent from the queue and marks it stopped", () => {
@@ -1007,10 +1007,10 @@ describe("AgentManager — abort() state machine", () => {
     const queuedRecord = manager.getRecord(queuedId)!;
     expect(queuedRecord.status).toBe("queued");
 
-    expect(manager.abort(queuedId)).toBe(true);
+    expect(manager.abort(queuedId, "user")).toBe(true);
     expect(queuedRecord.status).toBe("stopped");
     expect(queuedRecord.completedAt).toBeGreaterThan(0);
-    expect(manager.abort(queuedId)).toBe(false);
+    expect(manager.abort(queuedId, "user")).toBe(false);
   });
 
   it("aborts a running agent by firing its AbortController and setting status='stopped'", () => {
@@ -1029,7 +1029,7 @@ describe("AgentManager — abort() state machine", () => {
     expect(record.status).toBe("running");
     expect(receivedSignal?.aborted).toBe(false);
 
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
     expect(record.status).toBe("stopped");
     expect(record.completedAt).toBeGreaterThan(0);
     expect(receivedSignal?.aborted).toBe(true);
@@ -1045,7 +1045,7 @@ describe("AgentManager — abort() state machine", () => {
     await manager.getRecord(id)?.promise;
     expect(manager.getRecord(id)?.status).toBe("completed");
 
-    expect(manager.abort(id)).toBe(false);
+    expect(manager.abort(id, "user")).toBe(false);
     expect(manager.getRecord(id)?.status).toBe("completed");
   });
 
@@ -1058,7 +1058,7 @@ describe("AgentManager — abort() state machine", () => {
     const record = manager.getRecord(id)!;
     expect(record.status).toBe("running");
 
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
     expect(record.status).toBe("stopped");
 
     resolveRun({ responseText: "partial output", session: mockSession(), aborted: false, steered: false });
@@ -1128,6 +1128,7 @@ describe("AgentManager — parent abort signal forwarding (#44)", () => {
       description: "x",
       isBackground: false,
       signal: parent.signal,
+      signalCause: "user",
     });
     const record = manager.getRecord(id)!;
     expect(record.status).toBe("running");
@@ -1827,7 +1828,7 @@ describe("AgentManager — background resume", () => {
     expect(manager.getRecord(id)!.abortController).toBe(liveController);
     expect(manager.getRecord(id)!.status).toBe("running");
     expect(onComplete).not.toHaveBeenCalled();
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
     expect(liveController!.signal.aborted).toBe(true);
   });
 
@@ -1889,7 +1890,7 @@ describe("AgentManager — background resume", () => {
     const onStarted = vi.fn();
     await manager.resume(id, "later", undefined, { isBackground: true, onStarted });
 
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
     expect(manager.getRecord(id)!.status).toBe("stopped");
     expect(onStarted).not.toHaveBeenCalled();
   });

@@ -2,7 +2,7 @@ import { policyEventPayload } from "../config/capability-policy-config.js";
 import { type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
-import type { AgentConfig, AgentRecord } from "../types.js";
+import type { AgentConfig, AgentRecord, StopCause } from "../types.js";
 
 export interface EventBus {
   on(event: string, handler: (data: unknown) => void): () => void;
@@ -18,8 +18,8 @@ export const PROTOCOL_VERSION = 2;
 export interface SpawnCapable {
   spawn(pi: unknown, ctx: unknown, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>): string;
   awaitStartup(id: string): Promise<void>;
-  abort(id: string): boolean;
-  getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered" | "modelReplaced"> | undefined;
+  abort(id: string, cause: StopCause): boolean;
+  getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered" | "modelReplaced" | "stopCause"> | undefined;
   consumeResult(id: string): boolean;
 }
 
@@ -139,7 +139,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
       const record = manager.getRecord(agentId);
       if (!record) throw new Error("Agent not found");
       if (!isTopLevelAgent(record)) throw new Error("Agent is owned by another agent");
-      if (!manager.abort(agentId)) throw new Error("Agent is not running");
+      if (!manager.abort(agentId, "extension")) throw new Error("Agent is not running");
     },
   );
 

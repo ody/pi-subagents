@@ -5,7 +5,7 @@ import { type GrantedCapability, isMintedVerdict } from "../config/capability-po
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
-import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
+import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, StopCause, SubagentType, ThinkingLevel } from "../types.js";
 import { assertValidSpawnCwd, isTopLevelAgent, type Pool } from "./agent-manager-rules.js";
 
 export interface SpawnArgs {
@@ -37,6 +37,7 @@ export interface SpawnOptions {
   cwd?: string;
   invocation?: AgentInvocation;
   signal?: AbortSignal;
+  signalCause?: StopCause;
   onSpawned?: (id: string) => void;
   onQueued?: (id: string, ahead: number) => void;
   onToolActivity?: (activity: ToolActivity) => void;
@@ -66,7 +67,7 @@ export interface SpawnDeps {
   takenHandles: () => Set<string>;
   poolFor: (record: AgentRecord) => Pool | undefined;
   poolHasRoom: (pool: Pool) => boolean;
-  armQueuedAbort: (id: string, signal?: AbortSignal) => boolean;
+  armQueuedAbort: (id: string, signal?: AbortSignal, cause?: StopCause) => boolean;
   launch: (id: string, record: AgentRecord, args: SpawnArgs, queued: boolean) => Promise<void>;
   awaitStartup: (id: string) => Promise<void>;
 }
@@ -82,6 +83,9 @@ export function spawnAgent(
   assertValidSpawnCwd(options.cwd);
   if (!isMintedVerdict(options.capability)) {
     throw new Error("Capability policy: a spawn needs a verdict from checkCapabilityPolicy.");
+  }
+  if (options.signal && !options.signalCause) {
+    throw new Error("A spawn with a signal needs signalCause, the stop cause of the signal's owner.");
   }
 
   const id = randomUUID().slice(0, 17);
@@ -132,7 +136,7 @@ export function spawnAgent(
   const pool = deps.poolFor(record);
   if (pool !== undefined && !options.bypassQueue && !deps.poolHasRoom(pool)) {
     record.status = "queued";
-    if (!deps.armQueuedAbort(id, options.signal)) return id;
+    if (!deps.armQueuedAbort(id, options.signal, options.signalCause)) return id;
     let release!: () => void;
     record.startGate = new Promise<void>(resolve => { release = resolve; });
     deps.queue.push({

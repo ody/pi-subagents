@@ -42,7 +42,7 @@ describe("AgentManager — abort() forced settle", () => {
     wedge();
 
     const id = manager.spawn(mockPi, mockCtx, "X", "wedged", { description: "d", isBackground: true });
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
     expect(manager.getRecord(id)?.status).toBe("stopped");
 
     const tooSoonId = manager.spawn(mockPi, mockCtx, "Y", "too soon", { description: "d", isBackground: true });
@@ -61,7 +61,7 @@ describe("AgentManager — abort() forced settle", () => {
     wedge();
 
     const id = manager.spawn(mockPi, mockCtx, "X", "wedged", { description: "d", isBackground: true });
-    manager.abort(id);
+    manager.abort(id, "user");
     expect(completed).toEqual([]);
 
     await vi.advanceTimersByTimeAsync(GRACE);
@@ -80,7 +80,7 @@ describe("AgentManager — abort() forced settle", () => {
     });
     expect(manager.getRecord(childId)?.status).toBe("running");
 
-    manager.abort(parentId);
+    manager.abort(parentId, "user");
     expect(manager.getRecord(childId)?.status).toBe("running");
 
     await vi.advanceTimersByTimeAsync(GRACE);
@@ -97,7 +97,7 @@ describe("AgentManager — abort() forced settle", () => {
 
     manager = new AgentManager((r) => completed.push(r.status), 1);
     const id1 = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
-    manager.abort(id1);
+    manager.abort(id1, "user");
 
     await vi.advanceTimersByTimeAsync(GRACE);
     expect(completed).toEqual(["stopped"]);
@@ -123,7 +123,7 @@ describe("AgentManager — abort() forced settle", () => {
 
     const id = manager.spawn(mockPi, mockCtx, "X", "wedged", { description: "d", isBackground: true });
     await vi.advanceTimersByTimeAsync(0);
-    manager.abort(id);
+    manager.abort(id, "user");
     expect(manager.getRecord(id)?.result).toBeUndefined();
 
     await vi.advanceTimersByTimeAsync(GRACE);
@@ -143,7 +143,7 @@ describe("AgentManager — abort() forced settle", () => {
     const record = manager.getRecord(id)!;
     record.result = "the real result";
 
-    manager.abort(id);
+    manager.abort(id, "user");
     await vi.advanceTimersByTimeAsync(GRACE);
 
     expect(record.result).toBe("the real result");

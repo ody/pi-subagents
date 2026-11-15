@@ -1,11 +1,12 @@
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
-import type { AgentActivity, AgentRecord } from "../types.js";
+import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
 import type { Pool } from "./agent-manager-rules.js";
 
 export interface ResumeOptions {
   isBackground?: boolean;
+  signalCause?: StopCause;
   onToolActivity?: (activity: ToolActivity) => void;
   onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
   onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
@@ -27,7 +28,7 @@ export interface ResumeDeps {
   poolFor: (record: AgentRecord) => Pool | undefined;
   poolHasRoom: (pool: Pool) => boolean;
   acquireSlot: (pool: Pool | undefined) => void;
-  abort: (id: string) => boolean;
+  abort: (id: string, cause: StopCause) => boolean;
   settleRun: (record: AgentRecord) => void;
   reopenRun: (record: AgentRecord) => void;
   noteToolActivity: (id: string, activity: ToolActivity) => void;
@@ -43,6 +44,9 @@ export async function resume(
   signal?: AbortSignal,
   options?: ResumeOptions,
 ): Promise<AgentRecord | undefined> {
+  if (signal && !options?.signalCause) {
+    throw new Error("A resume with a signal needs signalCause, the stop cause of the signal's owner.");
+  }
   const record = deps.agents.get(id);
   if (!record?.session) return undefined;
   if (record.status === "running" || record.status === "queued" || (!record.settled && record.promise !== undefined)) return undefined;
@@ -63,6 +67,7 @@ export async function resume(
   record.resultConsumed = false;
   record.result = undefined;
   record.error = undefined;
+  record.stopCause = undefined;
   record.completedAt = undefined;
   deps.reopenRun(record);
   record.pool = undefined;
@@ -70,7 +75,7 @@ export async function resume(
   record.startGate = undefined;
   record.outputCleanup = undefined;
   record.abortController = controller;
-  record.detachParentSignal = watchParentSignal(deps, record, controller, signal);
+  record.detachParentSignal = watchParentSignal(deps, record, controller, signal, options?.signalCause);
 
   const begin = () => {
     try {
@@ -112,10 +117,11 @@ function watchParentSignal(
   record: AgentRecord,
   controller: AbortController,
   parentSignal: AbortSignal | undefined,
+  cause: StopCause | undefined,
 ): (() => void) | undefined {
-  if (!parentSignal) return undefined;
+  if (!parentSignal || !cause) return undefined;
   const onParentAbort = () => {
-    if (record.abortController === controller) deps.abort(record.id);
+    if (record.abortController === controller) deps.abort(record.id, cause);
   };
   parentSignal.addEventListener("abort", onParentAbort, { once: true });
   return () => parentSignal.removeEventListener("abort", onParentAbort);
@@ -141,7 +147,7 @@ function startResume(
   deps.acquireSlot(pool);
   deps.onStart?.(record);
 
-  if (parentSignal?.aborted) deps.abort(id);
+  if (parentSignal?.aborted && options?.signalCause) deps.abort(id, options.signalCause);
 
   try { options?.onStarted?.(); } catch { }
 

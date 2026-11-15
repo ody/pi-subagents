@@ -70,6 +70,8 @@ export type MentionResolution =
   | { kind: "live"; record: AgentRecord }
   | { kind: "tombstone"; entry: AgentTombstone };
 
+export type StopCause = "user" | "agent" | "extension" | "owner" | "shutdown";
+
 export interface AgentRecord {
   id: string;
   type: SubagentType;
@@ -79,7 +81,7 @@ export interface AgentRecord {
   status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
   result?: string;
   error?: string;
-  stoppedBy?: "user" | "agent";
+  stopCause?: StopCause;
   settled?: boolean;
   pool?: "background" | "foreground";
   toolUses: number;

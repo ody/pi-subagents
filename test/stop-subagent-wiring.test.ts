@@ -249,7 +249,7 @@ describe("stop_subagent", () => {
     }
   });
 
-  it("stoppedBy: 'agent' changes the note a following get_subagent_result reads back", async () => {
+  it("stopCause: 'agent' changes the note a following get_subagent_result reads back", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
     heldRun();
@@ -274,7 +274,7 @@ describe("stop_subagent", () => {
 
     const id = await spawnBackground(tools);
     await flush();
-    rawManager().abort(id);
+    rawManager().abort(id, "user");
 
     const readBack = await tools.get("get_subagent_result").execute(
       "tc-read", { agent_id: id }, undefined, undefined, ctx(),

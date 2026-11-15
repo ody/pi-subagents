@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentRecord } from "../../src/types.js";
+import type { AgentRecord, StopCause } from "../../src/types.js";
 import { GrantingAgentManager as AgentManager } from "../harness/capability.js";
 
 vi.mock("../../src/session/agent-runner.js", () => ({
@@ -156,7 +156,7 @@ describe("AgentManager — spawn run endings settle once", () => {
 
       it("keeps stopped when a run is stopped while running and then resolves", async () => {
         const { id, record } = start();
-        manager.abort(id);
+        manager.abort(id, "user");
         runs[0].resolve(result({ aborted: true }));
         await record.promise;
         expect(record.status).toBe("stopped");
@@ -167,7 +167,7 @@ describe("AgentManager — spawn run endings settle once", () => {
 
       it("keeps stopped when a stopped run rejects", async () => {
         const { id, record } = start();
-        manager.abort(id);
+        manager.abort(id, "user");
         runs[0].reject(new Error("aborted"));
         await record.promise;
         expect(record.status).toBe("stopped");
@@ -176,7 +176,7 @@ describe("AgentManager — spawn run endings settle once", () => {
 
       it("settles a wedged run through the forced settle", async () => {
         const { id, record } = start();
-        manager.abort(id);
+        manager.abort(id, "user");
         expect(completed).toEqual([]);
         await vi.advanceTimersByTimeAsync(GRACE);
         expectSettledOnce("stopped");
@@ -185,7 +185,7 @@ describe("AgentManager — spawn run endings settle once", () => {
 
       it("does not settle again when a forced run resolves late", async () => {
         const { id, record } = start();
-        manager.abort(id);
+        manager.abort(id, "user");
         await vi.advanceTimersByTimeAsync(GRACE);
         runs[0].resolve(result());
         await record.promise;
@@ -207,7 +207,7 @@ describe("AgentManager — spawn run endings settle once", () => {
         const { id, record } = start();
         const flush = vi.fn();
         record.outputCleanup = flush;
-        manager.abort(id);
+        manager.abort(id, "user");
         await vi.advanceTimersByTimeAsync(GRACE);
         runs[0].resolve(result());
         await record.promise;
@@ -242,6 +242,7 @@ describe("AgentManager — spawn run endings settle once", () => {
         const id = manager.spawn(mockPi, mockCtx, "X", "p", {
           description: "d",
           signal: controller.signal,
+          signalCause: "user",
           ...pool.options,
         });
         runs[0].resolve(result());
@@ -323,7 +324,7 @@ describe("AgentManager — spawn run endings settle once", () => {
 
     it("adds the worktree path to the result on a forced settle", async () => {
       const { id, record } = await startIsolated();
-      manager.abort(id);
+      manager.abort(id, "user");
       expect(cleanupWorktree).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(GRACE);
       expect(record.result).toContain("/tmp/wt");
@@ -334,7 +335,7 @@ describe("AgentManager — spawn run endings settle once", () => {
     it("saves the worktree after a forced settle when the run resolves late", async () => {
       vi.mocked(cleanupWorktree).mockResolvedValue({ hasChanges: true, branch: "late-branch" } as any);
       const { id, record } = await startIsolated();
-      manager.abort(id);
+      manager.abort(id, "user");
       await vi.advanceTimersByTimeAsync(GRACE);
       runs[0].resolve(result());
       await record.promise;
@@ -348,7 +349,7 @@ describe("AgentManager — spawn run endings settle once", () => {
     it("does not add a worktree note on a forced settle without a worktree", async () => {
       manager = new AgentManager(record => completed.push(record), 1);
       const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
-      manager.abort(id);
+      manager.abort(id, "user");
       await vi.advanceTimersByTimeAsync(GRACE);
       expect(manager.getRecord(id)?.result).toBeUndefined();
     });
@@ -476,7 +477,7 @@ describe("AgentManager — resume run endings settle once", () => {
 
       it("stops the resume's own run and keeps stopped when it then resolves", async () => {
         const { id, record, finish } = await start();
-        expect(manager.abort(id)).toBe(true);
+        expect(manager.abort(id, "user")).toBe(true);
         expect(resumes[0].signal?.aborted).toBe(true);
         resumes[0].resolve({ text: "late" });
         await finish();
@@ -488,7 +489,7 @@ describe("AgentManager — resume run endings settle once", () => {
 
       it("keeps stopped when a stopped resume rejects", async () => {
         const { id, record, finish } = await start();
-        manager.abort(id);
+        manager.abort(id, "user");
         resumes[0].reject(new Error("aborted"));
         await finish();
         expect(record.status).toBe("stopped");
@@ -497,7 +498,7 @@ describe("AgentManager — resume run endings settle once", () => {
 
       it("settles a wedged resume through the forced settle", async () => {
         const { id, record } = await start();
-        manager.abort(id);
+        manager.abort(id, "user");
         expect(completed).toEqual([]);
         await vi.advanceTimersByTimeAsync(GRACE);
         expectSettledOnce("stopped");
@@ -506,7 +507,7 @@ describe("AgentManager — resume run endings settle once", () => {
 
       it("does not settle again when a forced resume resolves late", async () => {
         const { id, record, finish } = await start();
-        manager.abort(id);
+        manager.abort(id, "user");
         await vi.advanceTimersByTimeAsync(GRACE);
         resumes[0].resolve({ text: "late" });
         await finish();
@@ -516,7 +517,7 @@ describe("AgentManager — resume run endings settle once", () => {
 
       it("ignores the late ending of a forced resume once the record runs again", async () => {
         const { id, record } = await start();
-        manager.abort(id);
+        manager.abort(id, "user");
         await vi.advanceTimersByTimeAsync(GRACE);
         completed.length = 0;
         const second = manager.resume(id, "third", undefined, pool.options);
@@ -535,7 +536,7 @@ describe("AgentManager — resume run endings settle once", () => {
         const { id, record, finish } = await start();
         const flush = vi.fn();
         record.outputCleanup = flush;
-        manager.abort(id);
+        manager.abort(id, "user");
         await vi.advanceTimersByTimeAsync(GRACE);
         resumes[0].resolve({ text: "late" });
         await finish();
@@ -569,7 +570,7 @@ describe("AgentManager — resume run endings settle once", () => {
         const { id, record } = await spawnSettled();
         const controller = new AbortController();
         const detach = vi.spyOn(controller.signal, "removeEventListener");
-        const pending = manager.resume(id, "again", controller.signal, pool.options);
+        const pending = manager.resume(id, "again", controller.signal, { ...pool.options, signalCause: "owner" });
         controller.abort();
         expect(record.status).toBe("stopped");
         expect(resumes[0].signal?.aborted).toBe(true);
@@ -627,7 +628,7 @@ describe("AgentManager — resume run endings settle once", () => {
       const { id, record } = await spawnSettled();
       manager.spawn(mockPi, mockCtx, "X", "h", { description: "d", isBackground: false, blocking: true });
       const pending = manager.resume(id, "again");
-      expect(manager.abort(id)).toBe(true);
+      expect(manager.abort(id, "user")).toBe(true);
       expect(await pending).toBe(record);
       expect(record.status).toBe("stopped");
       expect(resumes).toHaveLength(0);
@@ -651,7 +652,7 @@ describe("AgentManager — resume run endings settle once", () => {
         expect(slots(manager).runningBackground).toBe(1);
         expect(slots(manager).runningForeground).toBe(foregroundMax);
 
-        manager.abort(id);
+        manager.abort(id, "user");
         expect(resumes[0].signal?.aborted).toBe(true);
         await vi.advanceTimersByTimeAsync(GRACE);
         expect(completed.map(r => r.id)).toEqual([id]);
@@ -719,7 +720,7 @@ describe("AgentManager — resume run endings settle once", () => {
       const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
       const record = manager.getRecord(id)!;
       record.session = mockSession();
-      manager.abort(id);
+      manager.abort(id, "user");
       return { id, record };
     }
 
@@ -789,7 +790,7 @@ describe("AgentManager — resume run endings settle once", () => {
     const holder = manager.spawn(mockPi, mockCtx, "X", "h", { description: "d", isBackground: true });
     await manager.resume(id, "again", undefined, { isBackground: true });
     expect(record.status).toBe("queued");
-    expect(manager.abort(id)).toBe(true);
+    expect(manager.abort(id, "user")).toBe(true);
     record.settled = false;
     expect(record.status).toBe("stopped");
     expect(record.promise).toBeUndefined();
@@ -811,7 +812,7 @@ describe("AgentManager — resume run endings settle once", () => {
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
     const record = manager.getRecord(id)!;
     record.session = mockSession();
-    manager.abort(id);
+    manager.abort(id, "user");
     expect(record.settled).toBeFalsy();
     expect(await manager.resume(id, "early", undefined, { isBackground: true })).toBeUndefined();
     expect(resumes).toHaveLength(0);
@@ -822,7 +823,7 @@ describe("AgentManager — resume run endings settle once", () => {
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
     const record = manager.getRecord(id)!;
     record.session = mockSession();
-    manager.abort(id);
+    manager.abort(id, "user");
     await vi.advanceTimersByTimeAsync(GRACE);
     expectCompleted(completed, ["stopped"]);
     expect(slots(manager).runningBackground).toBe(0);
@@ -851,7 +852,7 @@ describe("AgentManager — resume run endings settle once", () => {
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
     const record = manager.getRecord(id)!;
     record.session = mockSession();
-    manager.abort(id);
+    manager.abort(id, "user");
     await vi.advanceTimersByTimeAsync(GRACE);
     await manager.resume(id, "again", undefined, { isBackground: true });
     runs[0].reject(new Error("late"));
@@ -873,7 +874,7 @@ describe("AgentManager — resume run endings settle once", () => {
     const { id, record } = await spawnSettled();
     const holder = manager.spawn(mockPi, mockCtx, "X", "h", { description: "d", isBackground: false, blocking: true });
     const pending = manager.resume(id, "again");
-    manager.abort(id);
+    manager.abort(id, "user");
     await pending;
     expect(record.settled).toBe(true);
     expectCompleted(completed, ["stopped"]);
@@ -917,7 +918,7 @@ describe("AgentManager — start endings settle once", () => {
         pool.setup(manager);
       }
 
-      function spawn(extra: { signal?: AbortSignal; isolation?: "worktree"; cwd?: string } = {}) {
+      function spawn(extra: { signal?: AbortSignal; signalCause?: StopCause; isolation?: "worktree"; cwd?: string } = {}) {
         const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", ...pool.options, ...extra });
         return { id, record: manager.getRecord(id)! };
       }
@@ -970,7 +971,7 @@ describe("AgentManager — start endings settle once", () => {
         vi.mocked(createWorktree).mockImplementation(() => new Promise(resolve => { finish = resolve; }) as any);
         const { id, record } = spawn({ isolation: "worktree" });
         expect(held()).toBe(pool.counter === undefined ? 0 : 1);
-        expect(manager.abort(id)).toBe(true);
+        expect(manager.abort(id, "user")).toBe(true);
         expect(completed).toEqual([]);
         finish(worktree);
         await vi.advanceTimersByTimeAsync(0);
@@ -995,7 +996,7 @@ describe("AgentManager — start endings settle once", () => {
           const holder = holdThePool();
           const { id, record } = spawn();
           expect(record.status).toBe("queued");
-          expect(manager.abort(id)).toBe(true);
+          expect(manager.abort(id, "user")).toBe(true);
           expect(record.status).toBe("stopped");
           expect(completed).toEqual([record]);
           expect(held()).toBe(1);
@@ -1008,7 +1009,7 @@ describe("AgentManager — start endings settle once", () => {
 
         it("settles a signal that is already aborted at spawn once", async () => {
           const holder = holdThePool();
-          const { record } = spawn({ signal: AbortSignal.abort() });
+          const { record } = spawn({ signal: AbortSignal.abort(), signalCause: "extension" });
           expect(record.status).toBe("stopped");
           expect(record.completedAt).toBeDefined();
           expect(record.settled).toBe(true);

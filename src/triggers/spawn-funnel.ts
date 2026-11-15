@@ -102,6 +102,8 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     delete safeOptions.capability;
     delete safeOptions.ephemeral;
     delete safeOptions.modelReplaced;
+    delete safeOptions.signalCause;
+    if (safeOptions.signal) safeOptions.signalCause = "extension";
     return spawnResolved(piRef, ctxRef, type, prompt, safeOptions, rawAgentConfig);
   };
 

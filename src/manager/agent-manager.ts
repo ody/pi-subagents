@@ -6,7 +6,7 @@ import { pruneWorktrees } from "../platform/worktree.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { shutdownChildSession } from "../session/agent-session-shutdown.js";
 import type { NestedAgentManager } from "../tool/nested-tools.js";
-import type { AgentActivity, AgentRecord, AgentTombstone, MentionResolution, SubagentType } from "../types.js";
+import type { AgentActivity, AgentRecord, AgentTombstone, MentionResolution, StopCause, SubagentType } from "../types.js";
 import type { LifetimeUsage } from "../usage.js";
 import { occupiesForegroundSlot, occupiesPoolSlot, type Pool } from "./agent-manager-rules.js";
 import { type ResumeDeps, type ResumeOptions, resume as resumeOperation } from "./agent-resume.js";
@@ -109,7 +109,7 @@ export class AgentManager {
       takenHandles: () => this.takenHandles(),
       poolFor: record => this.poolFor(record),
       poolHasRoom: pool => this.poolHasRoom(pool),
-      armQueuedAbort: (id, signal) => this.armQueuedAbort(id, signal),
+      armQueuedAbort: (id, signal, cause) => this.armQueuedAbort(id, signal, cause),
       launch: (id, record, args, queued) => this.launch(id, record, args, queued),
       awaitStartup: id => this.awaitStartup(id),
     };
@@ -132,7 +132,7 @@ export class AgentManager {
       startups: this.startups,
       worktreeRepos: this.worktreeRepos,
       poolFor: record => this.poolFor(record),
-      abort: id => this.abort(id),
+      abort: (id, cause) => this.abort(id, cause),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
       settleRun: record => this.settleRun(record),
       acquireSlot: pool => this.acquireSlot(pool),
@@ -148,8 +148,8 @@ export class AgentManager {
     else if (pool === "foreground") this.runningForeground++;
   }
 
-  private armQueuedAbort(id: string, signal?: AbortSignal): boolean {
-    return armQueuedAbortOperation(this.startDeps(), id, signal);
+  private armQueuedAbort(id: string, signal?: AbortSignal, cause?: StopCause): boolean {
+    return armQueuedAbortOperation(this.startDeps(), id, signal, cause);
   }
 
   private launch(id: string, record: AgentRecord, args: SpawnArgs, queued: boolean): Promise<void> {
@@ -200,7 +200,7 @@ export class AgentManager {
 
   private abortOwnedChildren(parentId: string): void {
     for (const [id, record] of this.agents) {
-      if (record.parentAgentId === parentId) this.abort(id);
+      if (record.parentAgentId === parentId) this.abort(id, "owner");
     }
   }
 
@@ -243,7 +243,7 @@ export class AgentManager {
       poolFor: record => this.poolFor(record),
       poolHasRoom: pool => this.poolHasRoom(pool),
       acquireSlot: pool => this.acquireSlot(pool),
-      abort: id => this.abort(id),
+      abort: (id, cause) => this.abort(id, cause),
       settleRun: record => this.settleRun(record),
       reopenRun: record => this.reopenRun(record),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
@@ -318,13 +318,14 @@ export class AgentManager {
     );
   }
 
-  abort(id: string): boolean {
+  abort(id: string, cause: StopCause): boolean {
     const record = this.agents.get(id);
     if (!record) return false;
 
     if (record.status === "queued") {
       this.dequeue(q => q.id === id);
       record.status = "stopped";
+      record.stopCause = cause;
       record.completedAt = Date.now();
       this.settleRun(record);
       return true;
@@ -333,6 +334,7 @@ export class AgentManager {
     if (record.status !== "running") return false;
     record.abortController?.abort();
     record.status = "stopped";
+    record.stopCause = cause;
     record.completedAt = Date.now();
     const controller = record.abortController;
     const timer = setTimeout(() => {
@@ -362,6 +364,7 @@ export class AgentManager {
       const record = this.agents.get(queued.id);
       if (record) {
         record.status = "stopped";
+        record.stopCause = "shutdown";
         record.completedAt = Date.now();
         count++;
       }
@@ -371,6 +374,7 @@ export class AgentManager {
       if (record.status === "running") {
         record.abortController?.abort();
         record.status = "stopped";
+        record.stopCause = "shutdown";
         record.completedAt = Date.now();
         count++;
       }

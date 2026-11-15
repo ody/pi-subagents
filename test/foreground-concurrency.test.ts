@@ -41,6 +41,7 @@ const flush = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 const fg = (manager: AgentManager, prompt: string, options: any = {}) =>
   manager.spawnAndWait(mockPi, mockCtx, "general-purpose", prompt, {
     description: prompt,
+    signalCause: "user",
     ...options,
   });
 
@@ -174,7 +175,7 @@ describe("maxConcurrentForeground", () => {
       const queued = fg(manager, "victim");
       const victimId = recordFor(manager, "victim").id;
 
-      expect(manager.abort(victimId)).toBe(true);
+      expect(manager.abort(victimId, "user")).toBe(true);
 
       const { record } = await queued;
       expect(record.status).toBe("stopped");
@@ -279,7 +280,7 @@ describe("maxConcurrentForeground", () => {
       void fg(manager, "b");
       void fg(manager, "c");
 
-      manager.abort(recordFor(manager, "a").id);
+      manager.abort(recordFor(manager, "a").id, "user");
       resolvers.get("a")!();
       await first;
 

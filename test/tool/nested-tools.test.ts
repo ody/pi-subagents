@@ -91,10 +91,11 @@ beforeEach(() => {
       return { id, capabilities: grant().capabilities };
     },
     resume: vi.fn(),
-    abort: vi.fn((id: string) => {
+    abort: vi.fn((id: string, cause: string) => {
       const record = records.get(id);
       if (!record || (record.status !== "running" && record.status !== "queued")) return false;
       record.status = "stopped";
+      record.stopCause = cause;
       return true;
     }),
   } as any;
@@ -418,6 +419,17 @@ describe("child-safe nested agent tools", () => {
     expect(manager.resume).not.toHaveBeenCalled();
   });
 
+  it("names the owning agent as the owner of the call signal on a foreground spawn and a resume", async () => {
+    const [agent] = tools();
+    await execute(agent, { subagent_type: "reviewer", description: "review", prompt: "Review it" });
+    expect(spawnAndWait.mock.calls[0][4].signalCause).toBe("owner");
+
+    records.set("child-1", { id: "child-1", status: "completed", parentAgentId: "parent-1" });
+    (manager.resume as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "child-1", status: "completed", result: "ok" });
+    await execute(agent, { resume: "child-1", subagent_type: "reviewer", description: "again", prompt: "Continue" });
+    expect(manager.resume).toHaveBeenCalledWith("child-1", "Continue", undefined, { signalCause: "owner" });
+  });
+
   it("stops a running owned child and marks who stopped it", async () => {
     const [, , , stop] = tools();
     const record: Record<string, unknown> = { id: "child-1", status: "running", parentAgentId: "parent-1" };
@@ -428,8 +440,8 @@ describe("child-safe nested agent tools", () => {
     expect(result.isError).toBe(false);
     expect(result.content[0].text).toContain("stopped");
     expect(record.status).toBe("stopped");
-    expect(record.stoppedBy).toBe("agent");
-    expect(manager.abort).toHaveBeenCalledWith("child-1");
+    expect(record.stopCause).toBe("agent");
+    expect(manager.abort).toHaveBeenCalledWith("child-1", "agent");
   });
 
   it("reports an unknown or unowned stop target as not found and leaves it alone", async () => {

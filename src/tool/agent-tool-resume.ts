@@ -63,7 +63,7 @@ export async function resumeAgentCall(deps: ResumeAgentDeps, input: ResumeAgentI
     );
   }
 
-  const record = await manager.resume(params.resume, params.prompt, signal);
+  const record = await manager.resume(params.resume, params.prompt, signal, { signalCause: "user" });
   if (!record) {
     return textResult(`Failed to resume agent "${params.resume}".`);
   }

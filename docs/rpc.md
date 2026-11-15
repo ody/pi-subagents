@@ -153,7 +153,9 @@ One asymmetry to know about, stated as it is:
 
 The same predicate silently scopes the events. **Every lifecycle event is top-level only** — `subagents:started`, `:completed`, `:failed` and `:compacted` all return early for nested agents (`src/index.ts`). A nested child is invisible on the bus: you will see its parent come and go without a single event for the child.
 
-**Stop fires the abort signal and arms a grace timer.** `manager.abort(id)` — the same call this channel makes — aborts the run and arms a 5s timer. Every run settles exactly once, through one tail. The tail detaches the parent abort signal and flushes the output file. It stops nested children and releases the pool slot. Then it fires the completion callback.
+**Stop fires the abort signal and arms a grace timer.** `manager.abort(id, "extension")` — the same call this channel makes — aborts the run, sets `record.stopCause` to `extension` and arms a 5s timer. The same cause applies when a `signal` you pass to `subagents:rpc:spawn` aborts.
+
+Every run settles exactly once, through one tail. The tail detaches the parent abort signal and flushes the output file. It stops nested children and releases the pool slot. Then it fires the completion callback.
 
 A run that resolves enters the tail itself. A wedged run enters the same tail when the timer fires, so a `subagents:rpc:stop` call frees its slot and fires `subagents:completed`/`:failed` within a few seconds. A later real settle returns at once and fires nothing.
 
@@ -194,7 +196,7 @@ One related thing that lives nowhere else: on every top-level settle, pi-subagen
 | `waitForAll()` | `() => Promise<void>` | Resolves when nothing is running. **All** agents, including ones you did not spawn — a shutdown barrier, not a join |
 | `hasRunning()` | `() => boolean` | |
 | `spawn(pi, ctx, type, prompt, options)` | `=> string` | **Is** `spawnTopLevel`, so the strip list above applies identically |
-| `getRecord(id)` | `=> AgentRecord \| undefined` | Filtered through `isTopLevelAgent`, so someone else's child comes back `undefined` rather than leaking |
+| `getRecord(id)` | `=> AgentRecord \| undefined` | Filtered through `isTopLevelAgent`, so someone else's child comes back `undefined` rather than leaking. A `stopped` record carries `stopCause`: `user`, `agent`, `extension`, `owner` or `shutdown`. An aborted spawn `signal` from the registry gives `extension` |
 
 The slot is claimed by the first activation only; subagent sessions re-activate this extension in the same process, and unconditionally overwriting would point the registry at a short-lived child manager whose shutdown would then delete the root session's entry. Child activations leave it alone, and shutdown releases it only if this activation claimed it (`src/index.ts:747-750`, `:1105-1107`).
 

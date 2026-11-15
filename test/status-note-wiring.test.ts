@@ -168,7 +168,7 @@ describe("status note reaches the parent through the real handlers", () => {
     expect(pi.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("background user-stop → get_subagent_result flags STOPPED BY THE USER (not completed)", async () => {
+  it("background rpc stop → get_subagent_result flags STOPPED BY ANOTHER EXTENSION (not completed)", async () => {
     vi.mocked(runAgent).mockReturnValue(new Promise(() => {}) as any);
     const { pi, tools, eventHandlers, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -189,7 +189,8 @@ describe("status note reaches the parent through the real handlers", () => {
     );
 
     const out = textOf(res);
-    expect(out).toContain("STOPPED BY THE USER");
+    expect(out).toContain("STOPPED BY ANOTHER EXTENSION");
+    expect(out).not.toContain("STOPPED BY THE USER");
     expect(out).toContain("the task was NOT finished");
     expect(out).not.toContain("Done");
 
