@@ -33,6 +33,9 @@ Each entry: the rule an agent must not break, and its ADR.
 - **Fleet view.** The fleet view never draws until `↓` at an empty prompt, renders directly above the editor, and closes only on `Esc`, `Enter` on `main`, or a non-fleet key. [ADR 0030](docs/decisions/0030-fleet-view-opens-on-demand.md)
 - **Model override.** Model-facing text never shows an agent's configured `model` or how model values rank. Every `model` parameter says to set it only when the user named a model. [ADR 0031](docs/decisions/0031-model-override-only-when-user-names-model.md)
 - **Agent fit.** Delegation text says to pass `subagent_type` only when a type's description fits the job, else build an ephemeral agent. It never says every call needs a type. [ADR 0032](docs/decisions/0032-registered-agent-only-when-it-fits.md)
+- **Settle tail.** Every run that leaves `queued` or `running` settles exactly once through `settleRun`, except under `abortAll`. Never add a second settle path, and never replace a `stopped` status. [ADR 0033](docs/decisions/0033-agent-runs-settle-once.md)
+- **Stopping.** Every stop goes through `abort()` with a `stopCause`, except `abortAll`. `stop_subagent` never marks a result consumed. [ADR 0034](docs/decisions/0034-stopping-an-agent.md)
+- **Consumption and retention.** A completion notification never consumes a result, and only a new run clears consumption. The sweep never removes a record whose notification is pending. [ADR 0035](docs/decisions/0035-result-consumption-and-retention.md)
 - **No comments.** Files under `src/` and `test/` carry no comments, only `Size:` headers, `biome-ignore` reasons and a shebang. Never add a comment, or carry its prose in a string or variable. [ADR 0010](docs/decisions/0010-no-code-comments.md)
 - **Git hooks.** Pre-commit checks live in tracked `.githooks/` and stay fast. Never run the full suite in the hook, skip it with `--no-verify`, or edit git config. [ADR 0005](docs/decisions/0005-git-hooks.md)
 

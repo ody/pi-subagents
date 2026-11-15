@@ -1,8 +1,6 @@
-> DRAFT: not accepted, not current truth.
+# 0033. Every agent run settles exactly once, through one tail
 
-# NNNN. Every agent run settles exactly once, through one tail
-
-Replaces: 0008-stopped-agents-always-settle, last present in 3449c56
+Replaces: 0008-stopped-agents-always-settle, last present in f56bafc
 
 ## Context
 
@@ -26,7 +24,7 @@ The tail, in order:
 
 1. Set `settled`. A second entry returns at once.
 2. Detach the parent abort signal, then flush and close the output file.
-3. Stop the run's owned children with `stopCause: "owner"` (ADR NNNN, stopping an agent).
+3. Stop the run's owned children with `stopCause: "owner"` (ADR 0034).
 4. Release the slot this run took. Mark a foreground run's result consumed.
 5. Call the completion callback, then drain the queue.
 

@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Reading a result consumes it, and the sweep removes settled records after 10 minutes
+# 0035. Reading a result consumes it, and the sweep removes settled records after 10 minutes
 
 ## Context
 
@@ -15,7 +13,7 @@ A caller that reads a result in full consumes it, and the sweep bounds how long 
 Consumption:
 
 - Consumption applies to a settled run. A new run on the record clears it, and nothing else does.
-- Four things consume a result: a foreground settle (ADR NNNN, settle tail), `get_subagent_result` on a settled run, `subagents:rpc:consume`, and the sweep.
+- Four things consume a result: a foreground settle (ADR 0033), `get_subagent_result` on a settled run, `subagents:rpc:consume`, and the sweep.
 - A completion notification never consumes a result.
 - The notifier never sends a notification for a consumed result.
 

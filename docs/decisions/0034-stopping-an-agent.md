@@ -1,8 +1,6 @@
-> DRAFT: not accepted, not current truth.
+# 0034. Every stop goes through `abort()` and records its cause
 
-# NNNN. Every stop goes through `abort()` and records its cause
-
-Replaces: 0008-stopped-agents-always-settle, last present in 3449c56
+Replaces: 0008-stopped-agents-always-settle, last present in f56bafc
 
 ## Context
 
@@ -12,7 +10,7 @@ The model needs a way to stop its own agents. `steer_subagent` cannot reach a we
 
 ## Decision
 
-Every stop goes through `AgentManager.abort()`, which takes the stop cause. `abortAll` at shutdown is the one exception. The settle that follows a stop is ADR NNNN (one settle tail).
+Every stop goes through `AgentManager.abort()`, which takes the stop cause. `abortAll` at shutdown is the one exception. The settle that follows a stop is ADR 0033.
 
 `AgentRecord.stopCause` replaces `stoppedBy`. The manager registry's `getRecord` returns it, and `docs/rpc.md` documents it. Every `stopped` run has a `stopCause`, and model-facing status text names it:
 
