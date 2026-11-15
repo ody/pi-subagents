@@ -10,9 +10,7 @@ Directories as layers do not hold, because the first module that needs a type fr
 
 ## Decision
 
-A `src/` file lives in the directory named for the one concern it serves. The set of directories is not fixed by this record. It follows the concerns the code has.
-
-The naming and size checks below also apply to the top-level subdirectories of `test/`. Files count at any depth below each one.
+A `src/` file lives in the directory named for the one concern it serves, and a module test lives in the matching `test/` directory. The set of directories is not fixed by this record. It follows the concerns the code has.
 
 A group is valid when it passes these checks:
 
@@ -20,25 +18,29 @@ A group is valid when it passes these checks:
 - A name for what it owns, such as `agents/` or `ui/`. Never `core/`, `utils/`, `helpers/`, `misc/` or `part2/`. A directory named for nothing collects every file nobody would place.
 - At least two files. A directory holding one file names nothing, so that file stays at the root.
 
-Placement rules:
+`src/` placement:
 
 - `src/` root holds the extension entry and code no single group owns. A file one group owns belongs in that group.
 - A file that could fit two groups goes to the group with the largest number of modules importing it. If the counts tie, including zero, it stays at the `src/` root until one group clearly owns it.
 - Groups name ownership, not layers. Imports may point any direction, and no import-direction rule or barrel file applies. ADR 0004's no-cycles rule stays per-module.
-- A module test lives in the `test/` directory with the name of the `src/` group that owns the module it guards. A test of a `src/` root file stays at the `test/` root.
-- A test that guards several groups goes to the group of the module in its file name. Tests of the repository itself, such as file size and source tree, stay at the `test/` root.
-- `test/` also holds support directories: end-to-end tests, fixtures, test harness code and performance checks. Each is named for what it holds, never `helpers`, and never for a `src/` group.
-- A group with one test file keeps that file at the `test/` root, per the two-file check.
-- ADR 0004's per-file rules apply inside every group.
 - No document lists `src/` files. The tree is the map.
 
-Create or change a group when a new file shares a concern with existing files. Also change it when its name stops describing its files. Moving files updates imports and tests in one commit with no other change, per ADR 0004.
+`test/` placement:
+
+- A test named for a `src/` module lives in the `test/` directory named for that module's group. A test of a `src/` root module stays at the `test/` root.
+- Any other test goes to the group it imports the most `src/` modules from. If the counts tie, including zero, it stays at the `test/` root.
+- An end-to-end test lives in `test/e2e/`, whatever module it guards.
+- Tests of the repository itself, such as file size and source tree, stay at the `test/` root.
+- Other support directories hold fixtures, test harness code and performance checks. Name each for what it holds, never for a `src/` group.
+- A group directory in `test/` needs no second file, because the `src/` group already names it.
+
+Create or change a group when a new file shares a concern with existing files. Also change it when its name stops describing its files. Moving files updates imports and tests in one commit with no other change, per ADR 0004. Moving a `src/` file between groups moves its test in the same commit.
 
 Done check:
 
-- No `src/` or `test/` subdirectory has the name `core`, `utils`, `helpers`, `misc` or `part2`.
-- Every top-level `src/` and `test/` subdirectory holds at least two files, counted at any depth.
-- Every `test/` module test sits in the directory of its module's `src/` group.
+- No `src/` or `test/` directory, at any depth, has the name `core`, `utils`, `helpers`, `misc` or `part2`.
+- Every top-level `src/` group and every `test/` support directory holds at least two files, counted at any depth.
+- Every test named for a `src/` module sits in the `test/` directory of that module's group.
 - `test/source-tree.test.ts` enforces the checks above.
 
 Rejected:
@@ -54,4 +56,4 @@ Rejected:
 
 A file with no obvious home is not a reason for a new group. It belongs in the group whose concern it serves, or that group's name is wrong.
 
-The test cannot judge whether a group's concern is coherent. That stays with review, as ADR 0004's seam checks do. Revisit if a group grows past what one directory carries, since it may split along a seam it already has.
+The test cannot judge whether a group's concern is coherent, or which group a test imports the most from. Both stay with review, as ADR 0004's seam checks do. Revisit if a group grows past what one directory carries, since it may split along a seam it already has.
