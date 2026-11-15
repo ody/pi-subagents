@@ -1,4 +1,4 @@
-# 0004. Source files are split along cohesion seams, with size as a trigger
+# 0004. Split source files along cohesion seams, with size as a trigger
 
 ## Context
 
@@ -8,12 +8,12 @@ A bare line limit invites bad fixes: arbitrary `part2.ts` splits, dumping ground
 
 ## Decision
 
-Size limits are triggers to look at a file, never targets to hit. The goal is that each file is easy to reason about and can be read whole.
+Size limits are triggers to look at a file, never targets to hit. The goal is that each file is easy to reason about and an agent can read it whole.
 
 - A `src/` file over 500 lines needs a header comment line `Size: <one-sentence reason>`, or a split.
 - A `src/` file must stay under 800 lines and 40 KB.
-- `test/file-size.test.ts` enforces both rules. Exceptions sit in an allowlist that pins each file's line count and byte size. Neither may grow. An entry may shrink or be removed.
-- Function size is judged by Biome's `complexity/noExcessiveCognitiveComplexity` at its default of 15, enabled at `info` severity. It reports and never fails `npm run check`. A long flat sequence, such as a list of registrations, is fine.
+- `test/file-size.test.ts` enforces both rules. Exceptions sit in an allowlist that pins each file's line count and byte size. Neither may grow. An entry may shrink or leave the list.
+- Biome's `complexity/noExcessiveCognitiveComplexity` judges function size, at its default of 15 and `info` severity. It reports and never fails `npm run check`. A long flat sequence, such as a list of registrations, is fine.
 - A function scoring over 30 fails `test/complexity.test.ts`. Biome cannot set a second threshold, so the test parses `biome lint --reporter=json`.
 - A report means read the function and decide. Record a function judged acceptable with `// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: <reason>`. Never shorten code only to silence the rule.
 
@@ -32,7 +32,7 @@ Never do these to meet a limit:
 - Add barrel files or re-export shims.
 - Shorten code by lengthening lines, deleting blank lines, or writing dense one-liners.
 
-A split changes no behavior. It moves code, updates imports, updates the matching tests and updates the `src/` file map in `README.md`, in one commit with no other change. New per-concern code goes in a module that exposes `registerX(pi, deps)`, and `index.ts` only wires.
+A split changes no behavior. It moves code, updates imports, and updates the matching tests, in one commit with no other change. New per-concern code goes in a module that exposes `registerX(pi, deps)`, and `index.ts` only wires.
 
 Done check:
 
