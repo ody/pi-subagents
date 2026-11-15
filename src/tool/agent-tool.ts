@@ -79,7 +79,7 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       model: Type.Optional(
         Type.String({
           description:
-            'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Only set this when the user named a model in their request; otherwise omit.',
+            'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). Set this only when the user named a model in their request; otherwise omit it.',
         }),
       ),
       thinking: Type.Optional(

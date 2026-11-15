@@ -1,10 +1,55 @@
-import { describe, expect, it } from "vitest";
-import { BUILTIN_TOOL_NAMES } from "../src/agents/agent-types.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_TOOL_NAMES, registerAgents } from "../src/agents/agent-types.js";
 import { getModelLabelFromConfig } from "../src/config/model-resolver.js";
+import { formatTaskNotification } from "../src/manager/notification-format.js";
+import { type AgentToolDeps, createAgentTool } from "../src/tool/agent-tool.js";
 import { buildAgentToolDescription, firstSentence, formatToolsSuffix } from "../src/tool/agent-tool-description.js";
-import type { AgentConfig } from "../src/types.js";
+import { createNestedSubagentTools } from "../src/tool/nested-tools.js";
+import type { AgentConfig, AgentRecord } from "../src/types.js";
 
 const cfg = (over: Partial<AgentConfig>) => over as AgentConfig;
+
+const CONFIGURED_MODEL = "anthropic/claude-haiku-4-5-20251001";
+const CONFIGURED_MODEL_LABEL = "claude-haiku-4-5";
+const MODEL_PARAMETER_RULE = "only when the user named a model";
+
+interface ToolLike {
+  name: string;
+  description?: string;
+  promptSnippet?: string;
+  promptGuidelines?: string[];
+  parameters?: { properties?: Record<string, { description?: string }> };
+}
+
+const topLevelAgentTool = (): ToolLike => {
+  const pi = { registerTool: vi.fn(), events: { emit: vi.fn(), on: vi.fn() } } as any;
+  const deps: AgentToolDeps = {
+    manager: {} as any,
+    widget: {} as any,
+    fleet: {} as any,
+    notifier: {} as any,
+    startBackgroundResume: vi.fn(),
+    reloadCustomAgents: vi.fn(),
+    settings: { toolDescriptionMode: "full", backgroundByDefault: true, defaultJoinMode: "smart", showCost: false } as any,
+  };
+  return createAgentTool(pi, deps) as ToolLike;
+};
+
+const nestedAgentTools = (): ToolLike[] =>
+  createNestedSubagentTools({
+    manager: {} as any,
+    pi: { events: { emit: vi.fn() } } as any,
+    parentAgentId: "parent",
+    depth: 1,
+    maxSubagentDepth: 2,
+    allowedSubagents: "all",
+    configCwd: "/tmp",
+  }) as ToolLike[];
+
+const registerModelAgent = () =>
+  registerAgents(new Map([["modeled", cfg({ name: "modeled", description: "Agent with a configured model.", model: CONFIGURED_MODEL })]]));
+
+afterEach(() => registerAgents(new Map()));
 
 describe("formatToolsSuffix", () => {
   it("renders * for an unknown or un-narrowed agent", () => {
@@ -69,7 +114,49 @@ describe("buildAgentToolDescription", () => {
     expect(text).not.toMatch(/match an available agent type/i);
   });
 
+  it.each(["full", "compact"] as const)("lists a configured model in no %s type entry", (mode) => {
+    registerModelAgent();
+    const text = buildAgentToolDescription({ ...base, mode });
+    expect(text).toContain("- modeled: Agent with a configured model.");
+    expect(text).not.toContain(CONFIGURED_MODEL_LABEL);
+  });
+
+  it("tells the caller to set model only when the user named one", () => {
+    expect(buildAgentToolDescription(base)).toContain(MODEL_PARAMETER_RULE);
+  });
+
   it("compact is shorter than full", () => {
     expect(buildAgentToolDescription({ ...base, mode: "compact" }).length).toBeLessThan(buildAgentToolDescription(base).length);
+  });
+});
+
+describe("agent tool parameters", () => {
+  it("tells the caller to set model only when the user named one, in both tools", () => {
+    const nested = nestedAgentTools().find((t) => t.name === "agent");
+    for (const tool of [topLevelAgentTool(), nested]) {
+      const description = tool?.parameters?.properties?.model?.description ?? "";
+      expect(description, tool?.name).toContain(MODEL_PARAMETER_RULE);
+      expect(description).toMatch(/omit/);
+    }
+  });
+});
+
+describe("formatTaskNotification", () => {
+  it("shows no label of the agent configured model", () => {
+    registerModelAgent();
+    const record = {
+      id: "a1",
+      type: "modeled",
+      description: "Do work",
+      status: "completed",
+      result: "done",
+      toolUses: 1,
+      startedAt: 0,
+      completedAt: 10,
+      lifetimeUsage: { input: 1, output: 1, cacheWrite: 0, cacheRead: 0, cost: 0 },
+    } as AgentRecord;
+    const text = formatTaskNotification(record, 1000);
+    expect(text).not.toContain(CONFIGURED_MODEL_LABEL);
+    expect(text).not.toContain("haiku");
   });
 });

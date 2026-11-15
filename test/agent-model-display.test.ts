@@ -348,7 +348,7 @@ describe("agent tool result — effective model", () => {
 
     expect(description).toBe(
       'Optional model override. Accepts "provider/modelId" or fuzzy name (e.g. "haiku", "sonnet"). '
-        + "Only set this when the user named a model in their request; otherwise omit.",
+        + "Set this only when the user named a model in their request; otherwise omit it.",
     );
     expect(`${tool.description}\n${description}`).not.toMatch(/pin|frontmatter|override.*agent file/i);
   });

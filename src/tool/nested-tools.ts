@@ -277,7 +277,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         }),
       ),
       ...ephemeralParamShape,
-      model: Type.Optional(Type.String({ description: "Optional provider/model override." })),
+      model: Type.Optional(Type.String({ description: "Optional provider/model override. Set this only when the user named a model; otherwise omit it." })),
       thinking: Type.Optional(Type.String({ description: "Optional thinking level." })),
       max_turns: Type.Optional(Type.Number({ minimum: 0 })),
       run_in_background: Type.Optional(

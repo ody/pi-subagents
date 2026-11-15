@@ -2,7 +2,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES, getAgentConfig, getAvailableTypes } from "../agents/agent-types.js";
-import { getModelLabelFromConfig } from "../config/model-resolver.js";
 import type { ToolDescriptionMode } from "../config/settings.js";
 import type { AgentConfig } from "../types.js";
 
@@ -24,9 +23,8 @@ const buildTypeListText = () => {
 
   return available.map((name) => {
     const cfg = getAgentConfig(name);
-    const modelSuffix = cfg?.model ? ` (${getModelLabelFromConfig(cfg.model)})` : "";
     const toolsSuffix = ` (Tools: ${formatToolsSuffix(cfg)})`;
-    return `- ${name}: ${cfg?.description ?? name}${modelSuffix}${toolsSuffix}`;
+    return `- ${name}: ${cfg?.description ?? name}${toolsSuffix}`;
   }).join("\n");
 };
 
@@ -93,7 +91,7 @@ If the target is already known, handle it yourself. Reserve this tool for open-e
 - Use steer_subagent to send mid-run messages to a running background agent.
 - Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, etc.), since it is not aware of the user's intent.
 - If an agent's description says it should be used proactively, try to use it without the user having to ask for it first.
-- Use model to specify a different model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet").
+- Set model only when the user named a model (as "provider/modelId", or fuzzy e.g. "haiku", "sonnet"); otherwise omit it.
 - Use thinking to control extended thinking level.
 - Use inherit_context if the agent needs the parent conversation history.${isolationGuideline}
 

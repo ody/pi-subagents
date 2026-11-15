@@ -169,6 +169,19 @@ describe("toolDescriptionMode", () => {
     expect(desc).not.toContain("## Usage notes");
   });
 
+  it("custom mode lists a configured model in no type entry", () => {
+    const tools = setup({ toolDescriptionMode: "custom" }, () => {
+      writeFileSync(
+        join(hermeticAgentDir, "agents", "modeled.md"),
+        "---\ndescription: Agent with a configured model.\nmodel: anthropic/claude-haiku-4-5-20251001\n---\n\nYou are modeled.\n",
+      );
+      writeFileSync(join(hermeticAgentDir, "agent-tool-description.md"), "FULL:\n{{typeList}}\nCOMPACT:\n{{compactTypeList}}");
+    });
+    const desc: string = tools.get("agent").description;
+    expect(desc).toContain("- modeled: Agent with a configured model.");
+    expect(desc).not.toContain("claude-haiku-4-5");
+  });
+
   it("custom mode falls back to the global file when no project file exists", () => {
     const tools = setup({ toolDescriptionMode: "custom" }, () => {
       writeFileSync(join(hermeticAgentDir, "agent-tool-description.md"), "GLOBAL CUSTOM\n{{compactTypeList}}");
