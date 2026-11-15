@@ -131,15 +131,10 @@ export class AgentManager {
       drainQueue: () => this.drainQueue(),
       abort: id => this.abort(id),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
-      abortOwnedChildren: id => this.abortOwnedChildren(id),
-      settleRun: (record, guardCallback, pool) => this.settleRun(record, guardCallback, pool),
+      settleRun: record => this.settleRun(record),
       acquireSlot: pool => {
         if (pool === "background") this.runningBackground++;
         else if (pool === "foreground") this.runningForeground++;
-      },
-      releaseSlot: pool => {
-        if (pool === "background") this.runningBackground--;
-        else if (pool === "foreground") this.runningForeground--;
       },
       nestedManager: this as NestedAgentManager,
       onStart: record => this.onStart?.(record),
@@ -161,34 +156,38 @@ export class AgentManager {
     return awaitStartupOperation(this.startDeps(), id);
   }
 
-  private settleRun(record: AgentRecord, guardCallback: boolean, pool: Pool | undefined): void {
+  private settleRun(record: AgentRecord): void {
     if (record.settled) return;
     record.settled = true;
-    if (!record.isBackground) record.resultConsumed = true;
-    if (pool === "background") this.runningBackground--;
-    else if (pool === "foreground") this.runningForeground--;
 
-    if (guardCallback) {
-      try { this.onComplete?.(record); } catch {}
-    } else {
-      this.onComplete?.(record);
-    }
-
-    if (record.isBackground || pool !== undefined) this.drainQueue();
-  }
-
-  private forceSettle(record: AgentRecord): void {
-    if (record.settled) return;
-    this.abortOwnedChildren(record.id);
+    record.detachParentSignal?.();
+    record.detachParentSignal = undefined;
     if (record.outputCleanup) {
       try { record.outputCleanup(); } catch {}
       record.outputCleanup = undefined;
     }
+
+    this.abortOwnedChildren(record.id);
+
+    if (record.pool === "background") this.runningBackground--;
+    else if (record.pool === "foreground") this.runningForeground--;
+    if (!record.isBackground) record.resultConsumed = true;
+
+    try { this.onComplete?.(record); } catch {}
+    this.drainQueue();
+  }
+
+  private forceSettle(record: AgentRecord): void {
+    if (record.settled) return;
     if (record.result === undefined) {
       const streamed = this.getActivity(record.id)?.responseText.trim();
       if (streamed) record.result = streamed;
     }
-    this.settleRun(record, true, record.pool);
+    if (record.worktree) {
+      record.result = (record.result ?? "") +
+        `\n\n---\nThe agent did not stop in time. Its worktree stays at \`${record.worktree.path}\`. Its changes are not on a branch.`;
+    }
+    this.settleRun(record);
   }
 
   private abortOwnedChildren(parentId: string): void {

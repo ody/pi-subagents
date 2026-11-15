@@ -100,6 +100,7 @@ export interface AgentRecord {
   outputFile?: string;
   sessionFile?: string;
   outputCleanup?: () => void;
+  detachParentSignal?: () => void;
   lifetimeUsage: LifetimeUsage;
   compactionCount: number;
   isBackground?: boolean;

@@ -1100,11 +1100,21 @@ const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply) => {
 pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
 ```
 
-`abort()` itself only fires the run's `AbortController` and marks the record `"stopped"`. Releasing its pool slot, stopping any nested children, flushing its output file, and firing the completion notification happen once the run's own promise settles. For an agent wedged inside a tool call that never returns, that might be never.
+`abort()` on a running agent fires the run's `AbortController` and marks the record `"stopped"`. It also arms a 5 s grace timer that does not keep the process alive.
 
-A grace-period timer now forces that settle tail after a few seconds if the real one hasn't happened. A stop through this channel therefore reliably frees its slot and notifies even for a wedged agent. It no longer leaks the slot or withholds the notification forever.
+Every run settles exactly once, through one tail. The tail runs these steps in order:
 
-The forced tail also copies the streamed response text into `record.result` when no result exists, so the notification carries partial output instead of "No output.". A responsive agent settles through its own promise well inside that window and never touches the forced path.
+1. Mark the run settled. A second entry returns at once.
+2. Detach the parent abort signal. Flush and close the output file.
+3. Stop the run's nested children.
+4. Release the pool slot the run took. Mark a foreground run's result consumed.
+5. Fire the completion callback. Drain the queue.
+
+A run whose promise resolves sets its terminal status first and never replaces `"stopped"`. It then saves and removes its worktree, and enters the tail.
+
+An agent can wedge inside a tool call that never returns. For that agent, the grace timer enters the same tail. A stop through this channel therefore frees its slot and notifies within a few seconds. A late real settle after a forced one returns at once. It does not release the slot or notify again.
+
+The forced entry first copies the streamed response text into `record.result` when no result exists. The notification then carries partial output instead of "No output.". The forced entry also adds the worktree path to the result when the run has a worktree. It does not save the worktree, because a tool process of the wedged run can still write to it. If the run later resolves, the run saves the worktree.
 
 ### Consume
 

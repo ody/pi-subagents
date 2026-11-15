@@ -153,11 +153,11 @@ One asymmetry to know about, stated as it is:
 
 The same predicate silently scopes the events. **Every lifecycle event is top-level only** — `subagents:started`, `:completed`, `:failed` and `:compacted` all return early for nested agents (`src/index.ts`). A nested child is invisible on the bus: you will see its parent come and go without a single event for the child.
 
-**Stop no longer just fires the abort signal and stops there.** `manager.abort(id)` — the same call this channel makes — used to release the run's concurrency slot, stop its nested children, and notify only once the run's own promise settled, which for an agent wedged inside a tool call that never returns might never happen.
+**Stop fires the abort signal and arms a grace timer.** `manager.abort(id)` — the same call this channel makes — aborts the run and arms a 5s timer. Every run settles exactly once, through one tail. The tail detaches the parent abort signal and flushes the output file. It stops nested children and releases the pool slot. Then it fires the completion callback.
 
-A grace-period timer (5s) now forces that settle tail if the real one hasn't fired by then, so a `subagents:rpc:stop` call reliably frees its slot and fires `subagents:completed`/`:failed` within a few seconds even for a wedged agent, instead of leaking the slot and withholding the event forever.
+A run that resolves enters the tail itself. A wedged run enters the same tail when the timer fires, so a `subagents:rpc:stop` call frees its slot and fires `subagents:completed`/`:failed` within a few seconds. A later real settle returns at once and fires nothing.
 
-The forced tail also copies the streamed response text into `record.result` when no result exists, so that event (and the notification) carries the partial output instead of an empty `result`. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
+The forced entry copies the streamed response text into `record.result` when no result exists. That event and the notification then carry the partial output instead of an empty `result`. The forced entry also adds the worktree path when the run has a worktree. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
 
 ## The notification race
 

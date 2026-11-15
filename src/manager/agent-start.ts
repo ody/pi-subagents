@@ -16,10 +16,8 @@ export interface StartDeps {
   drainQueue: () => void;
   abort: (id: string) => boolean;
   noteToolActivity: (id: string, activity: ToolActivity) => void;
-  abortOwnedChildren: (parentId: string) => void;
-  settleRun: (record: AgentRecord, guardCallback: boolean, pool: Pool | undefined) => void;
+  settleRun: (record: AgentRecord) => void;
   acquireSlot: (pool: Pool | undefined) => void;
-  releaseSlot: (pool: Pool | undefined) => void;
   nestedManager: NestedAgentManager;
   onStart?: (record: AgentRecord) => void;
   onComplete?: (record: AgentRecord) => void;
@@ -53,11 +51,10 @@ export function launch(
     (err) => {
       deps.startups.delete(id);
       if (queuedPool !== undefined) {
-        if (queuedPool === "foreground") record.resultConsumed = true;
         record.status = "error";
         record.error = err instanceof Error ? err.message : String(err);
-        record.completedAt = Date.now();
-        deps.onComplete?.(record);
+        record.completedAt ??= Date.now();
+        deps.settleRun(record);
       } else {
         deps.agents.delete(id);
       }
@@ -85,10 +82,6 @@ export async function startAgent(
 
   const pool = deps.poolFor(record);
   record.pool = pool;
-  const releaseSlot = () => {
-    record.settled = true;
-    deps.releaseSlot(pool);
-  };
   record.status = "running";
   record.startedAt = Date.now();
   record.startGate = undefined;
@@ -98,36 +91,37 @@ export async function startAgent(
   if (options.isolation === "worktree" && isWorktreeIsolationEnabled()) {
     const wt = await createWorktree(pi, baseCwd, id);
     if (!wt) {
-      releaseSlot();
-      throw new Error(
+      const failure = new Error(
         'Cannot run with isolation: "worktree" — not a git repo, no commits yet, or `git worktree add` failed. ' +
         'Initialize git and commit at least once, or omit `isolation`.',
       );
+      record.status = "error";
+      record.error = failure.message;
+      record.completedAt ??= Date.now();
+      deps.settleRun(record);
+      throw failure;
     }
     record.worktree = wt;
     worktreeCwd = customCwd !== undefined ? wt.workPath : wt.path;
     deps.worktreeRepos.add(baseCwd);
 
     if (record.status !== "running") {
-      releaseSlot();
       record.worktreeResult = await cleanupWorktree(pi, baseCwd, wt, options.description);
-      deps.drainQueue();
+      deps.settleRun(record);
       return;
     }
   }
 
   deps.onStart?.(record);
 
-  let detachParentSignal: (() => void) | undefined;
   if (options.signal) {
     if (options.signal.aborted) deps.abort(id);
     else {
       const onParentAbort = () => deps.abort(id);
       options.signal.addEventListener("abort", onParentAbort, { once: true });
-      detachParentSignal = () => options.signal!.removeEventListener("abort", onParentAbort);
+      record.detachParentSignal = () => options.signal!.removeEventListener("abort", onParentAbort);
     }
   }
-  const detach = () => { detachParentSignal?.(); detachParentSignal = undefined; };
 
   const promise = runAgent(ctx, type, prompt, {
     pi,
@@ -217,13 +211,6 @@ export async function startAgent(
       record.session = session;
       record.completedAt ??= Date.now();
 
-      detach();
-
-      if (record.outputCleanup) {
-        try { record.outputCleanup(); } catch { }
-        record.outputCleanup = undefined;
-      }
-
       if (record.worktree) {
         const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree, options.description);
         record.worktreeResult = wtResult;
@@ -237,9 +224,7 @@ export async function startAgent(
         }
       }
 
-      deps.abortOwnedChildren(id);
-
-      deps.settleRun(record, true, pool);
+      deps.settleRun(record);
       return responseText;
     })
     .catch(async (err) => {
@@ -249,13 +234,6 @@ export async function startAgent(
       record.error = err instanceof Error ? err.message : String(err);
       record.completedAt ??= Date.now();
 
-      detach();
-
-      if (record.outputCleanup) {
-        try { record.outputCleanup(); } catch { }
-        record.outputCleanup = undefined;
-      }
-
       if (record.worktree) {
         try {
           const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree, options.description);
@@ -263,9 +241,7 @@ export async function startAgent(
         } catch { }
       }
 
-      deps.abortOwnedChildren(id);
-
-      deps.settleRun(record, false, pool);
+      deps.settleRun(record);
       return "";
     });
 
