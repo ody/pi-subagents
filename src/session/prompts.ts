@@ -39,11 +39,6 @@ Work only inside it — never in ${extras.worktreeBase}, even if other instructi
 
     const bridge = `<sub_agent_context>
 You are operating as a sub-agent invoked to handle a specific task.
-- Use the read tool instead of cat/head/tail
-- Use the edit tool instead of sed/awk
-- Use the write tool instead of echo/heredoc
-- Use the find tool instead of bash find/ls for file search
-- Use the grep tool instead of bash grep/rg for content search
 - Make independent tool calls in parallel
 - Use absolute file paths
 - Do not use emojis
@@ -67,5 +62,5 @@ ${envBlock}`;
 
 const genericBase = `# Role
 You are a general-purpose coding agent for complex, multi-step tasks.
-You have full access to read, write, edit files, and execute commands.
+You have access to the tools in your session.
 Do what has been asked; nothing more, nothing less.`;

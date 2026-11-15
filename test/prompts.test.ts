@@ -132,12 +132,15 @@ describe("buildAgentPrompt", () => {
     expect(prompt).not.toContain("<sub_agent_context>");
   });
 
-  it("append mode bridge contains tool reminders", () => {
+  it("append mode bridge keeps non-tool reminders and names no built-in tool", () => {
     const config = testAgent("general-purpose", { systemPrompt: "", promptMode: "append" });
     const prompt = buildAgentPrompt(config, "/workspace", env, "Parent prompt.");
-    expect(prompt).toContain("Use the read tool instead of cat");
-    expect(prompt).toContain("Use the edit tool instead of sed");
-    expect(prompt).toContain("Use the grep tool instead of");
+    const bridge = prompt.slice(prompt.indexOf("<sub_agent_context>"), prompt.indexOf("</sub_agent_context>"));
+    expect(bridge).toContain("Make independent tool calls in parallel");
+    expect(bridge).toContain("Use absolute file paths");
+    expect(bridge).toContain("Do not use emojis");
+    expect(bridge).toContain("Be concise but complete");
+    expect(bridge).not.toMatch(/\b(read|bash|edit|write|grep|find|ls)\b/i);
   });
 
   it("append mode without parent prompt still has bridge", () => {
@@ -156,8 +159,9 @@ describe("buildAgentPrompt", () => {
     const prompt = buildAgentPrompt(config, "/workspace", env);
     expect(prompt).toContain("<sub_agent_context>");
     expect(prompt).not.toContain("<inherited_system_prompt>");
-    expect(prompt).toContain("Use the read tool instead of cat");
     expect(prompt).toContain("general-purpose coding agent");
+    expect(prompt).toContain("You have access to the tools in your session.");
+    expect(prompt).not.toMatch(/\b(read|bash|edit|write|grep|find|ls)\b/i);
     expect(prompt).toContain("Extra stuff.");
   });
 
