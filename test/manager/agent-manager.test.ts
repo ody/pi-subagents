@@ -1792,7 +1792,7 @@ describe("AgentManager — background resume", () => {
     expect(resumeAgent).not.toHaveBeenCalled();
   });
 
-  it("foreground resume is unchanged: awaits inline and does not fire onComplete", async () => {
+  it("a foreground resume awaits inline, fires onComplete once and marks the result consumed", async () => {
     const onComplete = vi.fn();
     manager = new AgentManager(onComplete);
     const id = await spawnSettled(manager);
@@ -1803,7 +1803,8 @@ describe("AgentManager — background resume", () => {
 
     expect(record?.status).toBe("completed");
     expect(record?.result).toBe("inline result");
-    expect(onComplete).not.toHaveBeenCalled();
+    expect(record?.resultConsumed).toBe(true);
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it("refuses to background-resume an agent whose run is still in flight", async () => {

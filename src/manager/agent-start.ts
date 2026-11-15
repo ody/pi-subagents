@@ -123,6 +123,9 @@ export async function startAgent(
     }
   }
 
+  const controller = record.abortController!;
+  const isCurrent = () => record.abortController === controller;
+
   const promise = runAgent(ctx, type, prompt, {
     pi,
     agentId: id,
@@ -138,7 +141,7 @@ export async function startAgent(
     cwd: worktreeCwd ?? customCwd,
     worktreeBase: worktreeCwd ? baseCwd : undefined,
     configCwd: options.configCwd ?? (customCwd !== undefined ? ctx.cwd : undefined),
-    signal: record.abortController!.signal,
+    signal: controller.signal,
     notify: (message, level) => ctx.ui?.notify?.(message, level),
     onToolActivity: (activity) => {
       if (activity.type === "end") record.toolUses++;
@@ -197,42 +200,35 @@ export async function startAgent(
     },
   })
     .then(async ({ responseText, session, aborted, steered, failure }) => {
-      if (record.status !== "stopped") {
-        if (aborted) {
-          record.status = "aborted";
-        } else if (failure) {
-          record.status = "error";
-          record.error = failure;
-        } else {
-          record.status = steered ? "steered" : "completed";
+      if (isCurrent()) {
+        if (record.status !== "stopped") {
+          if (aborted) {
+            record.status = "aborted";
+          } else if (failure) {
+            record.status = "error";
+            record.error = failure;
+          } else {
+            record.status = steered ? "steered" : "completed";
+          }
         }
-      }
-      record.result = responseText;
-      record.session = session;
-      record.completedAt ??= Date.now();
-
-      if (record.worktree) {
-        const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree, options.description);
-        record.worktreeResult = wtResult;
-        if (wtResult.hasChanges && wtResult.branch) {
-          const repoNote = customCwd !== undefined ? ` in \`${baseCwd}\`` : "";
-          record.result = (record.result ?? "") +
-            `\n\n---\nChanges saved to branch \`${wtResult.branch}\`${repoNote}. Merge with: \`git merge ${wtResult.branch}\`${customCwd !== undefined ? ` (run in \`${baseCwd}\`)` : ""}`;
-        } else if (wtResult.failure) {
-          record.result = (record.result ?? "") +
-            `\n\n---\nSaving the worktree changes failed: ${wtResult.failure}\nThe worktree stays at \`${wtResult.path}\`. Its changes are not on a branch.`;
-        }
+        record.result = responseText;
+        record.session = session;
+        record.completedAt ??= Date.now();
       }
 
-      deps.settleRun(record);
+      if (record.worktree) await saveWorktree(pi, baseCwd, customCwd, record, options.description);
+
+      if (isCurrent()) deps.settleRun(record);
       return responseText;
     })
     .catch(async (err) => {
-      if (record.status !== "stopped") {
-        record.status = "error";
+      if (isCurrent()) {
+        if (record.status !== "stopped") {
+          record.status = "error";
+        }
+        record.error = err instanceof Error ? err.message : String(err);
+        record.completedAt ??= Date.now();
       }
-      record.error = err instanceof Error ? err.message : String(err);
-      record.completedAt ??= Date.now();
 
       if (record.worktree) {
         try {
@@ -241,11 +237,30 @@ export async function startAgent(
         } catch { }
       }
 
-      deps.settleRun(record);
+      if (isCurrent()) deps.settleRun(record);
       return "";
     });
 
   record.promise = promise;
 
   options.onSpawned?.(id);
+}
+
+async function saveWorktree(
+  pi: SpawnArgs["pi"],
+  baseCwd: string,
+  customCwd: string | undefined,
+  record: AgentRecord,
+  description: string,
+): Promise<void> {
+  const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree!, description);
+  record.worktreeResult = wtResult;
+  if (wtResult.hasChanges && wtResult.branch) {
+    const repoNote = customCwd !== undefined ? ` in \`${baseCwd}\`` : "";
+    record.result = (record.result ?? "") +
+      `\n\n---\nChanges saved to branch \`${wtResult.branch}\`${repoNote}. Merge with: \`git merge ${wtResult.branch}\`${customCwd !== undefined ? ` (run in \`${baseCwd}\`)` : ""}`;
+  } else if (wtResult.failure) {
+    record.result = (record.result ?? "") +
+      `\n\n---\nSaving the worktree changes failed: ${wtResult.failure}\nThe worktree stays at \`${wtResult.path}\`. Its changes are not on a branch.`;
+  }
 }

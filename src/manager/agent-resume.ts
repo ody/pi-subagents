@@ -2,7 +2,7 @@ import { normalizeMaxTurns } from "../config/runner-defaults.js";
 import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { AgentActivity, AgentRecord } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
-import { occupiesPoolSlot, type Pool } from "./agent-manager-rules.js";
+import type { Pool } from "./agent-manager-rules.js";
 
 export interface ResumeOptions {
   isBackground?: boolean;
@@ -24,15 +24,13 @@ export interface ResumeDeps {
   agents: Map<string, AgentRecord>;
   activities: Map<string, AgentActivity>;
   queue: ResumeQueueEntry[];
+  poolFor: (record: AgentRecord) => Pool | undefined;
   poolHasRoom: (pool: Pool) => boolean;
-  acquireBackgroundSlot: () => void;
-  releaseBackgroundSlot: () => void;
+  acquireSlot: (pool: Pool | undefined) => void;
   abort: (id: string) => boolean;
-  drainQueue: () => void;
-  abortOwnedChildren: (parentId: string) => void;
+  settleRun: (record: AgentRecord) => void;
   noteToolActivity: (id: string, activity: ToolActivity) => void;
   onStart?: (record: AgentRecord) => void;
-  onComplete?: (record: AgentRecord) => void;
   onCompact?: (record: AgentRecord, info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
   onUsage?: (record: AgentRecord, usage: LifetimeUsage) => void;
 }
@@ -46,6 +44,7 @@ export async function resume(
 ): Promise<AgentRecord | undefined> {
   const record = deps.agents.get(id);
   if (!record?.session) return undefined;
+  if (record.status === "running" || record.status === "queued" || (!record.settled && record.promise !== undefined)) return undefined;
 
   const activity = deps.activities.get(id);
   if (activity) {
@@ -56,160 +55,132 @@ export async function resume(
     if (options?.maxTurns !== undefined) activity.maxTurns = normalizeMaxTurns(options.maxTurns);
   }
 
-  if (options?.isBackground) {
-    if (record.status === "running" || record.status === "queued") return undefined;
-
-    record.isBackground = true;
-    record.resultConsumed = false;
-    record.result = undefined;
-    record.error = undefined;
-    record.completedAt = undefined;
-    record.status = "queued";
-    record.settled = false;
-
-    const start = () => startResume(deps, id, record, prompt, signal, options);
-    if (occupiesPoolSlot(record) && !deps.poolHasRoom("background")) {
-      deps.queue.push({
-        id,
-        pool: "background",
-        start: async () => {
-          try {
-            start();
-          } catch (err) {
-            record.status = "error";
-            record.error = err instanceof Error ? err.message : String(err);
-            record.completedAt = Date.now();
-            deps.onComplete?.(record);
-          }
-        },
-        release: () => {},
-      });
-    } else {
-      start();
-    }
-    return record;
-  }
-
-  record.status = "running";
-  record.startedAt = Date.now();
-  record.completedAt = undefined;
+  const isBackground = options?.isBackground === true;
+  const controller = new AbortController();
+  record.isBackground = isBackground;
+  record.blocking = !isBackground;
+  record.resultConsumed = false;
   record.result = undefined;
   record.error = undefined;
+  record.completedAt = undefined;
   record.settled = false;
+  record.pool = undefined;
+  record.promise = undefined;
+  record.startGate = undefined;
+  record.outputCleanup = undefined;
+  record.abortController = controller;
+  record.detachParentSignal = watchParentSignal(deps, record, controller, signal);
 
-  try {
-    const { text, failure } = await resumeAgent(record.session, prompt, {
-      onToolActivity: (activity) => {
-        if (activity.type === "end") record.toolUses++;
-        deps.noteToolActivity(id, activity);
-        options?.onToolActivity?.(activity);
+  const begin = () => {
+    try {
+      startResume(deps, record, prompt, signal, options);
+    } catch (err) {
+      record.status = "error";
+      record.error = err instanceof Error ? err.message : String(err);
+      record.completedAt ??= Date.now();
+      deps.settleRun(record);
+      throw err;
+    }
+  };
+
+  const pool = deps.poolFor(record);
+  if (pool !== undefined && !deps.poolHasRoom(pool)) {
+    record.status = "queued";
+    let release!: () => void;
+    record.startGate = new Promise<void>(resolve => { release = resolve; });
+    deps.queue.push({
+      id,
+      pool,
+      start: async () => {
+        try { begin(); } catch { }
       },
-      onAssistantUsage: (usage) => {
-        addUsage(record.lifetimeUsage, usage);
-        deps.onUsage?.(record, usage);
-        options?.onAssistantUsage?.(usage);
-      },
-      onCompaction: (info) => {
-        record.compactionCount++;
-        deps.onCompact?.(record, info);
-        options?.onCompaction?.(info);
-      },
-      signal,
+      release: () => release(),
     });
-    record.status = failure ? "error" : "completed";
-    if (failure) record.error = failure;
-    record.result = text;
-    record.completedAt = Date.now();
-  } catch (err) {
-    record.status = "error";
-    record.error = err instanceof Error ? err.message : String(err);
-    record.completedAt = Date.now();
+  } else {
+    begin();
   }
 
-  deps.abortOwnedChildren(id);
-
+  if (isBackground) return record;
+  if (record.status === "queued") await record.startGate;
+  await record.promise;
   return record;
+}
+
+function watchParentSignal(
+  deps: ResumeDeps,
+  record: AgentRecord,
+  controller: AbortController,
+  parentSignal: AbortSignal | undefined,
+): (() => void) | undefined {
+  if (!parentSignal) return undefined;
+  const onParentAbort = () => {
+    if (record.abortController === controller) deps.abort(record.id);
+  };
+  parentSignal.addEventListener("abort", onParentAbort, { once: true });
+  return () => parentSignal.removeEventListener("abort", onParentAbort);
 }
 
 function startResume(
   deps: ResumeDeps,
-  id: string,
   record: AgentRecord,
   prompt: string,
   parentSignal: AbortSignal | undefined,
-  options: ResumeOptions,
+  options: ResumeOptions | undefined,
 ) {
   if (!record.session) return;
+  const id = record.id;
+  const controller = record.abortController!;
+  const isCurrent = () => record.abortController === controller;
 
+  const pool = deps.poolFor(record);
   record.status = "running";
   record.startedAt = Date.now();
-  record.pool = occupiesPoolSlot(record) ? "background" : undefined;
-  if (record.pool === "background") deps.acquireBackgroundSlot();
+  record.startGate = undefined;
+  record.pool = pool;
+  deps.acquireSlot(pool);
   deps.onStart?.(record);
 
-  const abortController = new AbortController();
-  record.abortController = abortController;
-  let detachParentSignal: (() => void) | undefined;
-  if (parentSignal) {
-    const onParentAbort = () => deps.abort(id);
-    parentSignal.addEventListener("abort", onParentAbort, { once: true });
-    detachParentSignal = () => parentSignal.removeEventListener("abort", onParentAbort);
-  }
+  if (parentSignal?.aborted) deps.abort(id);
 
-  try { options.onStarted?.(); } catch { }
+  try { options?.onStarted?.(); } catch { }
 
-  const settle = () => {
-    if (record.settled) return;
-    record.settled = true;
-    detachParentSignal?.();
-    detachParentSignal = undefined;
-    if (record.outputCleanup) {
-      try { record.outputCleanup(); } catch { }
-      record.outputCleanup = undefined;
-    }
-    deps.abortOwnedChildren(id);
-    if (record.pool === "background") deps.releaseBackgroundSlot();
-    try { deps.onComplete?.(record); } catch { }
-    deps.drainQueue();
-  };
-
-  const promise = resumeAgent(record.session, prompt, {
+  record.promise = resumeAgent(record.session, prompt, {
     onToolActivity: (activity) => {
       if (activity.type === "end") record.toolUses++;
       deps.noteToolActivity(id, activity);
-      options.onToolActivity?.(activity);
+      options?.onToolActivity?.(activity);
     },
     onAssistantUsage: (usage) => {
       addUsage(record.lifetimeUsage, usage);
       deps.onUsage?.(record, usage);
-      options.onAssistantUsage?.(usage);
+      options?.onAssistantUsage?.(usage);
     },
     onCompaction: (info) => {
       record.compactionCount++;
       deps.onCompact?.(record, info);
-      options.onCompaction?.(info);
+      options?.onCompaction?.(info);
     },
-    signal: abortController.signal,
+    signal: controller.signal,
   })
     .then(({ text, failure }) => {
+      if (!isCurrent()) return text;
       if (record.status !== "stopped") {
         record.status = failure ? "error" : "completed";
         if (failure) record.error = failure;
       }
       record.result = text;
       record.completedAt ??= Date.now();
-      settle();
+      deps.settleRun(record);
       return text;
     })
     .catch((err) => {
+      if (!isCurrent()) return "";
       if (record.status !== "stopped") {
         record.status = "error";
         record.error = err instanceof Error ? err.message : String(err);
       }
       record.completedAt ??= Date.now();
-      settle();
+      deps.settleRun(record);
       return "";
     });
-
-  record.promise = promise;
 }

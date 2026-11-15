@@ -631,7 +631,9 @@ There are two independent pools.
 
 The two are deliberately **not** one limit. A foreground agent blocks the parent anyway. The parent could have done that work itself without paying a slot. Charging it to the background pool would therefore let a saturated pool starve the main session.
 
-The foreground pool does not cover `resume`. A foreground resume reopens an existing session and never reaches the spawn path. Several blocking resumes in one message can still run at once. A *background* resume does take a background slot and queues behind them like any other background agent.
+Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume of a record whose earlier run has not settled.
+
+Stopping a resume from `/agents` or the fleet view stops that resume. A foreground resume emits `subagents:started`, then `subagents:completed` or `subagents:failed`, and appends a `subagents:record` entry.
 
 Nested children are outside the pool entirely: a nested child would deadlock behind a parent waiting on it.
 

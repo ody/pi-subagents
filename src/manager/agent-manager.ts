@@ -136,16 +136,18 @@ export class AgentManager {
       abort: id => this.abort(id),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
       settleRun: record => this.settleRun(record),
-      acquireSlot: pool => {
-        if (pool === "background") this.runningBackground++;
-        else if (pool === "foreground") this.runningForeground++;
-      },
+      acquireSlot: pool => this.acquireSlot(pool),
       nestedManager: this as NestedAgentManager,
       onStart: record => this.onStart?.(record),
       onComplete: record => this.onComplete?.(record),
       onCompact: (record, info) => this.onCompact?.(record, info),
       onUsage: (record, usage) => this.onUsage?.(record, usage),
     };
+  }
+
+  private acquireSlot(pool: Pool | undefined): void {
+    if (pool === "background") this.runningBackground++;
+    else if (pool === "foreground") this.runningForeground++;
   }
 
   private armQueuedAbort(id: string, signal?: AbortSignal): boolean {
@@ -236,15 +238,13 @@ export class AgentManager {
       agents: this.agents,
       activities: this.activities,
       queue: this.queue,
+      poolFor: record => this.poolFor(record),
       poolHasRoom: pool => this.poolHasRoom(pool),
-      acquireBackgroundSlot: () => { this.runningBackground++; },
-      releaseBackgroundSlot: () => { this.runningBackground--; },
+      acquireSlot: pool => this.acquireSlot(pool),
       abort: id => this.abort(id),
-      drainQueue: () => this.drainQueue(),
-      abortOwnedChildren: id => this.abortOwnedChildren(id),
+      settleRun: record => this.settleRun(record),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
       onStart: record => this.onStart?.(record),
-      onComplete: record => this.onComplete?.(record),
       onCompact: (record, info) => this.onCompact?.(record, info),
       onUsage: (record, usage) => this.onUsage?.(record, usage),
     };
@@ -323,6 +323,7 @@ export class AgentManager {
       this.dequeue(q => q.id === id);
       record.status = "stopped";
       record.completedAt = Date.now();
+      this.settleRun(record);
       return true;
     }
 
@@ -330,7 +331,10 @@ export class AgentManager {
     record.abortController?.abort();
     record.status = "stopped";
     record.completedAt = Date.now();
-    const timer = setTimeout(() => this.forceSettle(record), FORCED_SETTLE_GRACE_MS);
+    const controller = record.abortController;
+    const timer = setTimeout(() => {
+      if (record.abortController === controller) this.forceSettle(record);
+    }, FORCED_SETTLE_GRACE_MS);
     timer.unref?.();
     return true;
   }
