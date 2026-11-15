@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { type RetentionDeps, removeRecord, resolveMention, takenHandles } from "../../src/manager/agent-retention.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, type RetentionDeps, removeRecord, resolveMention, takenHandles } from "../../src/manager/agent-retention.js";
 import type { AgentConfig, AgentRecord, AgentTombstone } from "../../src/types.js";
 
 function record(overrides: Partial<AgentRecord>): AgentRecord {
@@ -81,5 +81,76 @@ describe("tombstone agent config", () => {
   it("leaves no tombstone for an agent with a parent, which has no handle", () => {
     const deps = remove({ parentAgentId: "parent", sessionFile: "/s/a.jsonl", agentConfig: config });
     expect(deps.tombstones.size).toBe(0);
+  });
+});
+
+describe("retention sweep", () => {
+  const NOW = 10_000_000;
+  const STALE = NOW - 10 * 60_000 - 1;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  function sweep(records: AgentRecord[], isNotificationPending?: (id: string) => boolean): RetentionDeps {
+    const deps = { ...retentionDeps(records), isNotificationPending };
+    cleanup(deps);
+    return deps;
+  }
+
+  it("removes a stale unconsumed record", () => {
+    const deps = sweep([record({ completedAt: STALE })]);
+    expect(deps.agents.size).toBe(0);
+  });
+
+  it("marks a record consumed before it removes it", () => {
+    const stale = record({ completedAt: STALE });
+    sweep([stale]);
+    expect(stale.resultConsumed).toBe(true);
+  });
+
+  it("skips a stale record while its notification is pending, and leaves it unconsumed", () => {
+    const stale = record({ completedAt: STALE });
+    const isNotificationPending = vi.fn(() => true);
+
+    const deps = sweep([stale], isNotificationPending);
+
+    expect(isNotificationPending).toHaveBeenCalledWith("agent-id");
+    expect(deps.agents.has("agent-id")).toBe(true);
+    expect(stale.resultConsumed).toBeFalsy();
+  });
+
+  it("removes the record on a later sweep once the notification is no longer pending", () => {
+    const stale = record({ completedAt: STALE });
+    let pending = true;
+    const deps = { ...retentionDeps([stale]), isNotificationPending: () => pending };
+
+    cleanup(deps);
+    expect(deps.agents.size).toBe(1);
+
+    pending = false;
+    cleanup(deps);
+    expect(deps.agents.size).toBe(0);
+    expect(stale.resultConsumed).toBe(true);
+  });
+
+  it("leaves a recent record alone and does not consume it", () => {
+    const recent = record({ completedAt: NOW - 60_000 });
+    const deps = sweep([recent]);
+    expect(deps.agents.size).toBe(1);
+    expect(recent.resultConsumed).toBeFalsy();
+  });
+
+  it("leaves a running record alone", () => {
+    const running = record({ status: "running", completedAt: STALE });
+    expect(sweep([running]).agents.size).toBe(1);
+    expect(running.resultConsumed).toBeFalsy();
+  });
+
+  it("still tombstones a removed record with a handle and a session file", () => {
+    const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl" })]);
+    expect(deps.tombstones.get("audit")?.id).toBe("agent-id");
   });
 });

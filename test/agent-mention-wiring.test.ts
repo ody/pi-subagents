@@ -13,7 +13,7 @@ import { getDefaultMaxTurns, setDefaultMaxTurns } from "../src/config/runner-def
 import subagentsExtension from "../src/index.js";
 import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 import { runMentionClone } from "../src/triggers/mention-clone.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "./harness/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf, waitForNudgeHold } from "./harness/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;
@@ -951,6 +951,7 @@ describe("resuming an evicted agent by name", () => {
     record.sessionFile = sessionPath();
     writeFileSync(record.sessionFile, "");
     record.completedAt = Date.now() - 11 * 60_000;
+    await waitForNudgeHold();
     await vi.advanceTimersByTimeAsync(60_000);
     return manager;
   }

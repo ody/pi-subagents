@@ -22,7 +22,7 @@ import { runAgent } from "../../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../../src/tool/nested-tools.js";
 import { registerRpcHandlers } from "../../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../../src/triggers/spawn-funnel.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "../harness/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf, waitForNudgeHold } from "../harness/boot-extension.js";
 import { grant } from "../harness/capability.js";
 
 const OPEN: CapabilityDeclaration = { extensions: true, skills: true };
@@ -392,6 +392,7 @@ describe("capability policy at every spawn path", () => {
       record.sessionFile = join(hermetic.dir, "scout-session.jsonl");
       writeFileSync(record.sessionFile, "");
       record.completedAt = Date.now() - 11 * 60_000;
+      await waitForNudgeHold();
       await vi.advanceTimersByTimeAsync(60_000);
       expect(manager.getRecord(first.agentId)).toBeUndefined();
 

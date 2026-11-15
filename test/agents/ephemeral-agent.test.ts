@@ -15,7 +15,7 @@ import { AgentManager } from "../../src/manager/agent-manager.js";
 import { runAgent } from "../../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../../src/tool/nested-tools.js";
 import { getDisplayName, getPromptModeLabel } from "../../src/ui/agent-format.js";
-import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf } from "../harness/boot-extension.js";
+import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf, waitForNudgeHold } from "../harness/boot-extension.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;
@@ -277,6 +277,7 @@ describe("identity", () => {
     const record = registry().getRecord(id);
     const config = record.agentConfig;
     record.completedAt = Date.now() - 11 * 60_000;
+    await waitForNudgeHold();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(registry().getRecord(id)).toBeUndefined();
     return { config, lifecycle, registry, mention: manager?.resolveMention("auth-audit") };

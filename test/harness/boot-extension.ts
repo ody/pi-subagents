@@ -69,6 +69,8 @@ export const flush = async () => {
   await new Promise((r) => setImmediate(r));
 };
 
+export const waitForNudgeHold = () => new Promise((r) => setTimeout(r, 300));
+
 export interface Hermetic {
   dir: string;
   restore: () => void;

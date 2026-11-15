@@ -24,7 +24,7 @@ export class CompletionNotifier {
   private readonly widget: Pick<AgentWidget, "markFinished" | "update">;
   private readonly fleet: Pick<FleetList, "onAgentFinished">;
   private readonly settings: Readonly<Pick<RuntimeSettings, "showCost">>;
-  private readonly pendingNudges = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly pendingNudges = new Map<string, { timer: ReturnType<typeof setTimeout>; ids: string[] }>();
   private readonly groupJoin: GroupJoinManager;
   private currentBatchAgents: { id: string; joinMode: JoinMode }[] = [];
   private batchFinalizeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -42,7 +42,7 @@ export class CompletionNotifier {
         for (const r of records) { this.widget.markFinished(r.id); this.fleet.onAgentFinished(r.id); }
 
         const groupKey = `group:${records.map(r => r.id).join(",")}`;
-        this.scheduleNudge(groupKey, () => {
+        this.scheduleNudge(groupKey, records.map(r => r.id), () => {
           const unconsumed = records.filter(r => !r.resultConsumed);
           if (unconsumed.length === 0) { this.widget.update(); return; }
 
@@ -97,24 +97,34 @@ export class CompletionNotifier {
   };
 
   cancelNudge = (key: string): void => {
-    const timer = this.pendingNudges.get(key);
-    if (timer != null) {
-      clearTimeout(timer);
+    const pending = this.pendingNudges.get(key);
+    if (pending != null) {
+      clearTimeout(pending.timer);
       this.pendingNudges.delete(key);
     }
   };
 
+  isNotificationPending = (id: string): boolean => {
+    if (this.currentBatchAgents.some(a => a.id === id)) return true;
+    if (this.groupJoin.isGrouped(id)) return true;
+    for (const pending of this.pendingNudges.values()) {
+      if (pending.ids.includes(id)) return true;
+    }
+    return false;
+  };
+
   dispose = (): void => {
-    for (const timer of this.pendingNudges.values()) clearTimeout(timer);
+    for (const pending of this.pendingNudges.values()) clearTimeout(pending.timer);
     this.pendingNudges.clear();
   };
 
-  private scheduleNudge(key: string, send: () => void, delay = NUDGE_HOLD_MS) {
+  private scheduleNudge(key: string, ids: string[], send: () => void, delay = NUDGE_HOLD_MS) {
     this.cancelNudge(key);
-    this.pendingNudges.set(key, setTimeout(() => {
+    const timer = setTimeout(() => {
       this.pendingNudges.delete(key);
       try { send(); } catch { }
-    }, delay));
+    }, delay);
+    this.pendingNudges.set(key, { timer, ids });
   }
 
   private emitIndividualNudge(record: AgentRecord) {
@@ -134,7 +144,7 @@ export class CompletionNotifier {
   private sendIndividualNudge(record: AgentRecord) {
     this.widget.markFinished(record.id);
     this.fleet.onAgentFinished(record.id);
-    this.scheduleNudge(record.id, () => this.emitIndividualNudge(record));
+    this.scheduleNudge(record.id, [record.id], () => this.emitIndividualNudge(record));
     this.widget.update();
   }
 

@@ -8,6 +8,7 @@ export interface RetentionDeps {
   activities: { delete(id: string): boolean };
   startups: Map<string, Promise<void>>;
   tombstones: Map<string, AgentTombstone>;
+  isNotificationPending?: (id: string) => boolean;
 }
 
 export function takenHandles(deps: RetentionDeps): Set<string> {
@@ -85,6 +86,8 @@ export function cleanup(deps: RetentionDeps): void {
   for (const [id, record] of deps.agents) {
     if (record.status === "running" || record.status === "queued") continue;
     if ((record.completedAt ?? 0) >= cutoff) continue;
+    if (deps.isNotificationPending?.(id)) continue;
+    record.resultConsumed = true;
     removeRecord(deps, id, record);
   }
 }

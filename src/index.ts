@@ -102,7 +102,7 @@ export default function (pi: ExtensionAPI) {
     });
   }, (_record, usage) => {
     if (settings.reportUsage) pendingUsage.add(usage);
-  });
+  }, (id: string): boolean => notifier.isNotificationPending(id));
 
   const MANAGER_KEY = Symbol.for("pi-subagents:manager");
   const { spawnResolved, spawnTopLevel, resolveAgentRef } = createSpawnFunnel({ manager, reloadCustomAgents });

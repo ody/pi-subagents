@@ -117,6 +117,22 @@ describe("AgentManager — record GC", () => {
     expect(manager.getRecord(queuedId)?.status).toBe("queued");
   });
 
+  it("keeps a stale record while the notification callback reports it pending", async () => {
+    let pending = true;
+    manager = new AgentManager(undefined, undefined, undefined, undefined, undefined, () => pending);
+    const { id, record } = await settled("held");
+    record.completedAt = Date.now() - (TEN_MINUTES + 30_000);
+
+    await vi.advanceTimersByTimeAsync(TICK);
+    expect(manager.getRecord(id)).toBeDefined();
+    expect(record.resultConsumed).toBeFalsy();
+
+    pending = false;
+    await vi.advanceTimersByTimeAsync(TICK);
+    expect(manager.getRecord(id)).toBeUndefined();
+    expect(record.resultConsumed).toBe(true);
+  });
+
   it("sweeps repeatedly, not just once", async () => {
     manager = new AgentManager();
     const { id, record } = await settled("ages-out");

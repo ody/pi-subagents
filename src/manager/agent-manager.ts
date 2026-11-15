@@ -30,6 +30,7 @@ export class AgentManager {
   private onStart?: OnAgentStart;
   private onCompact?: OnAgentCompact;
   private onUsage?: OnAgentUsage;
+  private isNotificationPending?: (id: string) => boolean;
   private maxConcurrent: number;
   private maxConcurrentForeground = SETTING_SPECS.maxConcurrentForeground.default;
   private worktreeRepos = new Set<string>();
@@ -48,11 +49,13 @@ export class AgentManager {
     onStart?: OnAgentStart,
     onCompact?: OnAgentCompact,
     onUsage?: OnAgentUsage,
+    isNotificationPending?: (id: string) => boolean,
   ) {
     this.onComplete = onComplete;
     this.onStart = onStart;
     this.onCompact = onCompact;
     this.onUsage = onUsage;
+    this.isNotificationPending = isNotificationPending;
     this.maxConcurrent = maxConcurrent;
     this.cleanupInterval = setInterval(() => this.cleanup(), 60_000);
     this.cleanupInterval.unref();
@@ -94,6 +97,7 @@ export class AgentManager {
       activities: this.activities,
       startups: this.startups,
       tombstones: this.tombstones,
+      isNotificationPending: this.isNotificationPending,
     };
   }
 
