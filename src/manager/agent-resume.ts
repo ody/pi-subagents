@@ -50,6 +50,7 @@ export async function resume(
   const record = deps.agents.get(id);
   if (!record?.session) return undefined;
   if (record.status === "running" || record.status === "queued" || (!record.settled && record.promise !== undefined)) return undefined;
+  if (record.worktree && !record.worktreeResult) return undefined;
 
   const activity = deps.activities.get(id);
   if (activity) {

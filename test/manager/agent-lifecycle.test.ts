@@ -818,6 +818,29 @@ describe("AgentManager — resume run endings settle once", () => {
     expect(resumes).toHaveLength(0);
   });
 
+  it("refuses a resume while the worktree of a forced-settled run is unsaved", async () => {
+    vi.mocked(createWorktree).mockResolvedValue({ path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt" } as any);
+    manager = new AgentManager(record => completed.push(record), 1);
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true, isolation: "worktree" });
+    await vi.advanceTimersByTimeAsync(0);
+    const record = manager.getRecord(id)!;
+    record.session = mockSession();
+    manager.abort(id, "user");
+    await vi.advanceTimersByTimeAsync(GRACE);
+    expect(record.settled).toBe(true);
+
+    expect(await manager.resume(id, "early", undefined, { isBackground: true })).toBeUndefined();
+    expect(resumes).toHaveLength(0);
+    expect(slots(manager).runningBackground).toBe(0);
+
+    runs[0].resolve(result());
+    await record.promise;
+    expect(record.worktreeResult).toBeDefined();
+    expect(await manager.resume(id, "after", undefined, { isBackground: true })).toBe(record);
+    expect(resumes).toHaveLength(1);
+    expect(slots(manager).runningBackground).toBe(1);
+  });
+
   it("ignores the late result of a forced spawn once the record is resumed", async () => {
     manager = new AgentManager(record => completed.push(record), 1);
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });

@@ -12,11 +12,13 @@ A run wedged inside a tool call never resolves its `runAgent` promise. A tool pr
 
 ## Decision
 
-Every run that leaves `queued` or `running` settles exactly once, through `settleRun` in `src/manager/agent-manager.ts`. No other function sets `settled` or calls the completion callback. `abortAll` at shutdown is the one exception: it stops runs and does not settle them.
+Every run that leaves `queued` or `running` settles exactly once, through `settleRun` in `src/manager/agent-manager.ts`. Only `settleRun` sets `settled` or calls the completion callback. `AgentManager.reopenRun` is the one other writer: it clears `settled` when a resume starts a new run. `abortAll` at shutdown is the one exception to settling: it stops runs and does not settle them.
 
 - Every run, spawn or resume, sets `isBackground` and `blocking` from its own call. A resume is `blocking` exactly when it is foreground: the `agent` tool's `resume` and the nested resume. `poolFor` picks the run's pool, the run stores it, and a full pool queues the run.
 - A run that resolves sets its terminal status and `completedAt`, never replacing `stopped`. It then saves and removes its worktree and appends the branch or failure note, even after a forced settle.
-- A start that throws sets `error` and enters the tail. A direct start also rethrows to its caller, and the tail marks its result consumed.
+- A start that throws sets `error` and enters the tail. A direct start also rethrows to its caller, marks its result consumed, and removes its record once the tail has run.
+- A new run on a record supersedes its earlier run. The earlier run's late ending, and a forced-settle timer armed for it, change nothing on the record.
+- The manager refuses a resume while the earlier run has not settled or its worktree has no saved result. A resume then never shares a slot or a worktree with a run that is still ending.
 - A stop while queued or during worktree creation enters the tail.
 - `abort()` on a running run arms an unref'd `FORCED_SETTLE_GRACE_MS` (5 s) timer. When it fires on an unsettled run, `forceSettle` enters the tail. First it sets the result to the streamed text if none exists, and adds the worktree path if any.
 
@@ -42,5 +44,6 @@ Done check: `npx vitest run test/manager/agent-lifecycle.test.ts test/settle-tai
 - A second settle path leaks or double-releases pool slots and duplicates or drops completion events.
 - `subagents:failed` fires for a stop while queued and for a failed start. Foreground resumes emit `subagents:completed` or `subagents:failed` and append `subagents:record`. RPC consumers see one event per run.
 - With `maxConcurrentForeground` set, a foreground resume can queue.
+- A foreground resume emits `subagents:started` before its `subagents:completed` or `subagents:failed`, as a background resume does.
 - The grace period trades a 5 s delay against cutting off a responsive run mid-flush.
 - A forced stop leaves the worktree on disk until the run resolves. Revisit if pi can kill a run's tool processes.

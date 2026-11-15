@@ -22,7 +22,7 @@ Every stop goes through `AgentManager.abort()`, which takes the stop cause. `abo
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
 | `shutdown` | `abortAll` |
 
-A signal that is already aborted at spawn gives the cause of that signal's owner.
+A signal that is already aborted at spawn gives the cause of that signal's owner. A spawn or resume that carries a signal names that cause in `signalCause`, and the call throws without it. The spawn funnel for `subagents:rpc:spawn` and the manager registry always sets `extension`, whatever the caller passes.
 
 The `stop_subagent` tool in `src/tool/agent-control-tools.ts`, and its nested mirror in `src/tool/nested-tools.ts`:
 

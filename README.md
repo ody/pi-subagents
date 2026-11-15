@@ -641,7 +641,7 @@ There are two independent pools.
 
 The two are deliberately **not** one limit. A foreground agent blocks the parent anyway. The parent could have done that work itself without paying a slot. Charging it to the background pool would therefore let a saturated pool starve the main session.
 
-Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume of a record whose earlier run has not settled.
+Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume of a record whose earlier run has not settled, or whose worktree has no saved result.
 
 Stopping a resume from `/agents` or the fleet view stops that resume. A foreground resume emits `subagents:started`, then `subagents:completed` or `subagents:failed`, and appends a `subagents:record` entry.
 
