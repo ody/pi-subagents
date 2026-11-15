@@ -352,18 +352,25 @@ describe("cleanupWorktree — failure path", () => {
     expect(result.branch).toBeUndefined();
   });
 
-  it("swallows a git failure inside a still-present worktree and reports no changes", async () => {
+  it("keeps a worktree with a broken git link and reports the failure and path", async () => {
     const wt = (await createWorktree(pi, repoDir, "corrupt"))!;
     writeFileSync(join(wt.path, "work.txt"), "agent output");
     writeFileSync(join(wt.path, ".git"), "gitdir: /nonexistent/path/that/is/not/a/repo");
 
-    const result = await cleanupWorktree(pi, repoDir, wt, "corrupted agent");
+    try {
+      const result = await cleanupWorktree(pi, repoDir, wt, "corrupted agent");
 
-    expect(result.hasChanges).toBe(false);
-    expect(result.branch).toBeUndefined();
+      expect(result.hasChanges).toBe(true);
+      expect(result.branch).toBeUndefined();
+      expect(result.failure).toBeTruthy();
+      expect(result.path).toBe(wt.path);
+      expect(existsSync(join(wt.path, "work.txt"))).toBe(true);
+    } finally {
+      rmSync(wt.path, { recursive: true, force: true });
+    }
   });
 
-  it("reports no changes when the preservation commit fails", async () => {
+  it("keeps the worktree and reports stderr and path when the preservation commit fails", async () => {
     const wt = (await createWorktree(pi, repoDir, "commit-fails"))!;
     writeFileSync(join(wt.path, "work.txt"), "agent output");
 
@@ -374,8 +381,25 @@ describe("cleanupWorktree — failure path", () => {
       "commit fails",
     );
 
-    expect(result.hasChanges).toBe(false);
+    expect(result.hasChanges).toBe(true);
     expect(result.branch).toBeUndefined();
+    expect(result.failure).toContain("boom");
+    expect(result.path).toBe(wt.path);
+    expect(existsSync(join(wt.path, "work.txt"))).toBe(true);
+  });
+
+  it("creates the branch when commit.gpgsign is on and gpg.program is unreachable", async () => {
+    execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["config", "gpg.program", "/nonexistent/gpg"], { cwd: repoDir, stdio: "pipe" });
+    const wt = (await createWorktree(pi, repoDir, "unsigned"))!;
+    writeFileSync(join(wt.path, "work.txt"), "agent output");
+
+    const result = await cleanupWorktree(pi, repoDir, wt, "unsigned agent");
+
+    expect(result.failure).toBeUndefined();
+    expect(result.hasChanges).toBe(true);
+    expect(result.branch).toBeDefined();
+    expect(existsSync(wt.path)).toBe(false);
   });
 
   it("creates the branch BEFORE removing the worktree, so a removal failure cannot lose commits", async () => {
@@ -412,15 +436,16 @@ describe("worktree isolation switch", () => {
     expect(isWorktreeIsolationEnabled()).toBe(true);
   });
 
-  it("does not disable createWorktree directly", () => {
+  it("does not disable createWorktree directly", async () => {
     const repoDir = initGitRepo();
+    const pi = mockPi();
     try {
       setWorktreeIsolationEnabled(false);
-      const wt = createWorktree(repoDir, "switch-test");
+      const wt = await createWorktree(pi, repoDir, "switch-test");
       expect(wt).toBeDefined();
-      cleanupWorktree(repoDir, wt!, "switch test");
+      await cleanupWorktree(pi, repoDir, wt!, "switch test");
     } finally {
-      pruneWorktrees(repoDir);
+      await pruneWorktrees(pi, repoDir);
       rmSync(repoDir, { recursive: true, force: true });
     }
   });

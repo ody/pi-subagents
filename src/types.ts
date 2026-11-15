@@ -95,7 +95,7 @@ export interface AgentRecord {
   resultConsumed?: boolean;
   pendingSteers?: string[];
   worktree?: { path: string; branch: string; baseSha: string; workPath: string };
-  worktreeResult?: { hasChanges: boolean; branch?: string };
+  worktreeResult?: { hasChanges: boolean; branch?: string; path?: string; failure?: string };
   toolCallId?: string;
   outputFile?: string;
   sessionFile?: string;

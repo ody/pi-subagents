@@ -26,6 +26,7 @@ export interface WorktreeCleanupResult {
   hasChanges: boolean;
   branch?: string;
   path?: string;
+  failure?: string;
 }
 
 async function git(pi: ExtensionAPI, cwd: string, args: string[], timeout: number): Promise<string> {
@@ -81,7 +82,7 @@ export async function cleanupWorktree(
       await git(pi, worktree.path, ["add", "-A"], 10000);
       const safeDesc = agentDescription.slice(0, 200);
       const commitMsg = `pi-agent: ${safeDesc}`;
-      await git(pi, worktree.path, ["commit", "--no-verify", "-m", commitMsg], 10000);
+      await git(pi, worktree.path, ["commit", "--no-verify", "--no-gpg-sign", "-m", commitMsg], 10000);
     } else {
       const currentSha = await git(pi, worktree.path, ["rev-parse", "HEAD"], 5000);
 
@@ -107,9 +108,12 @@ export async function cleanupWorktree(
       branch: worktree.branch,
       path: worktree.path,
     };
-  } catch {
-    try { await removeWorktree(pi, cwd, worktree.path); } catch {}
-    return { hasChanges: false };
+  } catch (err) {
+    return {
+      hasChanges: true,
+      path: worktree.path,
+      failure: err instanceof Error ? err.message : String(err),
+    };
   }
 }
 

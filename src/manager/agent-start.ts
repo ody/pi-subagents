@@ -231,6 +231,9 @@ export async function startAgent(
           const repoNote = customCwd !== undefined ? ` in \`${baseCwd}\`` : "";
           record.result = (record.result ?? "") +
             `\n\n---\nChanges saved to branch \`${wtResult.branch}\`${repoNote}. Merge with: \`git merge ${wtResult.branch}\`${customCwd !== undefined ? ` (run in \`${baseCwd}\`)` : ""}`;
+        } else if (wtResult.failure) {
+          record.result = (record.result ?? "") +
+            `\n\n---\nSaving the worktree changes failed: ${wtResult.failure}\nThe worktree stays at \`${wtResult.path}\`. Its changes are not on a branch.`;
         }
       }
 

@@ -1130,7 +1130,7 @@ Set `isolation: worktree` to run an agent in a temporary git worktree:
 agent({ subagent_type: "refactor", prompt: "...", isolation: "worktree" })
 ```
 
-The agent gets a full, isolated copy of the repository. The extension removes the worktree directory on completion either way. What differs is whether a branch stays behind:
+The agent gets a full, isolated copy of the repository. The extension removes the worktree directory on completion, unless preserving the work fails (see below). What differs is whether a branch stays behind:
 
 - **No changes:** the extension cleans up the worktree automatically and leaves no branch
 - **Changes made:** the extension commits changes to a new branch (`pi-agent-<id>`), and the result names the branch and the `git merge` command for it. The branch is the only artifact. The worktree path is gone, so nothing points into it
@@ -1138,7 +1138,9 @@ The agent gets a full, isolated copy of the repository. The extension removes th
 
 The agent's system prompt names the worktree as an isolated copy and tells it to work only there. This holds even if other instructions name the main checkout. Otherwise an inherited parent prompt or a task prompt mentioning the project path walks it straight back out of the copy. This is a directive, not a sandbox. An agent with shell access can still `cd` out, so don't rely on `isolation` alone to protect the main checkout.
 
-The automatic preservation commit uses `--no-verify`, so local pre-commit hooks can't block it. The commit is local-only and never pushed, and pre-push/server-side hooks still apply.
+The automatic preservation commit uses `--no-verify` and `--no-gpg-sign`, so local hooks and signing config (a missing agent, for example) can't block it. Git creates the commit without a signature and without hooks. Re-sign it before you push. The commit is local-only and never pushed, and pre-push/server-side hooks still apply.
+
+If the commit or the branch step fails, the extension keeps the worktree on disk. The result reports the git error and the worktree path, and never reports "no changes". The extension removes a worktree in two cases only. Either a branch points at the agent's work, or the worktree has no changes and HEAD equals the base.
 
 If the extension cannot create the worktree, the `agent` call fails with a clear error instead of running unisolated. Typical causes: not a git repo, no commits, or `git worktree add` failing. `isolation: "worktree"` is a strict guarantee, not a hint. The extension reports the call as a failed tool call, not as a subagent that ran and returned that message. The model therefore doesn't retry it as if the agent had merely reported a problem. Initialize git and commit at least once, or omit `isolation`.
 
