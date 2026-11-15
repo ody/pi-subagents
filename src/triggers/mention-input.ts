@@ -37,7 +37,6 @@ async function dispatchLiveMention(
   const target = `@${record.alias ?? record.handle ?? mention.handle}`;
 
   if (record.status === "running" || record.status === "queued") {
-    record.resultConsumed = false;
     deps.manager.steer(record.id, mention.message);
     pi.events.emit("subagents:steered", { id: record.id, message: mention.message });
     ctx.ui.notify(`Sent to ${target}`, "info");

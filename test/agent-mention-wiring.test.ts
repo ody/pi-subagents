@@ -117,7 +117,7 @@ describe("messaging a running agent", () => {
 
   });
 
-  it("un-consumes the result so the agent's reply is still relayed", async () => {
+  it("leaves a consumed result consumed", async () => {
     const { tools, lifecycle } = boot();
     heldRun(fakeSession());
 
@@ -128,7 +128,7 @@ describe("messaging a running agent", () => {
 
     await send(lifecycle, "@explore keep going");
 
-    expect(record.resultConsumed).toBe(false);
+    expect(record.resultConsumed).toBe(true);
 
   });
 
