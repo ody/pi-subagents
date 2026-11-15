@@ -23,13 +23,14 @@ Rules:
 - For work the model does not delegate, say "handle it yourself", never a tool name.
 - Text may name this extension's tools (`agent`, `get_subagent_result`, `steer_subagent`, `stop_subagent`) and registered agent types.
 - The type list may name the tools a sub-agent type has, in its `(Tools: …)` suffix. That describes the sub-agent, not the host.
+- A capability note (`filteredNote`, `nestedFilteredNote`) may name the capabilities it removed from a sub-agent. That also describes the sub-agent.
 
 Out of scope:
 
 - Replace-mode agent system prompts. The agent definition owns that session's tool policy.
 - Text the user or a sub-agent wrote, which the extension relays verbatim. That covers agent names, frontmatter `description`, and the user's prose in `agent-tool-description.md`. It also covers sub-agent output inside results and notifications.
 
-Done check: `npx vitest run test/host-facing-text.test.ts` passes. It asserts that no built-in tool name appears outside a `(Tools: …)` suffix in:
+Done check: `npx vitest run test/host-facing-text.test.ts` passes. It asserts that no built-in tool name appears outside a `(Tools: …)` suffix or a capability note's removed names in:
 
 - the strings of the registered tools in `full`, `compact`, and `custom` mode, and of the nested tools. The fixture registers at least one agent with a narrowed `tools:` list.
 - the output of `formatTaskNotification`, `getStatusNote`, `getForegroundOutcomeNote`, `filteredNote`, `nestedFilteredNote`, `modelReplacedNote`, and `agentMentionReminder`
