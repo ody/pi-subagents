@@ -157,6 +157,10 @@ The same predicate silently scopes the events. **Every lifecycle event is top-le
 
 A run that resolves enters the tail itself. A wedged run enters the same tail when the timer fires, so a `subagents:rpc:stop` call frees its slot and fires `subagents:completed`/`:failed` within a few seconds. A later real settle returns at once and fires nothing.
 
+A stop while the run waits in the queue, or during worktree creation, enters the same tail. It fires `subagents:failed` once, with status `stopped`.
+
+A start that fails enters the same tail with status `error`. It fires `subagents:failed` once and appends one `subagents:record` entry. A direct start also rethrows to its caller.
+
 The forced entry copies the streamed response text into `record.result` when no result exists. That event and the notification then carry the partial output instead of an empty `result`. The forced entry also adds the worktree path when the run has a worktree. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
 
 ## The notification race
@@ -241,6 +245,7 @@ This document has no test of its own, so it is worth knowing which claims are ac
 | `test/rpc-lifecycle-gating.test.ts` | Real extension factory | Nothing wired at factory time, everything once at `session_start`, and live widget activity for RPC spawns |
 | `test/rpc-result-consumption.test.ts` | Real delivery path | The notification firing, and not firing, around `consume` |
 | `test/rpc-inline-agent.test.ts` | Real extension factory | An inline `agentConfig` skips type resolution, reaches `runAgent`, and stays out of the registry |
+| `test/queued-stop-events.test.ts` | Real extension factory | A `subagents:rpc:stop` of a queued run fires `subagents:failed` once and appends one `subagents:record` entry |
 
 Not pinned anywhere, so treat them as descriptions rather than contracts: the `SpawnOptions.cwd` error strings, `subagents:ready`'s `{}` payload, and consume's handle resolution.
 

@@ -13,7 +13,6 @@ export interface StartDeps {
   startups: Map<string, Promise<void>>;
   worktreeRepos: Set<string>;
   poolFor: (record: AgentRecord) => Pool | undefined;
-  drainQueue: () => void;
   abort: (id: string) => boolean;
   noteToolActivity: (id: string, activity: ToolActivity) => void;
   settleRun: (record: AgentRecord) => void;
@@ -32,6 +31,7 @@ export function armQueuedAbort(deps: StartDeps, id: string, signal?: AbortSignal
     if (record) {
       record.status = "stopped";
       record.completedAt = Date.now();
+      deps.settleRun(record);
     }
     return false;
   }
@@ -44,21 +44,21 @@ export function launch(
   id: string,
   record: AgentRecord,
   args: SpawnArgs,
-  queuedPool: Pool | undefined,
+  queued: boolean,
 ): Promise<void> {
   const startup = startAgent(deps, id, record, args).then(
     () => { deps.startups.delete(id); },
     (err) => {
       deps.startups.delete(id);
-      if (queuedPool !== undefined) {
-        record.status = "error";
-        record.error = err instanceof Error ? err.message : String(err);
-        record.completedAt ??= Date.now();
-        deps.settleRun(record);
-      } else {
+      if (record.status !== "stopped") record.status = "error";
+      record.error = err instanceof Error ? err.message : String(err);
+      record.completedAt ??= Date.now();
+      if (!queued) record.resultConsumed = true;
+      deps.settleRun(record);
+      if (!queued) {
         deps.agents.delete(id);
+        deps.activities.delete(id);
       }
-      deps.drainQueue();
       throw err;
     },
   );
@@ -95,10 +95,6 @@ export async function startAgent(
         'Cannot run with isolation: "worktree" — not a git repo, no commits yet, or `git worktree add` failed. ' +
         'Initialize git and commit at least once, or omit `isolation`.',
       );
-      record.status = "error";
-      record.error = failure.message;
-      record.completedAt ??= Date.now();
-      deps.settleRun(record);
       throw failure;
     }
     record.worktree = wt;

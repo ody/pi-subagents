@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { GrantingAgentManager as AgentManager } from "../harness/capability.js";
@@ -886,6 +889,175 @@ describe("AgentManager — resume run endings settle once", () => {
     expect(record.result).toBe("fresh");
     expect(slots(manager).runningForeground).toBe(0);
   });
+});
+
+describe("AgentManager — start endings settle once", () => {
+  const worktree = { path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt" };
+  let manager: AgentManager;
+  let completed: AgentRecord[];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    controlledRuns();
+    completed = [];
+  });
+
+  afterEach(() => {
+    manager?.dispose();
+    vi.useRealTimers();
+    vi.mocked(createWorktree).mockReset();
+    vi.mocked(cleanupWorktree).mockReset();
+    vi.mocked(cleanupWorktree).mockReturnValue({ hasChanges: false } as any);
+  });
+
+  for (const pool of POOLS) {
+    describe(pool.name, () => {
+      function create() {
+        manager = new AgentManager(record => completed.push(record), 1);
+        pool.setup(manager);
+      }
+
+      function spawn(extra: { signal?: AbortSignal; isolation?: "worktree"; cwd?: string } = {}) {
+        const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", ...pool.options, ...extra });
+        return { id, record: manager.getRecord(id)! };
+      }
+
+      function held(): number {
+        return pool.counter === undefined ? 0 : slots(manager)[pool.counter];
+      }
+
+      function expectNoSlots() {
+        expect(slots(manager).runningBackground).toBe(0);
+        expect(slots(manager).runningForeground).toBe(0);
+      }
+
+      function expectNotConsumedUnlessForeground(record: AgentRecord) {
+        expect(Boolean(record.resultConsumed)).toBe(!pool.options.isBackground);
+      }
+
+      it("settles a start that cannot create its worktree, rethrows, and drops the record", async () => {
+        create();
+        vi.mocked(createWorktree).mockResolvedValue(undefined);
+        const { id, record } = spawn({ isolation: "worktree" });
+        await expect(manager.awaitStartup(id)).rejects.toThrow(/isolation: "worktree"/);
+        expect(record.status).toBe("error");
+        expect(record.error).toContain('isolation: "worktree"');
+        expect(record.completedAt).toBeDefined();
+        expect(completed).toEqual([record]);
+        expect(manager.getRecord(id)).toBeUndefined();
+        expect(record.resultConsumed).toBe(true);
+        expectNoSlots();
+        expect(runs).toHaveLength(0);
+      });
+
+      it("settles a start whose worktree creation throws", async () => {
+        create();
+        vi.mocked(createWorktree).mockRejectedValue(new Error("git exploded"));
+        const { id, record } = spawn({ isolation: "worktree" });
+        await expect(manager.awaitStartup(id)).rejects.toThrow("git exploded");
+        expect(record.status).toBe("error");
+        expect(record.error).toBe("git exploded");
+        expect(manager.getRecord(id)).toBeUndefined();
+        expect(completed).toEqual([record]);
+        expect(record.resultConsumed).toBe(true);
+        expectNoSlots();
+        expect(runs).toHaveLength(0);
+      });
+
+      it("settles a stop during worktree creation once and removes the worktree", async () => {
+        create();
+        let finish!: (value: unknown) => void;
+        vi.mocked(createWorktree).mockImplementation(() => new Promise(resolve => { finish = resolve; }) as any);
+        const { id, record } = spawn({ isolation: "worktree" });
+        expect(held()).toBe(pool.counter === undefined ? 0 : 1);
+        expect(manager.abort(id)).toBe(true);
+        expect(completed).toEqual([]);
+        finish(worktree);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(cleanupWorktree).toHaveBeenCalledTimes(1);
+        expect(record.status).toBe("stopped");
+        expect(record.settled).toBe(true);
+        expect(completed).toEqual([record]);
+        expectNoSlots();
+        expect(runs).toHaveLength(0);
+        await vi.advanceTimersByTimeAsync(GRACE);
+        expect(completed).toEqual([record]);
+        expectNoSlots();
+      });
+
+      if (pool.counter !== undefined) {
+        function holdThePool() {
+          create();
+          return spawn();
+        }
+
+        it("settles a stop while queued once", async () => {
+          const holder = holdThePool();
+          const { id, record } = spawn();
+          expect(record.status).toBe("queued");
+          expect(manager.abort(id)).toBe(true);
+          expect(record.status).toBe("stopped");
+          expect(completed).toEqual([record]);
+          expect(held()).toBe(1);
+          runs[0].resolve(result());
+          await holder.record.promise;
+          expect(completed.map(r => r.status)).toEqual(["stopped", "completed"]);
+          expect(runs).toHaveLength(1);
+          expectNoSlots();
+        });
+
+        it("settles a signal that is already aborted at spawn once", async () => {
+          const holder = holdThePool();
+          const { record } = spawn({ signal: AbortSignal.abort() });
+          expect(record.status).toBe("stopped");
+          expect(record.completedAt).toBeDefined();
+          expect(record.settled).toBe(true);
+          expect(completed).toEqual([record]);
+          expectNotConsumedUnlessForeground(record);
+          expect(held()).toBe(1);
+          runs[0].resolve(result());
+          await holder.record.promise;
+          expect(completed.map(r => r.status)).toEqual(["stopped", "completed"]);
+          expect(runs).toHaveLength(1);
+          expectNoSlots();
+        });
+
+        it("settles a queued start that fails at the worktree", async () => {
+          const holder = holdThePool();
+          vi.mocked(createWorktree).mockResolvedValue(undefined);
+          const { record } = spawn({ isolation: "worktree" });
+          expect(record.status).toBe("queued");
+          runs[0].resolve(result());
+          await holder.record.promise;
+          await vi.advanceTimersByTimeAsync(0);
+          expect(record.status).toBe("error");
+          expect(record.error).toContain('isolation: "worktree"');
+          expect(manager.getRecord(record.id)).toBe(record);
+          expect(completed.map(r => r.status)).toEqual(["completed", "error"]);
+          expectNotConsumedUnlessForeground(record);
+          expectNoSlots();
+          expect(runs).toHaveLength(1);
+        });
+
+        it("settles a queued start that fails before it takes a slot", async () => {
+          const holder = holdThePool();
+          const gone = mkdtempSync(join(tmpdir(), "lifecycle-gone-"));
+          const { record } = spawn({ cwd: gone });
+          expect(record.status).toBe("queued");
+          rmSync(gone, { recursive: true, force: true });
+          runs[0].resolve(result());
+          await holder.record.promise;
+          await vi.advanceTimersByTimeAsync(0);
+          expect(record.status).toBe("error");
+          expect(record.error).toContain(gone);
+          expect(record.pool).toBeUndefined();
+          expect(completed.map(r => r.status)).toEqual(["completed", "error"]);
+          expectNoSlots();
+          expect(runs).toHaveLength(1);
+        });
+      }
+    });
+  }
 });
 
 function expectCompleted(completed: AgentRecord[], statuses: AgentRecord["status"][]) {

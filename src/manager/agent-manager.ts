@@ -110,7 +110,7 @@ export class AgentManager {
       poolFor: record => this.poolFor(record),
       poolHasRoom: pool => this.poolHasRoom(pool),
       armQueuedAbort: (id, signal) => this.armQueuedAbort(id, signal),
-      launch: (id, record, args, pool) => this.launch(id, record, args, pool),
+      launch: (id, record, args, queued) => this.launch(id, record, args, queued),
       awaitStartup: id => this.awaitStartup(id),
     };
   }
@@ -132,7 +132,6 @@ export class AgentManager {
       startups: this.startups,
       worktreeRepos: this.worktreeRepos,
       poolFor: record => this.poolFor(record),
-      drainQueue: () => this.drainQueue(),
       abort: id => this.abort(id),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
       settleRun: record => this.settleRun(record),
@@ -154,8 +153,8 @@ export class AgentManager {
     return armQueuedAbortOperation(this.startDeps(), id, signal);
   }
 
-  private launch(id: string, record: AgentRecord, args: SpawnArgs, queuedPool: Pool | undefined): Promise<void> {
-    return launchAgent(this.startDeps(), id, record, args, queuedPool);
+  private launch(id: string, record: AgentRecord, args: SpawnArgs, queued: boolean): Promise<void> {
+    return launchAgent(this.startDeps(), id, record, args, queued);
   }
 
   awaitStartup(id: string): Promise<void> {

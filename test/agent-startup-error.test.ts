@@ -9,6 +9,7 @@ vi.mock("../src/platform/worktree.js", async () => {
 });
 
 import subagentsExtension from "../src/index.js";
+import { waitForNudgeHold } from "./harness/boot-extension.js";
 
 function boot() {
   const tools = new Map<string, any>();
@@ -25,7 +26,11 @@ function boot() {
     sendMessage: vi.fn(),
   } as any;
   subagentsExtension(pi);
-  return tools;
+  return { tools, pi };
+}
+
+function callsFor(mock: ReturnType<typeof vi.fn>, name: string): any[][] {
+  return mock.mock.calls.filter((call: any[]) => call[0] === name);
 }
 
 let cwd: string;
@@ -70,7 +75,7 @@ describe("Agent startup failures fail the tool call (#179)", () => {
 
   for (const background of [false, true]) {
     it(`rejects instead of returning the diagnostic (run_in_background: ${background})`, async () => {
-      const tools = boot();
+      const { tools, pi } = boot();
 
       await expect(
         tools.get("agent").execute(
@@ -85,6 +90,14 @@ describe("Agent startup failures fail the tool call (#179)", () => {
           undefined, undefined, ctx(),
         ),
       ).rejects.toThrow('Cannot run with isolation: "worktree"');
+
+      expect(callsFor(pi.events.emit, "subagents:failed")).toHaveLength(1);
+      expect(callsFor(pi.events.emit, "subagents:completed")).toHaveLength(0);
+      const records = callsFor(pi.appendEntry, "subagents:record");
+      expect(records).toHaveLength(1);
+      expect(records[0][1]).toMatchObject({ status: "error", error: expect.stringContaining("isolation") });
+      await waitForNudgeHold();
+      expect(pi.sendMessage).not.toHaveBeenCalled();
     });
   }
 });
