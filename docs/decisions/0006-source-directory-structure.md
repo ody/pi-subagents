@@ -12,6 +12,8 @@ Directories as layers do not hold, because the first module that needs a type fr
 
 A `src/` file lives in the directory named for the one concern it serves. The set of directories is not fixed by this record. It follows the concerns the code has.
 
+The naming and size checks below also apply to every subdirectory of `test/`, at any depth. The placement rules apply to `src/` only.
+
 A group is valid when it passes these checks:
 
 - One reason to change, stated in a sentence without "and".
@@ -23,7 +25,7 @@ Placement rules:
 - `src/` root holds the extension entry and code no single group owns. A file one group owns belongs in that group.
 - A file that could fit two groups goes to the group with the largest number of modules importing it. If the counts tie, including zero, it stays at the `src/` root until one group clearly owns it.
 - Groups name ownership, not layers. Imports may point any direction, and no import-direction rule or barrel file applies. ADR 0004's no-cycles rule stays per-module.
-- Module tests sit at the `test/` root and mirror no group. Subdirectories of `test/` hold support material: end-to-end tests, fixtures, helpers and performance checks.
+- Module tests sit at the `test/` root and mirror no group. Subdirectories of `test/` hold support material: end-to-end tests, fixtures, test harness code and performance checks. Each is named for what it holds, never `helpers`.
 - ADR 0004's per-file rules apply inside every group.
 - No document lists `src/` files. The tree is the map.
 
@@ -31,8 +33,8 @@ Create or change a group when a new file shares a concern with existing files. A
 
 Done check:
 
-- No `src/` subdirectory has the name `core`, `utils`, `helpers`, `misc` or `part2`.
-- Every `src/` subdirectory holds at least two files.
+- No `src/` or `test/` subdirectory has the name `core`, `utils`, `helpers`, `misc` or `part2`.
+- Every `src/` and `test/` subdirectory holds at least two files.
 - `test/source-tree.test.ts` enforces the two checks above.
 
 Rejected:
