@@ -21,6 +21,13 @@ interface ToolLike {
   parameters?: { properties?: Record<string, { description?: string }> };
 }
 
+const toolStrings = (tool: ToolLike): string[] => [
+  tool.description ?? "",
+  tool.promptSnippet ?? "",
+  ...(tool.promptGuidelines ?? []),
+  ...Object.values(tool.parameters?.properties ?? {}).map((p) => p.description ?? ""),
+];
+
 const topLevelAgentTool = (): ToolLike => {
   const pi = { registerTool: vi.fn(), events: { emit: vi.fn(), on: vi.fn() } } as any;
   const deps: AgentToolDeps = {
@@ -138,6 +145,24 @@ describe("agent tool parameters", () => {
       expect(description, tool?.name).toContain(MODEL_PARAMETER_RULE);
       expect(description).toMatch(/omit/);
     }
+  });
+});
+
+describe("subagent_type requirement", () => {
+  it("is stated by no string of the top-level or nested agent tool", () => {
+    for (const tool of [topLevelAgentTool(), ...nestedAgentTools()]) {
+      for (const text of toolStrings(tool)) {
+        expect(text, `${tool.name}: ${text}`).not.toMatch(
+          /specify a subagent_type|subagent_type is required|must (pass|specify|provide) (a )?subagent_type/i,
+        );
+      }
+    }
+  });
+
+  it("nested subagent_type description states the type fit rule", () => {
+    const nestedAgent = nestedAgentTools().find((tool) => tool.name === "agent");
+    const subagentType = nestedAgent?.parameters?.properties?.subagent_type?.description ?? "";
+    expect(subagentType).toContain("only when a listed type");
   });
 });
 

@@ -273,7 +273,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       description: Type.String({ description: "Short 3-5 word task description." }),
       subagent_type: Type.Optional(
         Type.String({
-          description: `Allowed nested agent type. Available: ${availableIn(loadRegistry()).join(", ") || "none"}. Omit it to build a one-off agent from the tools, disallowed_tools, extensions, exclude_extensions, skills, allowed_subagents, and prompt_mode parameters. That is allowed only when this agent's allowed_subagents is all.`,
+          description: `Allowed nested agent type. Available: ${availableIn(loadRegistry()).join(", ") || "none"}. Pass it only when a listed type's description matches the job. Otherwise omit it to build a one-off agent from the tools, disallowed_tools, extensions, exclude_extensions, skills, allowed_subagents, and prompt_mode parameters. That is allowed only when this agent's allowed_subagents is all.`,
         }),
       ),
       ...ephemeralParamShape,

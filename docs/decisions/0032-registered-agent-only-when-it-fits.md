@@ -16,7 +16,7 @@ Tool descriptions, parameter descriptions, snippets, and guidelines of the `agen
 
 Done check: `npx vitest run test/agent-tool-description.test.ts test/tool-description-mode.test.ts` passes. The tests assert two things:
 
-- the `agent` tool description in `full` and `compact` mode contains "only when a listed type"
+- the `agent` tool description in `full` and `compact` mode, and the nested `subagent_type` description, contain "only when a listed type"
 - no registered string says every call must pass `subagent_type`
 
 Rejected: "prefer a registered agent" with no fit test. It pushes the model to a poor fit.
