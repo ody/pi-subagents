@@ -19,7 +19,6 @@ export interface StartDeps {
   acquireSlot: (pool: Pool | undefined) => void;
   nestedManager: NestedAgentManager;
   onStart?: (record: AgentRecord) => void;
-  onComplete?: (record: AgentRecord) => void;
   onCompact?: (record: AgentRecord, info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
   onUsage?: (record: AgentRecord, usage: LifetimeUsage) => void;
 }

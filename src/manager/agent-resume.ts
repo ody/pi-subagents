@@ -29,6 +29,7 @@ export interface ResumeDeps {
   acquireSlot: (pool: Pool | undefined) => void;
   abort: (id: string) => boolean;
   settleRun: (record: AgentRecord) => void;
+  reopenRun: (record: AgentRecord) => void;
   noteToolActivity: (id: string, activity: ToolActivity) => void;
   onStart?: (record: AgentRecord) => void;
   onCompact?: (record: AgentRecord, info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
@@ -63,7 +64,7 @@ export async function resume(
   record.result = undefined;
   record.error = undefined;
   record.completedAt = undefined;
-  record.settled = false;
+  deps.reopenRun(record);
   record.pool = undefined;
   record.promise = undefined;
   record.startGate = undefined;

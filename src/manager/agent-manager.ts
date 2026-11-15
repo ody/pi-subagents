@@ -138,7 +138,6 @@ export class AgentManager {
       acquireSlot: pool => this.acquireSlot(pool),
       nestedManager: this as NestedAgentManager,
       onStart: record => this.onStart?.(record),
-      onComplete: record => this.onComplete?.(record),
       onCompact: (record, info) => this.onCompact?.(record, info),
       onUsage: (record, usage) => this.onUsage?.(record, usage),
     };
@@ -180,6 +179,10 @@ export class AgentManager {
 
     try { this.onComplete?.(record); } catch {}
     this.drainQueue();
+  }
+
+  private reopenRun(record: AgentRecord): void {
+    record.settled = false;
   }
 
   private forceSettle(record: AgentRecord): void {
@@ -242,6 +245,7 @@ export class AgentManager {
       acquireSlot: pool => this.acquireSlot(pool),
       abort: id => this.abort(id),
       settleRun: record => this.settleRun(record),
+      reopenRun: record => this.reopenRun(record),
       noteToolActivity: (id, activity) => this.noteToolActivity(id, activity),
       onStart: record => this.onStart?.(record),
       onCompact: (record, info) => this.onCompact?.(record, info),
