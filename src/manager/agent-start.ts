@@ -225,7 +225,13 @@ export async function startAgent(
         try {
           const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree, options.description);
           record.worktreeResult = wtResult;
-        } catch { }
+        } catch (cleanupErr) {
+          record.worktreeResult = {
+            hasChanges: false,
+            path: record.worktree.path,
+            failure: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          };
+        }
       }
 
       if (isCurrent()) deps.settleRun(record);

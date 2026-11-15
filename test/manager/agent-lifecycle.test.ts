@@ -841,6 +841,27 @@ describe("AgentManager — resume run endings settle once", () => {
     expect(slots(manager).runningBackground).toBe(1);
   });
 
+  it("accepts a resume after a worktree save that throws", async () => {
+    vi.mocked(createWorktree).mockResolvedValue({ path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt" } as any);
+    vi.mocked(cleanupWorktree).mockRejectedValue(new Error("disk gone"));
+    manager = new AgentManager(record => completed.push(record), 1);
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true, isolation: "worktree" });
+    await vi.advanceTimersByTimeAsync(0);
+    const record = manager.getRecord(id)!;
+    record.session = mockSession();
+    manager.abort(id, "user");
+    await vi.advanceTimersByTimeAsync(GRACE);
+    expect(await manager.resume(id, "early", undefined, { isBackground: true })).toBeUndefined();
+
+    runs[0].resolve(result());
+    await record.promise;
+    expect(record.worktreeResult).toMatchObject({ hasChanges: false, path: "/tmp/wt", failure: "disk gone" });
+    expect(await manager.resume(id, "after", undefined, { isBackground: true })).toBe(record);
+    expect(resumes).toHaveLength(1);
+    vi.mocked(cleanupWorktree).mockReset();
+    vi.mocked(cleanupWorktree).mockReturnValue({ hasChanges: false } as any);
+  });
+
   it("ignores the late result of a forced spawn once the record is resumed", async () => {
     manager = new AgentManager(record => completed.push(record), 1);
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });

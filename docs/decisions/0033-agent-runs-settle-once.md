@@ -18,7 +18,7 @@ Every run that leaves `queued` or `running` settles exactly once, through `settl
 - A run that resolves sets its terminal status and `completedAt`, never replacing `stopped`. It then saves and removes its worktree and appends the branch or failure note, even after a forced settle.
 - A start that throws sets `error` and enters the tail. A direct start also rethrows to its caller, marks its result consumed, and removes its record once the tail has run.
 - A new run on a record supersedes its earlier run. The earlier run's late ending, and a forced-settle timer armed for it, change nothing on the record.
-- The manager refuses a resume while the earlier run has not settled or its worktree has no saved result. A resume then never shares a slot or a worktree with a run that is still ending.
+- The manager refuses a resume while the earlier run has not settled or is still saving its worktree. A failed save counts as done. A resume then never shares a slot or a worktree with a run that is still ending.
 - A stop while queued or during worktree creation enters the tail.
 - `abort()` on a running run arms an unref'd `FORCED_SETTLE_GRACE_MS` (5 s) timer. When it fires on an unsettled run, `forceSettle` enters the tail. First it sets the result to the streamed text if none exists, and adds the worktree path if any.
 
