@@ -13,7 +13,7 @@ This narrows when the model uses the `model` override of ADR 0014. ADR 0014 stil
 Tool descriptions, parameter descriptions, snippets, guidelines, and the generated type lists (`{{typeList}}`, `{{compactTypeList}}`) follow these rules, top-level and nested:
 
 - Never show an agent's configured `model`.
-- Never explain how a caller `model`, the frontmatter `model`, and the session model rank.
+- Never explain how a caller value, the frontmatter value, and the fallback rank, for `model` or any other field ADR 0014 lets the caller override.
 - Every `model` parameter description says to set `model` only when the user named a model, and to omit it otherwise.
 
 Tool-result and notification text names a model only to report this run's outcome:
@@ -25,6 +25,7 @@ Tool-result and notification text names a model only to report this run's outcom
 Done check: `npx vitest run test/agent-tool-description.test.ts test/tool-description-mode.test.ts` passes. The tests assert, in `full`, `compact`, and `custom` mode and for the nested tools:
 
 - the type lists for an agent with a frontmatter `model` contain no label of that model
+- no description, snippet, guideline, or parameter description mentions an agent's default, frontmatter, or precedence
 - each `model` parameter description contains "only when the user named a model"
 - `formatTaskNotification` output for a record with a configured model contains no label of that model
 

@@ -84,12 +84,12 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
       ),
       thinking: Type.Optional(
         Type.String({
-          description: `Thinking level: ${THINKING_LEVELS.join(", ")}. Overrides the agent's default.`,
+          description: `Thinking level: ${THINKING_LEVELS.join(", ")}.`,
         }),
       ),
       max_turns: Type.Optional(
         Type.Number({
-          description: "Maximum number of agentic turns before stopping. 0 means unlimited. Overrides the agent's default.",
+          description: "Maximum number of agentic turns before stopping. 0 means unlimited.",
           minimum: 0,
         }),
       ),

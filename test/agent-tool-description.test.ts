@@ -146,6 +146,14 @@ describe("agent tool parameters", () => {
       expect(description).toMatch(/omit/);
     }
   });
+
+  it("no string explains how caller and frontmatter values rank", () => {
+    for (const tool of [topLevelAgentTool(), ...nestedAgentTools()]) {
+      for (const text of toolStrings(tool)) {
+        expect(text, `${tool.name}: ${text}`).not.toMatch(/agent's default|frontmatter|precedence|overrides? the agent/i);
+      }
+    }
+  });
 });
 
 describe("subagent_type requirement", () => {
