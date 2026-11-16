@@ -242,14 +242,148 @@ export function addUsageToAncestors(
   }
 }
 
+function loadRegistry(context: NestedToolContext): Map<string, AgentConfig> {
+  return buildAgentRegistry(loadCustomAgents(context.configCwd));
+}
+
+function allowedTypesIn(context: NestedToolContext, registry: Map<string, AgentConfig>): Set<string> | undefined {
+  return context.allowedSubagents === "all"
+    ? undefined
+    : new Set(context.allowedSubagents.map(name => resolveTypeIn(registry, name) ?? name));
+}
+
+type NestedAgentParams = NestedTargetParams & Parameters<typeof resolveAgentInvocationConfig>[1] & {
+  prompt: string;
+  resume?: string;
+};
+
+async function runNestedAgentCall(
+  context: NestedToolContext,
+  params: NestedAgentParams,
+  signal: AbortSignal | undefined,
+  ctx: ExtensionContext,
+) {
+  if (params.resume) {
+    return resumeOwned(context.manager, context.parentAgentId, params.resume, params.prompt, signal);
+  }
+
+  if (context.depth >= context.maxSubagentDepth) {
+    return textResult(
+      `Nested subagent call blocked (depth=${context.depth}, max=${context.maxSubagentDepth}). Complete the task directly.`,
+      true,
+    );
+  }
+
+  const registry = loadRegistry(context);
+  const target = resolveNestedTarget(params, registry, context.allowedSubagents, allowedTypesIn(context, registry));
+  if ("error" in target) return textResult(target.error, true);
+  const { type: resolvedType, config, built } = target;
+  const invocation = resolveAgentInvocationConfig(config, params, {
+    worktreeAllowed: isWorktreeIsolationEnabled(),
+    defaultRunInBackground: false,
+  });
+  const scoped = resolveScopedModel(
+    invocation,
+    {
+      sessionModel: ctx.model,
+      cwd: context.configCwd,
+      modelRegistry: ctx.modelRegistry,
+      notify: (message, level) => ctx.ui?.notify(message, level),
+    },
+    config?.displayName ?? resolvedType,
+  );
+  if (!scoped.ok) return textResult(scoped.message, true);
+  const model = scoped.model;
+
+  const granted = grantNestedCapability(context, {
+    type: resolvedType,
+    config: built?.config ?? config,
+    built,
+    isolated: invocation.isolated,
+    notify: (message, level) => ctx.ui?.notify(message, level),
+  });
+  if ("error" in granted) return textResult(granted.error, true);
+  const { capability } = granted;
+  const note = nestedFilteredNote(capability) + modelReplacedNote(scoped.replaced);
+
+  const rootSessionId = context.manager.getRecord(context.parentAgentId)?.rootSessionId;
+  const childDepth = context.depth + 1;
+  const options: NestedSpawnOptions = {
+    description: params.description,
+    capability,
+    agentConfig: built?.config,
+    ephemeral: built ? { handleSeed: params.description } : undefined,
+    model,
+    maxTurns: invocation.maxTurns,
+    isolated: invocation.isolated,
+    inheritContext: invocation.inheritContext,
+    thinkingLevel: invocation.thinking,
+    isolation: invocation.isolation,
+    invocation: {
+      thinking: invocation.thinking,
+      maxTurns: invocation.maxTurns,
+      isolated: invocation.isolated,
+      inheritContext: invocation.inheritContext,
+      runInBackground: invocation.runInBackground,
+      isolation: invocation.isolation,
+      ...describeOverrides(invocation.overridden, model, ctx.modelRegistry),
+    },
+    onAssistantUsage: usage => addUsageToAncestors(context.manager, context.parentAgentId, usage),
+    depth: childDepth,
+    parentAgentId: context.parentAgentId,
+    maxSubagentDepth: context.maxSubagentDepth,
+    configCwd: context.configCwd,
+    rootSessionId,
+  };
+
+  const transcriptSessionId =
+    rootSessionId !== undefined && (config?.outputTranscript ?? getOutputTranscriptDefault())
+      ? rootSessionId
+      : undefined;
+  let childId: string | undefined;
+  const attachTranscript = (id: string): void => {
+    childId = id;
+    if (transcriptSessionId === undefined) return;
+    const rec = context.manager.getRecord(id);
+    if (!rec) return;
+    rec.outputFile = createOutputFilePath(context.configCwd, id, transcriptSessionId);
+    writeInitialEntry(rec.outputFile, id, params.prompt, ctx.cwd);
+  };
+  options.onSessionCreated = (session) => {
+    const rec = childId === undefined ? undefined : context.manager.getRecord(childId);
+    if (rec?.outputFile && childId !== undefined) {
+      rec.outputCleanup = streamToOutputFile(session, rec.outputFile, childId, ctx.cwd);
+    }
+  };
+
+  try {
+    if (invocation.runInBackground) {
+      const id = context.manager.spawn(context.pi, ctx, resolvedType, params.prompt, {
+        ...options,
+        isBackground: true,
+      });
+      attachTranscript(id);
+      await context.manager.awaitStartup(id);
+      return textResult(`${note}Nested agent started in background. Agent ID: ${id}`);
+    }
+
+    const { record } = await context.manager.spawnAndWait(
+      context.pi,
+      ctx,
+      resolvedType,
+      params.prompt,
+      { ...options, signal, signalCause: "owner" },
+      attachTranscript,
+    );
+    return textResult(note + formatRecord(record, "inline"), record.status === "error");
+  } catch (err) {
+    return textResult(err instanceof Error ? err.message : String(err), true);
+  }
+}
+
 export function createNestedSubagentTools(context: NestedToolContext): ToolDefinition[] {
-  const loadRegistry = () => buildAgentRegistry(loadCustomAgents(context.configCwd));
-  const allowedTypesIn = (registry: Map<string, AgentConfig>): Set<string> | undefined =>
-    context.allowedSubagents === "all"
-      ? undefined
-      : new Set(context.allowedSubagents.map(name => resolveTypeIn(registry, name) ?? name));
   const availableIn = (registry: Map<string, AgentConfig>): string[] => {
-    const allowed = allowedTypesIn(registry);
+    const allowed = allowedTypesIn(context, registry);
     return getAvailableTypesIn(registry).filter(name => allowed === undefined || allowed.has(name));
   };
 
@@ -264,7 +398,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       description: Type.String({ description: "Short 3-5 word task description." }),
       subagent_type: Type.Optional(
         Type.String({
-          description: `Allowed nested agent type. Available: ${availableIn(loadRegistry()).join(", ") || "none"}. Pass it only when a listed type's description matches the job. Otherwise omit it to build a one-off agent from the tools, disallowed_tools, extensions, exclude_extensions, skills, allowed_subagents, and prompt_mode parameters. That is allowed only when this agent's allowed_subagents is all.`,
+          description: `Allowed nested agent type. Available: ${availableIn(loadRegistry(context)).join(", ") || "none"}. Pass it only when a listed type's description matches the job. Otherwise omit it to build a one-off agent from the tools, disallowed_tools, extensions, exclude_extensions, skills, allowed_subagents, and prompt_mode parameters. That is allowed only when this agent's allowed_subagents is all.`,
         }),
       ),
       ...ephemeralParamShape,
@@ -281,124 +415,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       inherit_context: Type.Optional(Type.Boolean()),
       ...isolationParam(isWorktreeIsolationEnabled()),
     }),
-    execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
-      if (params.resume) {
-        return resumeOwned(context.manager, context.parentAgentId, params.resume, params.prompt, signal);
-      }
-
-      if (context.depth >= context.maxSubagentDepth) {
-        return textResult(
-          `Nested subagent call blocked (depth=${context.depth}, max=${context.maxSubagentDepth}). Complete the task directly.`,
-          true,
-        );
-      }
-
-      const registry = loadRegistry();
-      const target = resolveNestedTarget(params, registry, context.allowedSubagents, allowedTypesIn(registry));
-      if ("error" in target) return textResult(target.error, true);
-      const { type: resolvedType, config, built } = target;
-      const invocation = resolveAgentInvocationConfig(config, params, {
-        worktreeAllowed: isWorktreeIsolationEnabled(),
-        defaultRunInBackground: false,
-      });
-      const scoped = resolveScopedModel(
-        invocation,
-        {
-          sessionModel: ctx.model,
-          cwd: context.configCwd,
-          modelRegistry: ctx.modelRegistry,
-          notify: (message, level) => ctx.ui?.notify(message, level),
-        },
-        config?.displayName ?? resolvedType,
-      );
-      if (!scoped.ok) return textResult(scoped.message, true);
-      const model = scoped.model;
-
-      const granted = grantNestedCapability(context, {
-        type: resolvedType,
-        config: built?.config ?? config,
-        built,
-        isolated: invocation.isolated,
-        notify: (message, level) => ctx.ui?.notify(message, level),
-      });
-      if ("error" in granted) return textResult(granted.error, true);
-      const { capability } = granted;
-      const note = nestedFilteredNote(capability) + modelReplacedNote(scoped.replaced);
-
-      const rootSessionId = context.manager.getRecord(context.parentAgentId)?.rootSessionId;
-      const childDepth = context.depth + 1;
-      const options: NestedSpawnOptions = {
-        description: params.description,
-        capability,
-        agentConfig: built?.config,
-        ephemeral: built ? { handleSeed: params.description } : undefined,
-        model,
-        maxTurns: invocation.maxTurns,
-        isolated: invocation.isolated,
-        inheritContext: invocation.inheritContext,
-        thinkingLevel: invocation.thinking,
-        isolation: invocation.isolation,
-        invocation: {
-          thinking: invocation.thinking,
-          maxTurns: invocation.maxTurns,
-          isolated: invocation.isolated,
-          inheritContext: invocation.inheritContext,
-          runInBackground: invocation.runInBackground,
-          isolation: invocation.isolation,
-          ...describeOverrides(invocation.overridden, model, ctx.modelRegistry),
-        },
-        onAssistantUsage: usage => addUsageToAncestors(context.manager, context.parentAgentId, usage),
-        depth: childDepth,
-        parentAgentId: context.parentAgentId,
-        maxSubagentDepth: context.maxSubagentDepth,
-        configCwd: context.configCwd,
-        rootSessionId,
-      };
-
-      const transcriptSessionId =
-        rootSessionId !== undefined && (config?.outputTranscript ?? getOutputTranscriptDefault())
-          ? rootSessionId
-          : undefined;
-      let childId: string | undefined;
-      const attachTranscript = (id: string): void => {
-        childId = id;
-        if (transcriptSessionId === undefined) return;
-        const rec = context.manager.getRecord(id);
-        if (!rec) return;
-        rec.outputFile = createOutputFilePath(context.configCwd, id, transcriptSessionId);
-        writeInitialEntry(rec.outputFile, id, params.prompt, ctx.cwd);
-      };
-      options.onSessionCreated = (session) => {
-        const rec = childId === undefined ? undefined : context.manager.getRecord(childId);
-        if (rec?.outputFile && childId !== undefined) {
-          rec.outputCleanup = streamToOutputFile(session, rec.outputFile, childId, ctx.cwd);
-        }
-      };
-
-      try {
-        if (invocation.runInBackground) {
-          const id = context.manager.spawn(context.pi, ctx, resolvedType, params.prompt, {
-            ...options,
-            isBackground: true,
-          });
-          attachTranscript(id);
-          await context.manager.awaitStartup(id);
-          return textResult(`${note}Nested agent started in background. Agent ID: ${id}`);
-        }
-
-        const { record } = await context.manager.spawnAndWait(
-          context.pi,
-          ctx,
-          resolvedType,
-          params.prompt,
-          { ...options, signal, signalCause: "owner" },
-          attachTranscript,
-        );
-        return textResult(note + formatRecord(record, "inline"), record.status === "error");
-      } catch (err) {
-        return textResult(err instanceof Error ? err.message : String(err), true);
-      }
-    },
+    execute: (_toolCallId, params, signal, _onUpdate, ctx) => runNestedAgentCall(context, params, signal, ctx),
   });
 
   const resultTool = defineTool({
