@@ -82,35 +82,7 @@ export function spawnAgent(
   assertSignalCause("spawn", options.signal, options.signalCause);
 
   const id = randomUUID().slice(0, 17);
-  const abortController = new AbortController();
-  const record: AgentRecord = {
-    id,
-    type,
-    handle: !isTopLevelAgent(options)
-      ? undefined
-      : options.reclaim?.handle ?? assignHandle(handleBase(options.ephemeral?.handleSeed ?? type), deps.takenHandles()),
-    displayName: options.ephemeral ? options.agentConfig?.displayName : undefined,
-    promptMode: options.ephemeral ? options.agentConfig?.promptMode : undefined,
-    agentConfig: options.ephemeral ? options.agentConfig : undefined,
-    description: options.description,
-    alias: isTopLevelAgent(options) ? options.reclaim?.alias : undefined,
-    status: options.isBackground ? "queued" : "running",
-    toolUses: 0,
-    startedAt: Date.now(),
-    abortController,
-    lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
-    compactionCount: 0,
-    isBackground: options.isBackground,
-    blocking: options.blocking,
-    invocation: options.invocation,
-    depth: options.depth ?? 1,
-    parentAgentId: options.parentAgentId,
-    maxSubagentDepth: options.maxSubagentDepth,
-    rootSessionId: options.rootSessionId,
-    filtered: options.capability.filtered.length > 0 ? options.capability.filtered : undefined,
-    modelReplaced: options.modelReplaced,
-    capabilities: options.capability.capabilities,
-  };
+  const record = newAgentRecord(id, type, options, options.capability, deps.takenHandles);
   deps.agents.set(id, record);
   deps.activities.set(id, {
     activeTools: new Map(),
@@ -137,6 +109,43 @@ export function spawnAgent(
 
   deps.launch(id, record, args, false);
   return id;
+}
+
+function newAgentRecord(
+  id: string,
+  type: SubagentType,
+  options: SpawnOptions,
+  capability: GrantedCapability,
+  takenHandles: () => Set<string>,
+): AgentRecord {
+  return {
+    id,
+    type,
+    handle: !isTopLevelAgent(options)
+      ? undefined
+      : options.reclaim?.handle ?? assignHandle(handleBase(options.ephemeral?.handleSeed ?? type), takenHandles()),
+    displayName: options.ephemeral ? options.agentConfig?.displayName : undefined,
+    promptMode: options.ephemeral ? options.agentConfig?.promptMode : undefined,
+    agentConfig: options.ephemeral ? options.agentConfig : undefined,
+    description: options.description,
+    alias: isTopLevelAgent(options) ? options.reclaim?.alias : undefined,
+    status: options.isBackground ? "queued" : "running",
+    toolUses: 0,
+    startedAt: Date.now(),
+    abortController: new AbortController(),
+    lifetimeUsage: { input: 0, output: 0, cacheWrite: 0, cost: 0 },
+    compactionCount: 0,
+    isBackground: options.isBackground,
+    blocking: options.blocking,
+    invocation: options.invocation,
+    depth: options.depth ?? 1,
+    parentAgentId: options.parentAgentId,
+    maxSubagentDepth: options.maxSubagentDepth,
+    rootSessionId: options.rootSessionId,
+    filtered: capability.filtered.length > 0 ? capability.filtered : undefined,
+    modelReplaced: options.modelReplaced,
+    capabilities: capability.capabilities,
+  };
 }
 
 export async function spawnAndWait(
