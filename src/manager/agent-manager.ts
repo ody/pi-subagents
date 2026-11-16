@@ -12,7 +12,8 @@ import { occupiesForegroundSlot, occupiesPoolSlot, type Pool } from "./agent-man
 import { type ResumeDeps, type ResumeOptions, resume as resumeOperation } from "./agent-resume.js";
 import { cleanup as cleanupRecords, clearCompleted as clearCompletedRecords, dropTombstone as dropTombstoneEntry, takenHandles as getTakenHandles, listTombstones as listTombstoneEntries, type RetentionDeps, resolveMention as resolveAgentMention } from "./agent-retention.js";
 import { type SpawnArgs, type SpawnDeps, type SpawnOptions, spawnAgent, spawnAndWait as spawnAndWaitOperation } from "./agent-spawn.js";
-import { armQueuedAbort as armQueuedAbortOperation, awaitStartup as awaitStartupOperation, launch as launchAgent, type StartDeps } from "./agent-start.js";
+import { awaitStartup as awaitStartupOperation, launch as launchAgent, type StartDeps } from "./agent-start.js";
+import { armQueuedAbort as armQueuedAbortOperation } from "./parent-signal.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
 export type OnAgentStart = (record: AgentRecord) => void;
@@ -149,7 +150,7 @@ export class AgentManager {
   }
 
   private armQueuedAbort(id: string, signal?: AbortSignal, cause?: StopCause): boolean {
-    return armQueuedAbortOperation(this.startDeps(), id, signal, cause);
+    return armQueuedAbortOperation((agentId, stopCause) => this.abort(agentId, stopCause), id, signal, cause);
   }
 
   private launch(id: string, record: AgentRecord, args: SpawnArgs, queued: boolean): Promise<void> {

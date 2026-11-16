@@ -3,6 +3,7 @@ import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
 import type { Pool } from "./agent-manager-rules.js";
+import { assertSignalCause, watchParentSignal } from "./parent-signal.js";
 import { recordRunOutcome } from "./run-outcome.js";
 
 export interface ResumeOptions {
@@ -45,9 +46,7 @@ export async function resume(
   signal?: AbortSignal,
   options?: ResumeOptions,
 ): Promise<AgentRecord | undefined> {
-  if (signal && !options?.signalCause) {
-    throw new Error("A resume with a signal needs signalCause, the stop cause of the signal's owner.");
-  }
+  assertSignalCause("resume", signal, options?.signalCause);
   const record = deps.agents.get(id);
   if (!record?.session) return undefined;
   if (record.status === "running" || record.status === "queued" || (!record.settled && record.promise !== undefined)) return undefined;
@@ -77,7 +76,7 @@ export async function resume(
   record.startGate = undefined;
   record.outputCleanup = undefined;
   record.abortController = controller;
-  record.detachParentSignal = watchParentSignal(deps, record, controller, signal, options?.signalCause);
+  record.detachParentSignal = watchParentSignal(deps.abort, record, controller, signal, options?.signalCause);
 
   const begin = () => {
     try {
@@ -112,21 +111,6 @@ export async function resume(
   if (record.status === "queued") await record.startGate;
   await record.promise;
   return record;
-}
-
-function watchParentSignal(
-  deps: ResumeDeps,
-  record: AgentRecord,
-  controller: AbortController,
-  parentSignal: AbortSignal | undefined,
-  cause: StopCause | undefined,
-): (() => void) | undefined {
-  if (!parentSignal || !cause) return undefined;
-  const onParentAbort = () => {
-    if (record.abortController === controller) deps.abort(record.id, cause);
-  };
-  parentSignal.addEventListener("abort", onParentAbort, { once: true });
-  return () => parentSignal.removeEventListener("abort", onParentAbort);
 }
 
 function startResume(

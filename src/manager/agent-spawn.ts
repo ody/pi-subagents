@@ -7,6 +7,7 @@ import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
 import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, StopCause, SubagentType, ThinkingLevel } from "../types.js";
 import { assertValidSpawnCwd, isTopLevelAgent, type Pool } from "./agent-manager-rules.js";
+import { assertSignalCause } from "./parent-signal.js";
 
 export interface SpawnArgs {
   pi: ExtensionAPI;
@@ -84,9 +85,7 @@ export function spawnAgent(
   if (!isMintedVerdict(options.capability)) {
     throw new Error("Capability policy: a spawn needs a verdict from checkCapabilityPolicy.");
   }
-  if (options.signal && !options.signalCause) {
-    throw new Error("A spawn with a signal needs signalCause, the stop cause of the signal's owner.");
-  }
+  assertSignalCause("spawn", options.signal, options.signalCause);
 
   const id = randomUUID().slice(0, 17);
   const abortController = new AbortController();

@@ -6,6 +6,7 @@ import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
 import { assertValidSpawnCwd, type Pool } from "./agent-manager-rules.js";
 import type { SpawnArgs } from "./agent-spawn.js";
+import { watchParentSignal } from "./parent-signal.js";
 import { recordRunError, recordRunOutcome } from "./run-outcome.js";
 
 export interface StartDeps {
@@ -22,16 +23,6 @@ export interface StartDeps {
   onStart?: (record: AgentRecord) => void;
   onCompact?: (record: AgentRecord, info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
   onUsage?: (record: AgentRecord, usage: LifetimeUsage) => void;
-}
-
-export function armQueuedAbort(deps: StartDeps, id: string, signal: AbortSignal | undefined, cause: StopCause | undefined): boolean {
-  if (signal === undefined || cause === undefined) return true;
-  if (signal.aborted) {
-    deps.abort(id, cause);
-    return false;
-  }
-  signal.addEventListener("abort", () => deps.abort(id, cause), { once: true });
-  return true;
 }
 
 export function launch(
@@ -103,17 +94,10 @@ export async function startAgent(
 
   deps.onStart?.(record);
 
-  if (options.signal) {
-    const cause = options.signalCause!;
-    if (options.signal.aborted) deps.abort(id, cause);
-    else {
-      const onParentAbort = () => deps.abort(id, cause);
-      options.signal.addEventListener("abort", onParentAbort, { once: true });
-      record.detachParentSignal = () => options.signal!.removeEventListener("abort", onParentAbort);
-    }
-  }
-
   const controller = record.abortController!;
+  record.detachParentSignal = watchParentSignal(deps.abort, record, controller, options.signal, options.signalCause);
+  if (options.signal?.aborted) deps.abort(id, options.signalCause!);
+
   const isCurrent = () => record.abortController === controller;
 
   const promise = runAgent(ctx, type, prompt, {
