@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { ModelRegistryRef } from "../../src/config/enabled-models.js";
-import { checkModelScope, isScopeModelsEnabled, scopeModel, setScopeModelsEnabled } from "../../src/config/model-scope.js";
+import { checkModelScope, isScopeModelsEnabled, resolvePinnedModel, resolveScopedModel, scopeModel, setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import { registerRpcHandlers } from "../../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../../src/triggers/spawn-funnel.js";
 import { testAgent } from "../harness/test-agents.js";
@@ -296,5 +296,92 @@ describe("spawn funnel scope", () => {
   it("drops a caller-forged modelReplaced from top-level options", () => {
     funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d", modelReplaced: "forged" });
     expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
+  });
+});
+
+const findingRegistry = {
+  getAll: () => MODELS,
+  find: (provider: string, id: string) => MODELS.find(m => m.provider === provider && m.id === id),
+};
+
+describe("resolvePinnedModel", () => {
+  it("returns no pin when no model input", () => {
+    expect(resolvePinnedModel({ modelInput: undefined, modelFromParams: false }, findingRegistry)).toEqual({ ok: true, pinned: undefined });
+  });
+
+  it("resolves a known model", () => {
+    const r = resolvePinnedModel({ modelInput: "anthropic/claude-opus-4-6", modelFromParams: true }, findingRegistry);
+    expect(r).toMatchObject({ ok: true, pinned: OPUS });
+  });
+
+  it("refuses an unresolved model that came from params", () => {
+    const r = resolvePinnedModel({ modelInput: "nope/none", modelFromParams: true }, findingRegistry);
+    expect(r).toEqual({ ok: false, message: expect.any(String) });
+  });
+
+  it("returns no pin when an unresolved model came from config", () => {
+    const r = resolvePinnedModel({ modelInput: "nope/none", modelFromParams: false }, findingRegistry);
+    expect(r).toEqual({ ok: true, pinned: undefined });
+  });
+});
+
+describe("resolveScopedModel", () => {
+  let projectDir: string;
+  let agentDir: string;
+  let prevAgentDir: string | undefined;
+  let prevEnabled: boolean;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "pi-scope-project-"));
+    agentDir = mkdtempSync(join(tmpdir(), "pi-scope-global-"));
+    prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    prevEnabled = isScopeModelsEnabled();
+    setScopeModelsEnabled(true);
+    mkdirSync(join(projectDir, ".pi"), { recursive: true });
+    writeFileSync(join(projectDir, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/claude-haiku-4-5"] }));
+  });
+
+  afterEach(() => {
+    setScopeModelsEnabled(prevEnabled);
+    if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
+  });
+
+  function resolve(modelInput: string | undefined, modelFromParams: boolean, notify = vi.fn()) {
+    const result = resolveScopedModel(
+      { modelInput, modelFromParams },
+      { sessionModel: HAIKU as never, cwd: projectDir, modelRegistry: findingRegistry, notify },
+      "scout",
+    );
+    return { result, notify };
+  }
+
+  it("refuses an unresolved model from params before checking scope", () => {
+    const { result, notify } = resolve("nope/none", true);
+    expect(result.ok).toBe(false);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("refuses an out-of-scope model from params", () => {
+    const { result } = resolve("anthropic/claude-opus-4-6", true);
+    expect(result).toEqual({ ok: false, message: expect.stringContaining("Allowed models") });
+  });
+
+  it("replaces an out-of-scope pin with the session model and warns", () => {
+    const { result, notify } = resolve("anthropic/claude-opus-4-6", false);
+    expect(result).toEqual({ ok: true, model: HAIKU, replaced: "anthropic/claude-opus-4-6" });
+    expect(notify).toHaveBeenCalledWith(
+      'Agent "scout" pins out-of-scope model "anthropic/claude-opus-4-6"; using the session model instead',
+      "warning",
+    );
+  });
+
+  it("keeps an in-scope pin without a warning", () => {
+    const { result, notify } = resolve("anthropic/claude-haiku-4-5", true);
+    expect(result).toMatchObject({ ok: true, model: HAIKU, replaced: undefined });
+    expect(notify).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,7 @@ import { buildAgentRegistry, getAvailableTypes, registerAgents } from "../../src
 import { loadCustomAgents } from "../../src/agents/custom-agents.js";
 import { setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import { encodeCwd } from "../../src/platform/output-file.js";
-import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedModel, resolveNestedType, setMaxSubagentDepth } from "../../src/tool/nested-tools.js";
+import { addUsageToAncestors, createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager, resolveNestedType, setMaxSubagentDepth } from "../../src/tool/nested-tools.js";
 import { grant } from "../harness/capability.js";
 import { testAgents } from "../harness/test-agents.js";
 
@@ -721,29 +721,6 @@ describe("setMaxSubagentDepth clamping", () => {
   it("stores a valid depth unchanged", () => {
     setMaxSubagentDepth(3);
     expect(getMaxSubagentDepth()).toBe(3);
-  });
-});
-
-describe("resolveNestedModel", () => {
-  const registry = ctx().modelRegistry;
-
-  it("returns no pin when no model input", () => {
-    expect(resolveNestedModel({ modelInput: undefined, modelFromParams: false }, registry)).toEqual({ pinned: undefined });
-  });
-
-  it("resolves a known model", () => {
-    const r = resolveNestedModel({ modelInput: "anthropic/allowed", modelFromParams: true }, registry);
-    expect(r).toEqual({ pinned: { provider: "anthropic", id: "allowed" } });
-  });
-
-  it("errors when an unresolved model came from params", () => {
-    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: true }, registry);
-    expect(r).toEqual({ error: expect.any(String) });
-  });
-
-  it("returns no pin when an unresolved model came from config", () => {
-    const r = resolveNestedModel({ modelInput: "nope/none", modelFromParams: false }, registry);
-    expect(r).toEqual({ pinned: undefined });
   });
 });
 

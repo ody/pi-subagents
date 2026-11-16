@@ -1,4 +1,6 @@
+import type { Model } from "@earendil-works/pi-ai";
 import { isModelInScope, type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "./enabled-models.js";
+import { type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { SETTING_SPECS } from "./settings-defaults.js";
 
 let scopeModelsEnabled = SETTING_SPECS.scopeModels.default;
@@ -60,6 +62,47 @@ export function scopeModel<M extends { provider: string; id: string }>(args: {
     return { ok: true, model: sessionModel, replaced: verdict.replaced, notice: verdict.message };
   }
   return { ok: true, model: pinned ?? sessionModel };
+}
+
+export interface ModelRequest {
+  modelInput?: string;
+  modelFromParams: boolean;
+}
+
+export function resolvePinnedModel(
+  request: ModelRequest,
+  modelRegistry: ModelRegistry,
+): { ok: true; pinned: Model<any> | undefined } | { ok: false; message: string } {
+  if (!request.modelInput) return { ok: true, pinned: undefined };
+  const resolved = resolveModel(request.modelInput, modelRegistry);
+  if (typeof resolved !== "string") return { ok: true, pinned: resolved };
+  return request.modelFromParams ? { ok: false, message: resolved } : { ok: true, pinned: undefined };
+}
+
+export function resolveScopedModel(
+  request: ModelRequest,
+  env: {
+    sessionModel: Model<any> | undefined;
+    cwd: string;
+    modelRegistry: ModelRegistry;
+    notify: (message: string, level: "warning") => void;
+  },
+  agentLabel: string,
+): { ok: false; message: string } | { ok: true; model: Model<any> | undefined; replaced: string | undefined } {
+  const pinned = resolvePinnedModel(request, env.modelRegistry);
+  if (!pinned.ok) return pinned;
+  const scoped = scopeModel({
+    pinned: pinned.pinned,
+    sessionModel: env.sessionModel,
+    cwd: env.cwd,
+    modelRegistry: env.modelRegistry,
+    callerSupplied: request.modelFromParams,
+    agentLabel,
+    modelInput: request.modelInput,
+  });
+  if (!scoped.ok) return scoped;
+  if (scoped.notice) env.notify(scoped.notice, "warning");
+  return { ok: true, model: scoped.model, replaced: scoped.replaced };
 }
 
 export function modelReplacedNote(replaced: string | undefined): string {

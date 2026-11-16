@@ -23,8 +23,7 @@ import {
   namedAgentParamConflict,
 } from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, nestedFilteredNote, parentBound, resolveCapability } from "../config/capability-policy.js";
-import { resolveModel } from "../config/model-resolver.js";
-import { modelReplacedNote, scopeModel } from "../config/model-scope.js";
+import { modelReplacedNote, resolveScopedModel } from "../config/model-scope.js";
 import { SETTING_SPECS } from "../config/settings-defaults.js";
 import {
   createOutputFilePath,
@@ -230,16 +229,6 @@ export function resolveNestedType(
   return { type: resolvedType };
 }
 
-export function resolveNestedModel(
-  invocation: { modelInput?: string; modelFromParams: boolean },
-  modelRegistry: ExtensionContext["modelRegistry"],
-): { pinned: Model<any> | undefined } | { error: string } {
-  if (!invocation.modelInput) return { pinned: undefined };
-  const resolved = resolveModel(invocation.modelInput, modelRegistry);
-  if (typeof resolved !== "string") return { pinned: resolved };
-  return invocation.modelFromParams ? { error: resolved } : { pinned: undefined };
-}
-
 export function addUsageToAncestors(
   manager: Pick<NestedAgentManager, "getRecord">,
   parentAgentId: string,
@@ -312,19 +301,17 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         worktreeAllowed: isWorktreeIsolationEnabled(),
         defaultRunInBackground: false,
       });
-      const modelResult = resolveNestedModel(invocation, ctx.modelRegistry);
-      if ("error" in modelResult) return textResult(modelResult.error, true);
-      const scoped = scopeModel({
-        pinned: modelResult.pinned,
-        sessionModel: ctx.model,
-        cwd: context.configCwd,
-        modelRegistry: ctx.modelRegistry,
-        callerSupplied: invocation.modelFromParams,
-        agentLabel: config?.displayName ?? resolvedType,
-        modelInput: invocation.modelInput,
-      });
+      const scoped = resolveScopedModel(
+        invocation,
+        {
+          sessionModel: ctx.model,
+          cwd: context.configCwd,
+          modelRegistry: ctx.modelRegistry,
+          notify: (message, level) => ctx.ui?.notify(message, level),
+        },
+        config?.displayName ?? resolvedType,
+      );
       if (!scoped.ok) return textResult(scoped.message, true);
-      if (scoped.notice) ctx.ui?.notify(scoped.notice, "warning");
       const model = scoped.model;
 
       const granted = grantNestedCapability(context, {

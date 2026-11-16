@@ -9,8 +9,8 @@ import {
   namedAgentParamConflict,
 } from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
-import { describeModel, resolveModel } from "../config/model-resolver.js";
-import { scopeModel } from "../config/model-scope.js";
+import { describeModel } from "../config/model-resolver.js";
+import { resolvePinnedModel, resolveScopedModel } from "../config/model-scope.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import type { AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
@@ -124,28 +124,15 @@ function resolveCallModel(
   invocation: Pick<ReturnType<typeof resolveAgentInvocationConfig>, "modelInput" | "modelFromParams">,
   agentLabel: string,
 ): { ok: false; message: string } | { ok: true; model: Model<any> | undefined; replaced: string | undefined } {
-  let pinned: Model<any> | undefined;
-  if (invocation.modelInput) {
-    const resolved = resolveModel(invocation.modelInput, ctx.modelRegistry);
-    if (typeof resolved === "string") {
-      if (invocation.modelFromParams) return { ok: false, message: resolved };
-    } else {
-      pinned = resolved;
-    }
+  if (params.resume) {
+    const pinned = resolvePinnedModel(invocation, ctx.modelRegistry);
+    return pinned.ok ? { ok: true, model: pinned.pinned ?? ctx.model, replaced: undefined } : pinned;
   }
-  if (params.resume) return { ok: true, model: pinned ?? ctx.model, replaced: undefined };
-  const scoped = scopeModel({
-    pinned,
-    sessionModel: ctx.model,
-    cwd: ctx.cwd,
-    modelRegistry: ctx.modelRegistry,
-    callerSupplied: invocation.modelFromParams,
+  return resolveScopedModel(
+    invocation,
+    { sessionModel: ctx.model, cwd: ctx.cwd, modelRegistry: ctx.modelRegistry, notify: (message, level) => ctx.ui.notify(message, level) },
     agentLabel,
-    modelInput: invocation.modelInput,
-  });
-  if (!scoped.ok) return { ok: false, message: scoped.message };
-  if (scoped.notice) ctx.ui.notify(scoped.notice, "warning");
-  return { ok: true, model: scoped.model, replaced: scoped.replaced };
+  );
 }
 
 export function resolveAgentCall(
