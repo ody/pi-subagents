@@ -30,6 +30,13 @@ export interface BackgroundAgentInput {
   attachTranscript: (rec: AgentRecord | undefined, agentId: string) => void;
 }
 
+export function backgroundRunFooter(record: AgentRecord | undefined, maxConcurrent: number): string {
+  return (record?.outputFile ? `Output file: ${record.outputFile}\n` : "") +
+    (record?.status === "queued" ? `Position: queued (max ${maxConcurrent} concurrent)\n` : "") +
+    `\nYou will be notified when this agent completes.\n` +
+    `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.`;
+}
+
 export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: BackgroundAgentInput) {
   const { pi, manager, widget, fleet, notifier, settings } = deps;
   const { ctx, toolCallId, params, call, attachTranscript } = input;
@@ -108,16 +115,12 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
     isBackground: true,
   });
 
-  const isQueued = record?.status === "queued";
   return textResult(
-    `${capabilityNote}Agent ${isQueued ? "queued" : "started"} in background.\n` +
+    `${capabilityNote}Agent ${record?.status === "queued" ? "queued" : "started"} in background.\n` +
     `Agent ID: ${id}\n` +
     `Type: ${displayName}\n` +
     `Description: ${params.description}\n` +
-    (record?.outputFile ? `Output file: ${record.outputFile}\n` : "") +
-    (isQueued ? `Position: queued (max ${manager.getMaxConcurrent()} concurrent)\n` : "") +
-    `\nYou will be notified when this agent completes.\n` +
-    `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.\n` +
+    `${backgroundRunFooter(record, manager.getMaxConcurrent())}\n` +
     `Do not duplicate this agent's work.`,
     { ...detailBaseFor(detailBase, record), toolUses: 0, tokens: "", durationMs: 0, status: "background" as const, agentId: id },
   );

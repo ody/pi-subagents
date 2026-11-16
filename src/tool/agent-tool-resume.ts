@@ -3,6 +3,7 @@ import type { AgentManager } from "../manager/agent-manager.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
 import type { StartBackgroundResume } from "../manager/background-resume.js";
 import { type AgentCallResolution, detailBaseFor } from "./agent-call-resolution.js";
+import { backgroundRunFooter } from "./agent-tool-background.js";
 import { partialOutputSuffix } from "./status-note.js";
 import { buildDetails, textResult } from "./tool-result.js";
 
@@ -50,15 +51,11 @@ export async function resumeAgentCall(deps: ResumeAgentDeps, input: ResumeAgentI
       return textResult(`Failed to resume agent "${params.resume}".`);
     }
 
-    const isQueued = record.status === "queued";
     return textResult(
-      `Agent ${isQueued ? "queued" : "resumed"} in background.\n` +
+      `Agent ${record.status === "queued" ? "queued" : "resumed"} in background.\n` +
       `Agent ID: ${id}\n` +
       `Type: ${existing.type}\n` +
-      (record.outputFile ? `Output file: ${record.outputFile}\n` : "") +
-      (isQueued ? `Position: queued (max ${manager.getMaxConcurrent()} concurrent)\n` : "") +
-      `\nYou will be notified when this agent completes.\n` +
-      `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.`,
+      backgroundRunFooter(record, manager.getMaxConcurrent()),
       { ...detailBaseFor(detailBase, record), toolUses: record.toolUses, tokens: "", durationMs: 0, status: "background" as const, agentId: id },
     );
   }
