@@ -1,3 +1,4 @@
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describeModel } from "../config/model-resolver.js";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { runAgent, type ToolActivity } from "../session/agent-runner.js";
@@ -73,20 +74,9 @@ export async function startAgent(
 
   let worktreeCwd: string | undefined;
   if (options.isolation === "worktree" && isWorktreeIsolationEnabled()) {
-    const wt = await createWorktree(pi, baseCwd, id);
-    if (!wt) {
-      const failure = new Error(
-        'Cannot run with isolation: "worktree" — not a git repo, no commits yet, or `git worktree add` failed. ' +
-        'Initialize git and commit at least once, or omit `isolation`.',
-      );
-      throw failure;
-    }
-    record.worktree = wt;
-    worktreeCwd = customCwd !== undefined ? wt.workPath : wt.path;
-    deps.worktreeRepos.add(baseCwd);
-
+    worktreeCwd = await enterWorktree(deps, pi, record, baseCwd, customCwd);
     if (record.status !== "running") {
-      record.worktreeResult = await cleanupWorktree(pi, baseCwd, wt, options.description);
+      record.worktreeResult = await cleanupWorktree(pi, baseCwd, record.worktree!, options.description);
       deps.settleRun(record);
       return;
     }
@@ -149,27 +139,7 @@ export async function startAgent(
       maxSubagentDepth: record.maxSubagentDepth,
     },
     onSessionCreated: (session) => {
-      record.session = session;
-      const state = deps.activities.get(id);
-      if (state) state.session = session;
-      record.sessionFile = session.sessionManager?.getSessionFile?.();
-      if (session.model) {
-        record.invocation ??= {};
-        const requested = record.invocation.requestedThinking ?? record.invocation.thinking;
-        Object.assign(record.invocation, describeModel(session.model));
-        if (session.thinkingLevel) {
-          record.invocation.thinking = session.thinkingLevel;
-          if (requested && requested !== session.thinkingLevel) {
-            record.invocation.requestedThinking = requested;
-          }
-        }
-      }
-      if (record.pendingSteers?.length) {
-        for (const msg of record.pendingSteers) {
-          session.steer(msg).catch(() => {});
-        }
-        record.pendingSteers = undefined;
-      }
+      attachSession(deps, record, session);
       options.onSessionCreated?.(session);
     },
   })
@@ -207,6 +177,49 @@ export async function startAgent(
   record.promise = promise;
 
   options.onSpawned?.(id);
+}
+
+async function enterWorktree(
+  deps: StartDeps,
+  pi: SpawnArgs["pi"],
+  record: AgentRecord,
+  baseCwd: string,
+  customCwd: string | undefined,
+): Promise<string> {
+  const wt = await createWorktree(pi, baseCwd, record.id);
+  if (!wt) {
+    throw new Error(
+      'Cannot run with isolation: "worktree" — not a git repo, no commits yet, or `git worktree add` failed. ' +
+      'Initialize git and commit at least once, or omit `isolation`.',
+    );
+  }
+  record.worktree = wt;
+  deps.worktreeRepos.add(baseCwd);
+  return customCwd !== undefined ? wt.workPath : wt.path;
+}
+
+function attachSession(deps: StartDeps, record: AgentRecord, session: AgentSession): void {
+  record.session = session;
+  const state = deps.activities.get(record.id);
+  if (state) state.session = session;
+  record.sessionFile = session.sessionManager?.getSessionFile?.();
+  if (session.model) {
+    record.invocation ??= {};
+    const requested = record.invocation.requestedThinking ?? record.invocation.thinking;
+    Object.assign(record.invocation, describeModel(session.model));
+    if (session.thinkingLevel) {
+      record.invocation.thinking = session.thinkingLevel;
+      if (requested && requested !== session.thinkingLevel) {
+        record.invocation.requestedThinking = requested;
+      }
+    }
+  }
+  if (record.pendingSteers?.length) {
+    for (const msg of record.pendingSteers) {
+      session.steer(msg).catch(() => {});
+    }
+    record.pendingSteers = undefined;
+  }
 }
 
 async function saveWorktree(
