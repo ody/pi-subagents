@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { abortable } from "../../src/tool/abortable.js";
+import { abortable, waitForRunEnd } from "../../src/tool/abortable.js";
 
 async function withUnhandledRejectionSpy(fn: () => Promise<void>): Promise<unknown[]> {
   const seen: unknown[] = [];
@@ -119,5 +119,41 @@ describe("abortable", () => {
     }
 
     expect(remove).toHaveBeenCalledTimes(20);
+  });
+});
+
+describe("waitForRunEnd", () => {
+  it("returns at once for a finished run, even when its promise never settles", async () => {
+    const record = { status: "completed" as const, promise: new Promise<string>(() => {}) };
+    await expect(waitForRunEnd(record, undefined, 5)).resolves.toBeUndefined();
+  });
+
+  it("waits for a running run's promise", async () => {
+    let finish!: (text: string) => void;
+    const record = { status: "running" as const, promise: new Promise<string>(resolve => { finish = resolve; }) };
+    let done = false;
+    const waiting = waitForRunEnd(record, undefined, 5).then(() => { done = true; });
+    await Promise.resolve();
+    expect(done).toBe(false);
+    finish("ok");
+    await waiting;
+    expect(done).toBe(true);
+  });
+
+  it("polls while queued, then waits for the promise", async () => {
+    const record: { status: "queued" | "running"; promise?: Promise<string> } = { status: "queued" };
+    const waiting = waitForRunEnd(record, undefined, 1);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    record.status = "running";
+    record.promise = Promise.resolve("ok");
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
+  it("rejects when the signal aborts", async () => {
+    const controller = new AbortController();
+    const record = { status: "running" as const, promise: new Promise<string>(() => {}) };
+    const waiting = waitForRunEnd(record, controller.signal, 5);
+    controller.abort(new Error("stop"));
+    await expect(waiting).rejects.toThrow("stop");
   });
 });

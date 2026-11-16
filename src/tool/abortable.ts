@@ -1,3 +1,17 @@
+import type { AgentRecord } from "../types.js";
+
+export async function waitForRunEnd(
+  record: Pick<AgentRecord, "status" | "promise">,
+  signal: AbortSignal | undefined,
+  pollMs: number,
+): Promise<void> {
+  if (record.status !== "queued" && record.status !== "running") return;
+  while (record.status === "queued") {
+    await abortable(new Promise<void>(resolve => setTimeout(resolve, pollMs)), signal);
+  }
+  if (record.promise) await abortable(record.promise, signal);
+}
+
 export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return promise;
   if (signal.aborted) return Promise.reject(signal.reason);

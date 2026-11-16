@@ -42,7 +42,7 @@ import type {
   ThinkingLevel,
 } from "../types.js";
 import { addUsage } from "../usage.js";
-import { abortable } from "./abortable.js";
+import { waitForRunEnd } from "./abortable.js";
 import { ephemeralParamShape } from "./ephemeral-params.js";
 import { describeOverrides, isolationParam, resolveAgentInvocationConfig } from "./invocation-config.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
@@ -427,12 +427,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       if (!ownsRecord(record, context.parentAgentId)) {
         return textResult(`Nested agent not found or not owned by this parent: "${params.agent_id}".`, true);
       }
-      if (params.wait && (record.status === "queued" || record.status === "running")) {
-        while (record.status === "queued") {
-          await abortable(new Promise<void>(resolve => setTimeout(resolve, 250)), signal);
-        }
-        if (record.promise) await abortable(record.promise, signal);
-      }
+      if (params.wait) await waitForRunEnd(record, signal, 250);
       return textResult(formatRecord(record, "fetched"), record.status === "error");
     },
   });

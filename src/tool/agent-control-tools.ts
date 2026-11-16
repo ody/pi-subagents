@@ -10,7 +10,7 @@ import { getAgentConversation } from "../session/session-text.js";
 import type { AgentRecord } from "../types.js";
 import { formatCost, formatDuration, getDisplayName } from "../ui/agent-format.js";
 import { getLifetimeCost, getSessionContextPercent, type UsageReportingDeps, withUsageReporting } from "../usage.js";
-import { abortable } from "./abortable.js";
+import { waitForRunEnd } from "./abortable.js";
 import { getStatusNote, partialOutputSuffix } from "./status-note.js";
 import { formatLifetimeTokens, textResult } from "./tool-result.js";
 
@@ -20,16 +20,6 @@ export interface AgentControlToolsDeps {
   settings: Readonly<Pick<RuntimeSettings, "showCost">>;
   resolveAgentRef: (ref: string) => AgentRecord | undefined;
   usageReporting: UsageReportingDeps;
-}
-
-async function waitForAgentSettled(record: AgentRecord, signal: AbortSignal | undefined): Promise<void> {
-  while (record.status === "queued") {
-    await abortable(
-      new Promise<void>((resolve) => setTimeout(resolve, QUEUE_WAIT_POLL_MS)),
-      signal,
-    );
-  }
-  if (record.promise) await abortable(record.promise, signal);
 }
 
 export function formatResultStats(record: AgentRecord, showCost: boolean): string {
@@ -102,9 +92,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
       }
 
-      if (params.wait && (record.status === "running" || record.status === "queued")) {
-        await waitForAgentSettled(record, signal);
-      }
+      if (params.wait) await waitForRunEnd(record, signal, QUEUE_WAIT_POLL_MS);
 
       let output =
         `Agent: ${record.id}\n` +
