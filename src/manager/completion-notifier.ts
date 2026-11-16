@@ -10,6 +10,10 @@ import { buildNotificationDetails, formatTaskNotification } from "./notification
 const NUDGE_HOLD_MS = 200;
 export const QUEUE_WAIT_POLL_MS = Math.floor(NUDGE_HOLD_MS / 4);
 
+function awaitsNotification(record: AgentRecord): boolean {
+  return record.completedAt != null && !record.resultConsumed;
+}
+
 export interface CompletionNotifierDeps {
   pi: Pick<ExtensionAPI, "sendMessage">;
   manager: Pick<AgentManager, "getActivity" | "getRecord">;
@@ -154,25 +158,22 @@ export class CompletionNotifier {
     this.currentBatchAgents = [];
 
     const smartAgents = batchAgents.filter(a => a.joinMode === 'smart' || a.joinMode === 'group');
-    if (smartAgents.length >= 2) {
-      const groupId = `batch-${++this.batchCounter}`;
-      const ids = smartAgents.map(a => a.id);
-      this.groupJoin.registerGroup(groupId, ids);
-      for (const id of ids) {
-        const record = this.manager.getRecord(id);
-        if (!record) continue;
-        record.groupId = groupId;
-        if (record.completedAt != null && !record.resultConsumed) {
-          this.groupJoin.onAgentComplete(record);
-        }
-      }
-    } else {
+    if (smartAgents.length < 2) {
       for (const { id } of batchAgents) {
         const record = this.manager.getRecord(id);
-        if (record?.completedAt != null && !record.resultConsumed) {
-          this.sendIndividualNudge(record);
-        }
+        if (record && awaitsNotification(record)) this.sendIndividualNudge(record);
       }
+      return;
+    }
+
+    const groupId = `batch-${++this.batchCounter}`;
+    const ids = smartAgents.map(a => a.id);
+    this.groupJoin.registerGroup(groupId, ids);
+    for (const id of ids) {
+      const record = this.manager.getRecord(id);
+      if (!record) continue;
+      record.groupId = groupId;
+      if (awaitsNotification(record)) this.groupJoin.onAgentComplete(record);
     }
   }
 }
