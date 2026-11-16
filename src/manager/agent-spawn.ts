@@ -8,6 +8,7 @@ import { assignHandle, handleBase } from "../triggers/mention.js";
 import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, StopCause, SubagentType, ThinkingLevel } from "../types.js";
 import { assertValidSpawnCwd, isTopLevelAgent, type Pool } from "./agent-manager-rules.js";
 import { assertSignalCause } from "./parent-signal.js";
+import { enqueueRun, type QueuedRun } from "./run-queue.js";
 
 export interface SpawnArgs {
   pi: ExtensionAPI;
@@ -54,17 +55,10 @@ export interface SpawnOptions {
   rootSessionId?: string;
 }
 
-interface SpawnQueueEntry {
-  id: string;
-  pool: Pool;
-  start: () => Promise<void>;
-  release: () => void;
-}
-
 export interface SpawnDeps {
   agents: Map<string, AgentRecord>;
   activities: Map<string, AgentActivity>;
-  queue: SpawnQueueEntry[];
+  queue: QueuedRun[];
   takenHandles: () => Set<string>;
   poolFor: (record: AgentRecord) => Pool | undefined;
   poolHasRoom: (pool: Pool) => boolean;
@@ -136,15 +130,8 @@ export function spawnAgent(
   if (pool !== undefined && !options.bypassQueue && !deps.poolHasRoom(pool)) {
     record.status = "queued";
     if (!deps.armQueuedAbort(id, options.signal, options.signalCause)) return id;
-    let release!: () => void;
-    record.startGate = new Promise<void>(resolve => { release = resolve; });
-    deps.queue.push({
-      id,
-      pool,
-      start: () => deps.launch(id, record, args, true),
-      release: () => release(),
-    });
-    options.onQueued?.(id, deps.queue.filter(e => e.pool === pool).length - 1);
+    const ahead = enqueueRun(deps.queue, record, pool, () => deps.launch(id, record, args, true));
+    options.onQueued?.(id, ahead);
     return id;
   }
 

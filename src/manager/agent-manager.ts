@@ -14,6 +14,7 @@ import { cleanup as cleanupRecords, clearCompleted as clearCompletedRecords, dro
 import { type SpawnArgs, type SpawnDeps, type SpawnOptions, spawnAgent, spawnAndWait as spawnAndWaitOperation } from "./agent-spawn.js";
 import { awaitStartup as awaitStartupOperation, launch as launchAgent, type StartDeps } from "./agent-start.js";
 import { armQueuedAbort as armQueuedAbortOperation } from "./parent-signal.js";
+import type { QueuedRun } from "./run-queue.js";
 
 export type OnAgentComplete = (record: AgentRecord) => void;
 export type OnAgentStart = (record: AgentRecord) => void;
@@ -40,7 +41,7 @@ export class AgentManager {
 
   private tombstones = new Map<string, AgentTombstone>();
 
-  private queue: { id: string; pool: Pool; start: () => Promise<void>; release: () => void }[] = [];
+  private queue: QueuedRun[] = [];
   private runningBackground = 0;
   private runningForeground = 0;
 

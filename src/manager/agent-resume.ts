@@ -5,6 +5,7 @@ import { addUsage, type LifetimeUsage } from "../usage.js";
 import type { Pool } from "./agent-manager-rules.js";
 import { assertSignalCause, watchParentSignal } from "./parent-signal.js";
 import { recordRunOutcome } from "./run-outcome.js";
+import { enqueueRun, type QueuedRun } from "./run-queue.js";
 
 export interface ResumeOptions {
   isBackground?: boolean;
@@ -16,17 +17,10 @@ export interface ResumeOptions {
   maxTurns?: number;
 }
 
-interface ResumeQueueEntry {
-  id: string;
-  pool: Pool;
-  start: () => Promise<void>;
-  release: () => void;
-}
-
 export interface ResumeDeps {
   agents: Map<string, AgentRecord>;
   activities: Map<string, AgentActivity>;
-  queue: ResumeQueueEntry[];
+  queue: QueuedRun[];
   poolFor: (record: AgentRecord) => Pool | undefined;
   poolHasRoom: (pool: Pool) => boolean;
   acquireSlot: (pool: Pool | undefined) => void;
@@ -93,15 +87,8 @@ export async function resume(
   const pool = deps.poolFor(record);
   if (pool !== undefined && !deps.poolHasRoom(pool)) {
     record.status = "queued";
-    let release!: () => void;
-    record.startGate = new Promise<void>(resolve => { release = resolve; });
-    deps.queue.push({
-      id,
-      pool,
-      start: async () => {
-        try { begin(); } catch { }
-      },
-      release: () => release(),
+    enqueueRun(deps.queue, record, pool, async () => {
+      try { begin(); } catch { }
     });
   } else {
     begin();
