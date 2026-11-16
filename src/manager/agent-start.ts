@@ -6,6 +6,7 @@ import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
 import { assertValidSpawnCwd, type Pool } from "./agent-manager-rules.js";
 import type { SpawnArgs } from "./agent-spawn.js";
+import { recordRunError, recordRunOutcome } from "./run-outcome.js";
 
 export interface StartDeps {
   agents: Map<string, AgentRecord>;
@@ -44,9 +45,7 @@ export function launch(
     () => { deps.startups.delete(id); },
     (err) => {
       deps.startups.delete(id);
-      if (record.status !== "stopped") record.status = "error";
-      record.error = err instanceof Error ? err.message : String(err);
-      record.completedAt ??= Date.now();
+      recordRunError(record, err);
       if (!queued) record.resultConsumed = true;
       deps.settleRun(record);
       if (!queued) {
@@ -192,19 +191,8 @@ export async function startAgent(
   })
     .then(async ({ responseText, session, aborted, steered, failure }) => {
       if (isCurrent()) {
-        if (record.status !== "stopped") {
-          if (aborted) {
-            record.status = "aborted";
-          } else if (failure) {
-            record.status = "error";
-            record.error = failure;
-          } else {
-            record.status = steered ? "steered" : "completed";
-          }
-        }
-        record.result = responseText;
+        recordRunOutcome(record, { text: responseText, aborted, steered, failure });
         record.session = session;
-        record.completedAt ??= Date.now();
       }
 
       if (record.worktree) await saveWorktree(pi, baseCwd, customCwd, record, options.description);
@@ -213,13 +201,7 @@ export async function startAgent(
       return responseText;
     })
     .catch(async (err) => {
-      if (isCurrent()) {
-        if (record.status !== "stopped") {
-          record.status = "error";
-        }
-        record.error = err instanceof Error ? err.message : String(err);
-        record.completedAt ??= Date.now();
-      }
+      if (isCurrent()) recordRunError(record, err);
 
       if (record.worktree) {
         try {

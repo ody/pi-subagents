@@ -3,6 +3,7 @@ import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
 import type { Pool } from "./agent-manager-rules.js";
+import { recordRunOutcome } from "./run-outcome.js";
 
 export interface ResumeOptions {
   isBackground?: boolean;
@@ -172,12 +173,7 @@ function startResume(
   })
     .then(({ text, failure }) => {
       if (!isCurrent()) return text;
-      if (record.status !== "stopped") {
-        record.status = failure ? "error" : "completed";
-        if (failure) record.error = failure;
-      }
-      record.result = text;
-      record.completedAt ??= Date.now();
+      recordRunOutcome(record, { text, failure });
       deps.settleRun(record);
       return text;
     })
