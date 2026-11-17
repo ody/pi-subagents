@@ -53,6 +53,16 @@ describe("formatNotification", () => {
     );
   });
 
+  it("shows the error text of an error notification", () => {
+    expect(formatNotification(det({ status: "error", error: "boom" }), opts, theme)).toBe(
+      "<error:✗> *audit* <dim:error>\n  <error:boom>\n  <dim:⎿  done>",
+    );
+  });
+
+  it("omits error text for a non-error status", () => {
+    expect(formatNotification(det({ error: "boom" }), opts, theme)).not.toContain("boom");
+  });
+
   it.each([
     ["running", "<accent:●> *audit* <dim:running>"],
     ["queued", "<muted:◦> *audit* <dim:queued>"],

@@ -28,6 +28,8 @@ export function formatNotification(
   const stats = notificationStats(d, opts.showCost, theme);
   if (stats) line += "\n  " + stats;
 
+  if (d.status === "error" && d.error) line += "\n  " + theme.fg("error", d.error);
+
   if (opts.expanded) {
     const lines = d.resultPreview.split("\n").slice(0, 30);
     for (const l of lines) line += "\n" + theme.fg("dim", `  ${l}`);

@@ -5,7 +5,7 @@ import type { AgentWidget } from "../ui/agent-widget.js";
 import type { FleetList } from "../ui/fleet-list.js";
 import type { AgentManager } from "./agent-manager.js";
 import { GroupJoinManager } from "./group-join.js";
-import { buildNotificationDetails, formatTaskNotification } from "./notification-format.js";
+import { buildNotificationDetails, formatTaskNotification, isResultCut } from "./notification-format.js";
 
 const NUDGE_HOLD_MS = 200;
 export const QUEUE_WAIT_POLL_MS = Math.floor(NUDGE_HOLD_MS / 4);
@@ -61,9 +61,11 @@ export class CompletionNotifier {
             details.others = rest.map(r => buildNotificationDetails(r, 300, this.manager.getActivity(r.id)));
           }
 
+          const cutHint = unconsumed.some(r => isResultCut(r, 300)) ? "\n\nUse agent_get_result for full output." : "";
+
           this.pi.sendMessage<NotificationDetails>({
             customType: "subagent-notification",
-            content: `Background agent group completed: ${label}\n\n${notifications}\n\nUse agent_get_result for full output.`,
+            content: `Background agent group completed: ${label}\n\n${notifications}${cutHint}`,
             display: true,
             details,
           }, { deliverAs: "followUp", triggerTurn: true });

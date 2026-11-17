@@ -149,6 +149,43 @@ describe("CompletionNotifier.isNotificationPending", () => {
   });
 });
 
+describe("CompletionNotifier result hint", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  function sendGroup(a: AgentRecord, b: AgentRecord) {
+    const made = makeNotifier([a, b]);
+    made.notifier.addToBatch(a.id, "smart");
+    made.notifier.addToBatch(b.id, "smart");
+    vi.advanceTimersByTime(300);
+    expect(made.sendMessage).toHaveBeenCalledTimes(1);
+    return made.sendMessage.mock.calls[0][0].content as string;
+  }
+
+  it("names agent_get_result in a group message when a preview cut a result", () => {
+    const content = sendGroup(record("a", { result: "x".repeat(301) }), record("b", { result: "short" }));
+    expect(content).toContain("Use agent_get_result for full output.");
+  });
+
+  it("omits agent_get_result from a group message when no preview cut a result", () => {
+    const content = sendGroup(record("a", { result: "x".repeat(300) }), record("b", { result: "short" }));
+    expect(content).not.toContain("agent_get_result");
+  });
+
+  it("names agent_get_result in a single message only when the preview cut the result", () => {
+    const cutRecord = record("a", { result: "x".repeat(501) });
+    const wholeRecord = record("b", { result: "x".repeat(500) });
+    const { notifier, sendMessage } = makeNotifier([cutRecord, wholeRecord]);
+    notifier.onAgentComplete(cutRecord);
+    notifier.onAgentComplete(wholeRecord);
+    vi.advanceTimersByTime(200);
+
+    const [cutMessage, wholeMessage] = sendMessage.mock.calls.map(c => c[0].content as string);
+    expect(cutMessage).toContain("agent_get_result");
+    expect(wholeMessage).not.toContain("agent_get_result");
+  });
+});
+
 describe("CompletionNotifier and consumed results", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
