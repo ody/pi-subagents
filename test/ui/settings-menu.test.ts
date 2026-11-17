@@ -569,9 +569,4 @@ describe("settings rows match the setting specs", () => {
     const extra = SETTING_ROWS.map((row) => row.id).filter((id) => !(SETTING_KEYS as string[]).includes(id));
     expect(extra).toEqual(["ephemeralNesting"]);
   });
-
-  it("has no row for selecting agents, which is part of the Agents widget", () => {
-    const removedKey = ["flee", "tView"].join("");
-    expect(SETTING_ROWS.map((row) => row.id)).not.toContain(removedKey);
-  });
 });

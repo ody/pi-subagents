@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
-import { agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey } from "../../src/ui/agent-tree.js";
+import { type AgentTreeNode, buildAgentTree } from "../../src/ui/agent-tree.js";
 
 let clock = 1000;
 
@@ -18,8 +18,8 @@ function rec(id: string, over: Partial<AgentRecord> = {}): AgentRecord {
   } as AgentRecord;
 }
 
-function shape(nodes: readonly { key: string; depth: number }[]): string[] {
-  return nodes.map(n => `${n.key}@${n.depth}`);
+function shape(nodes: readonly AgentTreeNode[]): string[] {
+  return nodes.map(n => `${n.record.id}@${n.depth}`);
 }
 
 describe("buildAgentTree", () => {
@@ -27,106 +27,39 @@ describe("buildAgentTree", () => {
     const parent = rec("p");
     const child = rec("c", { parentAgentId: "p" });
     const grandchild = rec("g", { parentAgentId: "c" });
-    const nodes = buildAgentTree({ records: [grandchild, child, parent] });
-    expect(shape(nodes)).toEqual([`${MAIN_KEY}@0`, "agent:p@0", "agent:c@1", "agent:g@2"]);
+    expect(shape(buildAgentTree([grandchild, child, parent]))).toEqual(["p@0", "c@1", "g@2"]);
   });
 
   it("orders siblings oldest first, breaking ties on id", () => {
     const a = rec("b", { startedAt: 50 });
     const b = rec("a", { startedAt: 50 });
     const c = rec("c", { startedAt: 10 });
-    const nodes = buildAgentTree({ records: [a, b, c], includeMain: false });
-    expect(shape(nodes)).toEqual(["agent:c@0", "agent:a@0", "agent:b@0"]);
+    expect(shape(buildAgentTree([a, b, c]))).toEqual(["c@0", "a@0", "b@0"]);
   });
 
-  it("omits the children of a collapsed node but keeps the node", () => {
-    const parent = rec("p");
+  it("lists every record whatever its status", () => {
+    const parent = rec("p", { status: "completed", completedAt: 1 });
     const child = rec("c", { parentAgentId: "p" });
-    const nodes = buildAgentTree({
-      records: [parent, child],
-      collapsed: new Set([agentKey("p")]),
-      includeMain: false,
-    });
-    expect(shape(nodes)).toEqual(["agent:p@0"]);
-    expect(nodes[0]).toMatchObject({ hasChildren: true, collapsed: true });
-  });
-
-  it("keeps an ineligible ancestor when a descendant is eligible", () => {
-    const parent = rec("p", { status: "completed" });
-    const child = rec("c", { parentAgentId: "p", status: "running" });
-    const nodes = buildAgentTree({
-      records: [parent, child],
-      isEligible: r => r.status === "running",
-      includeMain: false,
-    });
-    expect(shape(nodes)).toEqual(["agent:p@0", "agent:c@1"]);
-  });
-
-  it("drops an ineligible leaf", () => {
-    const nodes = buildAgentTree({
-      records: [rec("p"), rec("d", { status: "completed" })],
-      isEligible: r => r.status === "running",
-      includeMain: false,
-    });
-    expect(shape(nodes)).toEqual(["agent:p@0"]);
+    const done = rec("d", { status: "stopped", completedAt: 2 });
+    expect(shape(buildAgentTree([parent, child, done]))).toEqual(["p@0", "c@1", "d@0"]);
   });
 
   it("promotes a record whose parent is gone to a marked orphan root", () => {
-    const nodes = buildAgentTree({ records: [rec("c", { parentAgentId: "evicted" })], includeMain: false });
-    expect(shape(nodes)).toEqual(["agent:c@0"]);
+    const nodes = buildAgentTree([rec("c", { parentAgentId: "evicted" })]);
+    expect(shape(nodes)).toEqual(["c@0"]);
     expect(nodes[0]).toMatchObject({ orphan: true });
+  });
+
+  it("does not mark a top-level record or a child as an orphan", () => {
+    const nodes = buildAgentTree([rec("p"), rec("c", { parentAgentId: "p" })]);
+    expect(nodes.map(n => n.orphan)).toEqual([false, false]);
   });
 
   it("breaks a parent cycle instead of recursing, losing no rows", () => {
     const a = rec("a", { parentAgentId: "b" });
     const b = rec("b", { parentAgentId: "a" });
-    const nodes = buildAgentTree({ records: [a, b], includeMain: false });
-    expect(shape(nodes).sort()).toEqual(["agent:a@0", "agent:b@0"]);
-    expect(nodes.every(n => n.kind === "agent" && n.orphan)).toBe(true);
-  });
-
-  it("keeps a settled parent whose child is still running", () => {
-    const parent = rec("p", { status: "completed", completedAt: 1 });
-    const child = rec("c", { parentAgentId: "p" });
-    const nodes = buildAgentTree({
-      records: [parent, child],
-      isEligible: r => r.status === "running",
-      includeMain: false,
-    });
-    expect(shape(nodes)).toEqual(["agent:p@0", "agent:c@1"]);
-  });
-});
-
-describe("resolveSelectedKey", () => {
-  const nodes = buildAgentTree({ records: [rec("p"), rec("c", { parentAgentId: "p" })], includeMain: false });
-
-  it("keeps a key that is still visible", () => {
-    expect(resolveSelectedKey(nodes, "agent:c")).toBe("agent:c");
-  });
-
-  it("falls back to the nearest visible ancestor", () => {
-    expect(resolveSelectedKey(nodes, "agent:gone", ["agent:missing", "agent:p"])).toBe("agent:p");
-  });
-
-  it("falls back to the first row when nothing matches", () => {
-    expect(resolveSelectedKey(nodes, "agent:gone")).toBe("agent:p");
-  });
-
-  it("returns undefined for an empty tree", () => {
-    expect(resolveSelectedKey([], "agent:p")).toBeUndefined();
-  });
-});
-
-describe("ancestorKeys", () => {
-  it("lists ancestors nearest first", () => {
-    const nodes = buildAgentTree({
-      records: [rec("p"), rec("c", { parentAgentId: "p" }), rec("g", { parentAgentId: "c" })],
-      includeMain: false,
-    });
-    expect(ancestorKeys(nodes, "agent:g")).toEqual(["agent:c", "agent:p"]);
-  });
-
-  it("is empty for a root", () => {
-    expect(ancestorKeys(buildAgentTree({ records: [rec("p")], includeMain: false }), "agent:p")).toEqual([]);
+    const nodes = buildAgentTree([a, b]);
+    expect(shape(nodes).sort()).toEqual(["a@0", "b@0"]);
+    expect(nodes.every(n => n.orphan)).toBe(true);
   });
 });

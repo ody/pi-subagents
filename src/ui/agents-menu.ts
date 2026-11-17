@@ -152,10 +152,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
   }
 
   async function showRunningAgents(ctx: ExtensionCommandContext) {
-    const nodes = buildAgentTree({
-      records: manager.listAgents(),
-      includeMain: false,
-    });
+    const nodes = buildAgentTree(manager.listAgents());
     if (nodes.length === 0) {
       ctx.ui.notify("No agents.", "info");
       return;
@@ -163,7 +160,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
 
     const node = await selectItem(ctx.ui, "Agents", nodes, n => {
       const indent = "  ".repeat(n.depth);
-      if (n.kind === "main") return `${indent}main`;
       const a = n.record;
       const dn = getDisplayName(a);
       const dur = formatDuration(a.startedAt, a.completedAt);
@@ -172,7 +168,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     });
     if (!node) return;
 
-    if (node.kind === "agent") await viewer.open(ctx.ui, node.record);
+    await viewer.open(ctx.ui, node.record);
     await showRunningAgents(ctx);
   }
 

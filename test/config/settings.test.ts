@@ -113,12 +113,11 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({});
   });
 
-  it("drops the removed selection-list key and its default", () => {
-    const removedKey = ["flee", "tView"].join("");
-    writeProject({ [removedKey]: true, showCost: true } as any);
+  it("drops a stored key that is not a setting", () => {
+    writeProject({ removedSetting: true, showCost: true } as any);
     expect(loadSettings(projectDir)).toEqual({ showCost: true });
-    expect(sanitize({ [removedKey]: false })).toEqual({});
-    expect(Object.keys(effectiveSettings(projectDir))).not.toContain(removedKey);
+    expect(sanitize({ removedSetting: false })).toEqual({});
+    expect(Object.keys(effectiveSettings(projectDir))).not.toContain("removedSetting");
   });
 
   it("round-trips agentMentions modes; drops an unknown one", () => {
