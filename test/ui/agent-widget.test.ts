@@ -114,12 +114,55 @@ describe("AgentWidget", () => {
     expect(renderLines(manager, "foreground", () => "all")).toContain("foreground description");
   });
 
-  it("hides nested children in every coordinator widget mode", () => {
+  it("shows a running orphaned nested agent as a root row in every widget mode", () => {
     const manager = {
-      listAgents: () => [makeRecord("nested", { isBackground: true, parentAgentId: "parent" })],
+      listAgents: () => [makeRecord("nested", { isBackground: true, parentAgentId: "gone" })],
+    };
+    for (const mode of ["all", "background"] as const) {
+      const lines = renderLines(manager, "nested", () => mode).split("\n");
+      const row = lines.findIndex(l => l.includes("nested description"));
+      expect(row).toBe(1);
+      expect(lines[row]?.startsWith("   ")).toBe(false);
+    }
+  });
+
+  it("indents the running children of an orphaned nested agent under it", () => {
+    const manager = {
+      listAgents: () => [
+        makeRecord("orphan", { isBackground: true, parentAgentId: "gone" }),
+        makeRecord("grandchild", { isBackground: true, parentAgentId: "orphan" }),
+      ],
+    };
+    const lines = renderLines(manager, "orphan", () => "all").split("\n");
+    expect(lines.findIndex(l => l.includes("orphan description"))).toBe(1);
+    const child = lines.findIndex(l => l.includes("grandchild description"));
+    expect(child).toBe(3);
+    expect(lines[child]?.startsWith("   ")).toBe(true);
+  });
+
+  it("hides a running orphaned nested agent when widgetMode is off", () => {
+    const manager = {
+      listAgents: () => [makeRecord("nested", { isBackground: true, parentAgentId: "gone" })],
+    };
+    expect(renderLines(manager, "nested", () => "off")).toBe("");
+  });
+
+  it("hides a settled orphaned nested agent", () => {
+    const manager = {
+      listAgents: () => [makeRecord("nested", { parentAgentId: "gone", status: "completed", completedAt: Date.now() })],
     };
     expect(renderLines(manager, "nested", () => "all")).toBe("");
-    expect(renderLines(manager, "nested", () => "background")).toBe("");
+  });
+
+  it("hides a running nested agent whose top-level ancestor widgetMode hides", () => {
+    const manager = {
+      listAgents: () => [
+        makeRecord("parent", { isBackground: false }),
+        makeRecord("child", { isBackground: true, parentAgentId: "parent" }),
+      ],
+    };
+    expect(renderLines(manager, "child", () => "background")).toBe("");
+    expect(renderLines(manager, "child", () => "off")).toBe("");
   });
 
   it("indents a running nested child under its parent", () => {

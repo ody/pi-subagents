@@ -968,6 +968,8 @@ Note the usual trust umbrella: a project-level file shapes the orchestrator's pr
 - `"background"`: hides foreground agents, which already render inline.
 - `"off"`: hides the widget.
 
+A running nested agent whose owner record is gone shows as a root row in `all` and `background`. A running nested agent under a top-level agent that `widgetMode` hides does not show.
+
 ### Example — global defaults for a beefy machine
 
 ```bash

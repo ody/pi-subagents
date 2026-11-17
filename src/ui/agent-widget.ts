@@ -60,8 +60,8 @@ export class AgentWidget {
     private onWidgetRegistered: (tui: unknown) => void = () => {},
   ) {}
 
-  private widgetAgents() {
-    const all = this.manager.listAgents().filter(isTopLevelAgent);
+  private widgetAgents(records: readonly AgentRecord[]) {
+    const all = records.filter(isTopLevelAgent);
     switch (this.mode()) {
       case "off": return [];
       case "background": return all.filter(a => a.isBackground !== false);
@@ -69,9 +69,18 @@ export class AgentWidget {
     }
   }
 
-  private runningRows(tops: readonly AgentRecord[]): { record: AgentRecord; depth: number }[] {
+  private orphanedRunning(all: readonly AgentRecord[]): AgentRecord[] {
+    if (this.mode() === "off") return [];
+    const known = new Set(all.map(record => record.id));
+    return all
+      .filter(record => record.status === "running" && record.parentAgentId !== undefined && !known.has(record.parentAgentId))
+      .sort((a, b) => a.startedAt - b.startedAt);
+  }
+
+  private runningRows(all: readonly AgentRecord[], tops: readonly AgentRecord[]): { record: AgentRecord; depth: number }[] {
+    const orphans = this.orphanedRunning(all);
     const byParent = new Map<string, AgentRecord[]>();
-    for (const record of this.manager.listAgents()) {
+    for (const record of all) {
       if (record.parentAgentId === undefined || record.status !== "running") continue;
       const bucket = byParent.get(record.parentAgentId);
       if (bucket) bucket.push(record);
@@ -84,7 +93,7 @@ export class AgentWidget {
       rows.push({ record, depth });
       for (const child of byParent.get(record.id) ?? []) walk(child, depth + 1);
     };
-    for (const top of tops) walk(top, 0);
+    for (const root of [...tops, ...orphans]) walk(root, 0);
     return rows;
   }
 
@@ -148,8 +157,9 @@ export class AgentWidget {
   }
 
   private renderWidget(tui: any, theme: Theme): string[] {
-    const allAgents = this.widgetAgents();
-    const running = this.runningRows(allAgents.filter(a => a.status === "running"));
+    const records = this.manager.listAgents();
+    const allAgents = this.widgetAgents(records);
+    const running = this.runningRows(records, allAgents.filter(a => a.status === "running"));
     const queued = allAgents.filter(a => a.status === "queued");
     const finished = allAgents.filter(a =>
       a.status !== "running" && a.status !== "queued" && a.completedAt
@@ -229,7 +239,8 @@ export class AgentWidget {
 
   update() {
     if (!this.uiCtx) return;
-    const allAgents = this.widgetAgents();
+    const records = this.manager.listAgents();
+    const allAgents = this.widgetAgents(records);
 
     let runningCount = 0;
     let queuedCount = 0;
@@ -241,7 +252,7 @@ export class AgentWidget {
     }
     const hasActive = runningCount > 0 || queuedCount > 0;
 
-    if (!hasActive && !hasFinished) {
+    if (!hasActive && !hasFinished && this.orphanedRunning(records).length === 0) {
       this.clearWidget(allAgents);
       return;
     }
