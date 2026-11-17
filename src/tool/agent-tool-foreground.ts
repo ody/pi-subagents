@@ -8,7 +8,6 @@ import { streamToOutputFile } from "../platform/output-file.js";
 import type { AgentActivity, AgentRecord } from "../types.js";
 import { type AgentDetails, describeActivity, formatCost, formatMs, SPINNER } from "../ui/agent-format.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
-import type { FleetList } from "../ui/fleet-list.js";
 import { getLifetimeCost } from "../usage.js";
 import { createActivityTracker } from "./activity-tracker.js";
 import { type AgentCallResolution, detailBaseFor } from "./agent-call-resolution.js";
@@ -19,7 +18,6 @@ export interface ForegroundAgentDeps {
   pi: ExtensionAPI;
   manager: Pick<AgentManager, "getActivity" | "getRecord" | "listAgents" | "spawnAndWait">;
   widget: Pick<AgentWidget, "ensureTimer" | "markFinished">;
-  fleet: Pick<FleetList, "ensureTimer" | "update" | "onAgentFinished">;
   settings: Readonly<Pick<RuntimeSettings, "showCost">>;
 }
 
@@ -33,7 +31,7 @@ export interface ForegroundAgentInput {
 }
 
 export async function runForegroundAgent(deps: ForegroundAgentDeps, input: ForegroundAgentInput) {
-  const { pi, manager, widget, fleet, settings } = deps;
+  const { pi, manager, widget, settings } = deps;
   const { ctx, params, signal, onUpdate, call, attachTranscript } = input;
   const {
     subagentType,
@@ -98,8 +96,6 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
       if (a.session === session) {
         fgId = a.id;
         widget.ensureTimer();
-        fleet.ensureTimer();
-        fleet.update();
         break;
       }
     }
@@ -147,7 +143,6 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     clearInterval(spinnerInterval);
     if (fgId) {
       widget.markFinished(fgId);
-      fleet.onAgentFinished(fgId);
     }
   }
 

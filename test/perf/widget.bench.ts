@@ -1,7 +1,6 @@
 import { afterAll, bench, describe } from "vitest";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
-import { FleetList } from "../../src/ui/fleet-list.js";
-import { makeFleet, mountFleet, mountWidget } from "../harness/perf-fixtures.js";
+import { makeAgents, mountWidget } from "../harness/perf-fixtures.js";
 
 const SIZES = [1, 10, 100];
 
@@ -16,7 +15,7 @@ afterAll(() => {
 
 describe("AgentWidget.render (per TUI frame)", () => {
   for (const n of SIZES) {
-    const w = track(mountWidget(AgentWidget, makeFleet({ running: n })));
+    const w = track(mountWidget(AgentWidget, makeAgents({ running: n })));
     bench(`${n} agents`, () => {
       w.render();
     });
@@ -25,7 +24,7 @@ describe("AgentWidget.render (per TUI frame)", () => {
 
 describe("AgentWidget.update (80ms timer + ~10 call sites)", () => {
   for (const n of SIZES) {
-    const w = track(mountWidget(AgentWidget, makeFleet({ running: n })));
+    const w = track(mountWidget(AgentWidget, makeAgents({ running: n })));
     bench(`${n} agents`, () => {
       w.update();
     });
@@ -33,7 +32,7 @@ describe("AgentWidget.update (80ms timer + ~10 call sites)", () => {
 });
 
 describe("AgentWidget.render — the widget's real mix", () => {
-  const mix = () => makeFleet({ running: 3, queued: 7, finished: 3 });
+  const mix = () => makeAgents({ running: 3, queued: 7, finished: 3 });
 
   const off = track(mountWidget(AgentWidget, mix(), { mode: "background" }));
   bench("3 running / 7 queued / 3 finished — showModel off", () => {
@@ -49,22 +48,4 @@ describe("AgentWidget.render — the widget's real mix", () => {
   bench("3 running / 7 queued / 3 finished — showCost on", () => {
     cost.render();
   });
-});
-
-describe("FleetList.render (per TUI frame, below the editor)", () => {
-  for (const n of SIZES) {
-    const f = track(mountFleet(FleetList, makeFleet({ running: n })));
-    bench(`${n} agents`, () => {
-      f.render(120);
-    });
-  }
-});
-
-describe("FleetList.update (200ms timer)", () => {
-  for (const n of SIZES) {
-    const f = track(mountFleet(FleetList, makeFleet({ running: n })));
-    bench(`${n} agents`, () => {
-      f.update();
-    });
-  }
 });

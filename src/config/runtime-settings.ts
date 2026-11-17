@@ -14,7 +14,6 @@ export interface RuntimeSettings {
   showModel: boolean;
   viewerMarkdown: ViewerMarkdownMode;
   widgetMode: WidgetMode;
-  fleetView: boolean;
   agentMentionMode: AgentMentionMode;
   defaultJoinMode: JoinMode;
   backgroundByDefault: boolean;

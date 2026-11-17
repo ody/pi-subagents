@@ -26,7 +26,7 @@ vi.mock("@earendil-works/pi-tui", async (importOriginal) => {
 
 const { AgentWidget } = await import("../../src/ui/agent-widget.js");
 const { ConversationViewer } = await import("../../src/ui/conversation-viewer.js");
-const { makeActivity, makeFleet, makeSession, mountViewer, perfTheme, perfTui } = await import(
+const { makeActivity, makeAgents, makeSession, mountViewer, perfTheme, perfTui } = await import(
   "../harness/perf-fixtures.js"
 );
 
@@ -77,7 +77,7 @@ describe("ConversationViewer — cost stays linear in transcript length", () => 
 
 describe("AgentWidget — one frame does not rescan per agent", () => {
   function listCallsPerRender(n: number): number {
-    const records = makeFleet({ running: n });
+    const records = makeAgents({ running: n });
     let listAgentsCalls = 0;
     const manager = {
       listAgents: () => {
@@ -86,7 +86,7 @@ describe("AgentWidget — one frame does not rescan per agent", () => {
       },
     } as any;
 
-    const widget = new AgentWidget({ ...manager, getActivity: (id: string) => makeActivity(records).get(id) }, () => "all", () => false, () => false);
+    const widget = new AgentWidget({ ...manager, getActivity: (id: string) => makeActivity(records).get(id) }, () => "all", () => false, () => false, { open: async () => {} });
     let factory: any;
     widget.setUICtx({ setStatus: () => {}, setWidget: (_k: string, c: any) => { factory = c; } } as any);
     widget.update();

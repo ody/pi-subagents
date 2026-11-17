@@ -2,7 +2,21 @@ import { describe, expect, it, vi } from "vitest";
 import { renderRunningAgentStatus } from "../../src/tool/agent-tool-render.js";
 import type { AgentActivity, WidgetMode } from "../../src/types.js";
 import { fgPreservingNestedStyles, formatCost, formatSessionTokens } from "../../src/ui/agent-format.js";
-import { AgentWidget, statusBarText } from "../../src/ui/agent-widget.js";
+import { AgentWidget as RealAgentWidget, statusBarText } from "../../src/ui/agent-widget.js";
+
+const NO_VIEWER = { open: async () => {} };
+
+class AgentWidget extends RealAgentWidget {
+  constructor(
+    manager: ConstructorParameters<typeof RealAgentWidget>[0],
+    mode?: ConstructorParameters<typeof RealAgentWidget>[1],
+    showCost?: ConstructorParameters<typeof RealAgentWidget>[2],
+    showModel?: ConstructorParameters<typeof RealAgentWidget>[3],
+    viewer: ConstructorParameters<typeof RealAgentWidget>[4] = NO_VIEWER,
+  ) {
+    super(manager, mode, showCost, showModel, viewer);
+  }
+}
 
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;
@@ -180,7 +194,7 @@ describe("AgentWidget", () => {
     expect(lines[child]?.startsWith("   ")).toBe(true);
   });
 
-  it("leaves a settled nested child to FleetView", () => {
+  it("drops a nested child once it leaves running", () => {
     const manager = {
       listAgents: () => [
         makeRecord("parent", { isBackground: true }),
@@ -188,46 +202,6 @@ describe("AgentWidget", () => {
       ],
     };
     expect(renderLines(manager, "parent", () => "all")).not.toContain("child description");
-  });
-
-  describe("fleet hint", () => {
-    const manager = { listAgents: () => [makeRecord("a", { isBackground: true })] };
-
-    function heading(showHint: () => boolean): string {
-      const widget = new AgentWidget(withActivity(manager as any, new Map([["a", makeActivity()]])), undefined, () => false, () => false, showHint);
-      let factory: any;
-      widget.setUICtx({ setStatus: () => {}, setWidget: (_key, content) => { factory = content; } });
-      widget.update();
-      return factory({ terminal: { columns: 120 }, requestRender: () => {} }, theme).render()[0];
-    }
-
-    it("appends '↓ to manage' while the fleet can open", () => {
-      expect(heading(() => true)).toBe("● Agents ↓ to manage");
-    });
-
-    it("drops the hint while the fleet is open or disabled", () => {
-      expect(heading(() => false)).toBe("● Agents");
-    });
-
-    it("re-reads the condition on every render", () => {
-      let canOpen = true;
-      const widget = new AgentWidget(withActivity(manager as any, new Map([["a", makeActivity()]])), undefined, () => false, () => false, () => canOpen);
-      let factory: any;
-      widget.setUICtx({ setStatus: () => {}, setWidget: (_key, content) => { factory = content; } });
-      widget.update();
-      const component = factory({ terminal: { columns: 120 }, requestRender: () => {} }, theme);
-      expect(component.render()[0]).toContain("↓ to manage");
-      canOpen = false;
-      expect(component.render()[0]).not.toContain("↓ to manage");
-    });
-
-    it("tells the fleet when the widget registers", () => {
-      const registered = vi.fn();
-      const widget = new AgentWidget(withActivity(manager as any, new Map([["a", makeActivity()]])), undefined, () => false, () => false, () => false, registered);
-      widget.setUICtx({ setStatus: () => {}, setWidget: () => {} });
-      widget.update();
-      expect(registered).toHaveBeenCalledTimes(1);
-    });
   });
 
   it("excludes foreground agents in 'background' mode", () => {
@@ -355,6 +329,464 @@ describe("AgentWidget", () => {
     const manager = { listAgents: () => [makeRecord("background", { isBackground: true })] };
     expect(renderLines(manager, "background", () => "off")).toBe("");
   });
+
+  describe("selection (ADR 0038)", () => {
+    const DOWN = "\x1b[B";
+    const UP = "\x1b[A";
+    const ESC = "\x1b";
+    const ENTER = "\r";
+    const DOWN_RELEASE = "\x1b[1;1:3B";
+    const MANAGE = "↓ to manage";
+    const SELECTING = "↑↓ select · enter open · esc done";
+
+    type Row = ReturnType<typeof makeRecord>;
+
+    interface Mounted {
+      widget: AgentWidget;
+      records: Row[];
+      press: (data: string) => { consume?: boolean; data?: string } | undefined;
+      lines: () => string[];
+      selected: () => string[];
+      setEditorText: (text: string) => void;
+      setFocused: (component: unknown) => void;
+      setMode: (mode: WidgetMode) => void;
+      unsubscribe: ReturnType<typeof vi.fn>;
+      open: ReturnType<typeof vi.fn>;
+      closeViewer: () => Promise<void>;
+    }
+
+    function mount(records: Row[], mode: WidgetMode = "all"): Mounted {
+      let handler: ((data: string) => { consume?: boolean; data?: string } | undefined) | undefined;
+      let factory: any;
+      let editorText = "";
+      let focused: unknown;
+      let currentMode = mode;
+      let resolveViewer: (() => void) | undefined;
+      const unsubscribe = vi.fn();
+      const open = vi.fn(() => new Promise<void>((resolve) => { resolveViewer = resolve; }));
+      const widget = new AgentWidget(
+        withActivity({ listAgents: () => records } as any, new Map()),
+        () => currentMode,
+        () => false,
+        () => false,
+        { open },
+      );
+      widget.setUICtx({
+        setStatus: () => {},
+        setWidget: (_key, content) => { factory = content; },
+      });
+      widget.setInputCtx({
+        onTerminalInput: (h) => { handler = h; return unsubscribe; },
+        getEditorText: () => editorText,
+        notify: () => {},
+        custom: () => new Promise(() => {}),
+      });
+      widget.update();
+      const tui = { terminal: { columns: 120 }, requestRender: () => {}, get focusedComponent() { return focused; } };
+      const component = factory?.(tui, theme);
+      const lines = (): string[] => component?.render() ?? [];
+      return {
+        widget,
+        records,
+        press: (data) => handler?.(data),
+        lines,
+        selected: () => lines().filter(line => line.includes("▸")),
+        setEditorText: (text) => { editorText = text; },
+        setFocused: (component) => { focused = component; },
+        setMode: (next) => { currentMode = next; },
+        unsubscribe,
+        open,
+        closeViewer: async () => {
+          resolveViewer?.();
+          await new Promise((resolve) => setImmediate(resolve));
+        },
+      };
+    }
+
+    const running = (...ids: string[]) => ids.map(id => makeRecord(id, { isBackground: true }));
+    const drop = (rows: Row[], id: string) => rows.splice(rows.findIndex(row => row.id === id), 1);
+
+    describe("rule 1: ↓ at an empty prompt starts selection on the first agent row", () => {
+      it("starts on the first agent row and consumes the key", () => {
+        const m = mount(running("a", "b"));
+        expect(m.press(DOWN)).toEqual({ consume: true });
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("a description");
+      });
+
+      it("starts on a finished row when finished rows draw first", () => {
+        const finished = makeRecord("done", { isBackground: true, status: "completed", completedAt: Date.now() });
+        const m = mount([...running("a"), finished]);
+        m.widget.markFinished("done");
+        m.press(DOWN);
+        expect(m.selected()[0]).toContain("done description");
+      });
+
+      it("does not start while the prompt holds text", () => {
+        const m = mount(running("a"));
+        m.setEditorText("hello");
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.selected()).toEqual([]);
+      });
+
+      it("does not start while another component has focus", () => {
+        const m = mount(running("a"));
+        m.setFocused({ kind: "selector" });
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.selected()).toEqual([]);
+      });
+
+      it("does not start when the widget shows no agent row", () => {
+        const m = mount([makeRecord("q", { isBackground: true, status: "queued" })]);
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.selected()).toEqual([]);
+      });
+
+      it("ignores key releases and keys other than ↓", () => {
+        const m = mount(running("a"));
+        expect(m.press(DOWN_RELEASE)).toBeUndefined();
+        expect(m.press(UP)).toBeUndefined();
+        expect(m.press("x")).toBeUndefined();
+        expect(m.selected()).toEqual([]);
+      });
+    });
+
+    describe("rule 2: only agent rows take the cursor", () => {
+      it("never selects the queued row or the overflow line", () => {
+        const rows = [...running("r1", "r2", "r3", "r4", "r5", "r6", "r7"), makeRecord("q1", { isBackground: true, status: "queued" })];
+        const m = mount(rows);
+        m.press(DOWN);
+        for (let step = 0; step < 10; step++) {
+          const selected = m.selected();
+          expect(selected).toHaveLength(1);
+          expect(selected[0]).toMatch(/r\d description/);
+          expect(selected[0]).not.toContain("queued");
+          expect(selected[0]).not.toContain("more (");
+          m.press(DOWN);
+        }
+        expect(m.lines().join("\n")).toContain("1 queued");
+      });
+    });
+
+    describe("rule 3: ↑ and ↓ move the cursor", () => {
+      it("moves down and up through agent rows", () => {
+        const m = mount(running("a", "b", "c"));
+        m.press(DOWN);
+        expect(m.press(DOWN)).toEqual({ consume: true });
+        expect(m.selected()[0]).toContain("b description");
+        m.press(DOWN);
+        expect(m.selected()[0]).toContain("c description");
+        expect(m.press(UP)).toEqual({ consume: true });
+        expect(m.selected()[0]).toContain("b description");
+      });
+
+      it("ends selection on ↑ at the first agent row", () => {
+        const m = mount(running("a", "b"));
+        m.press(DOWN);
+        expect(m.press(UP)).toEqual({ consume: true });
+        expect(m.selected()).toEqual([]);
+        expect(m.lines()[0]).toContain(MANAGE);
+      });
+
+      it("keeps the cursor on the last row at ↓", () => {
+        const m = mount(running("a", "b"));
+        m.press(DOWN);
+        m.press(DOWN);
+        expect(m.press(DOWN)).toEqual({ consume: true });
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("b description");
+      });
+
+      it("walks nested agents in the order the widget draws them", () => {
+        const m = mount([
+          makeRecord("parent", { isBackground: true }),
+          makeRecord("child", { isBackground: true, parentAgentId: "parent" }),
+          makeRecord("other", { isBackground: true }),
+        ]);
+        m.press(DOWN);
+        const order: string[] = [];
+        for (let step = 0; step < 3; step++) {
+          order.push(/(parent|child|other) description/.exec(m.selected()[0] ?? "")?.[1] ?? "");
+          m.press(DOWN);
+        }
+        expect(order).toEqual(["parent", "child", "other"]);
+      });
+    });
+
+    describe("rule 4: Enter opens the conversation viewer", () => {
+      it("opens the selected agent through the viewer opener", () => {
+        const rows = running("a", "b");
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        expect(m.press(ENTER)).toEqual({ consume: true });
+        expect(m.open).toHaveBeenCalledTimes(1);
+        expect(m.open.mock.calls[0]?.[1]).toBe(rows[1]);
+      });
+
+      it("lets keys pass to the viewer while it is open", () => {
+        const m = mount(running("a"));
+        m.press(DOWN);
+        m.press(ENTER);
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.press(ESC)).toBeUndefined();
+      });
+
+      it("keeps the row of a nested agent that settles while its viewer is open", () => {
+        const rows = [makeRecord("parent", { isBackground: true }), makeRecord("child", { isBackground: true, parentAgentId: "parent" })];
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        m.press(ENTER);
+        rows[1].status = "completed";
+        rows[1].completedAt = Date.now();
+        expect(m.lines().join("\n")).toContain("child description");
+      });
+
+      it("keeps the row of a top-level agent past its linger time while its viewer is open", () => {
+        const rows = [makeRecord("a", { isBackground: true }), makeRecord("b", { isBackground: true })];
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        m.press(ENTER);
+        rows[1].status = "completed";
+        rows[1].completedAt = Date.now();
+        m.widget.markFinished("b");
+        m.widget.onTurnStart();
+        m.widget.onTurnStart();
+        expect(m.lines().join("\n")).toContain("b description");
+      });
+
+      it("returns to selection on the same row when the viewer closes", async () => {
+        const m = mount(running("a", "b", "c"));
+        m.press(DOWN);
+        m.press(DOWN);
+        m.press(ENTER);
+        await m.closeViewer();
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("b description");
+        expect(m.press(DOWN)).toEqual({ consume: true });
+        expect(m.selected()[0]).toContain("c description");
+      });
+
+      it("returns to selection when the viewer fails to open", async () => {
+        const m = mount(running("a"));
+        m.open.mockImplementationOnce(() => Promise.reject(new Error("boom")));
+        m.press(DOWN);
+        m.press(ENTER);
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(m.selected()).toHaveLength(1);
+        expect(m.press(DOWN)).toEqual({ consume: true });
+      });
+
+      it("drops a nested row after the viewer closes and the cursor moves off it", async () => {
+        const rows = [makeRecord("parent", { isBackground: true }), makeRecord("child", { isBackground: true, parentAgentId: "parent" })];
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        m.press(ENTER);
+        rows[1].status = "completed";
+        rows[1].completedAt = Date.now();
+        await m.closeViewer();
+        expect(m.selected()[0]).toContain("child description");
+        m.press(DOWN);
+        expect(m.selected()[0]).toContain("parent description");
+        expect(m.lines().join("\n")).not.toContain("child description");
+      });
+    });
+
+    describe("rule 5: Esc and other keys end selection", () => {
+      it("ends selection on Esc and consumes the key", () => {
+        const m = mount(running("a"));
+        m.press(DOWN);
+        expect(m.press(ESC)).toEqual({ consume: true });
+        expect(m.selected()).toEqual([]);
+        expect(m.open).not.toHaveBeenCalled();
+      });
+
+      it("ends selection on any other key and passes it through", () => {
+        for (const key of ["x", "\x1b[D", "\x1b[C", "\t"]) {
+          const m = mount(running("a"));
+          m.press(DOWN);
+          expect(m.press(key), JSON.stringify(key)).toBeUndefined();
+          expect(m.selected()).toEqual([]);
+          expect(m.press(UP)).toBeUndefined();
+        }
+      });
+
+      it("ends selection when the editor loses focus", () => {
+        const m = mount(running("a"));
+        m.press(DOWN);
+        m.setFocused({ kind: "selector" });
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.selected()).toEqual([]);
+      });
+    });
+
+    describe("rule 6: the cursor follows the agent", () => {
+      it("stays on its agent when an earlier row goes away", () => {
+        const rows = running("a", "b", "c");
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        drop(rows, "a");
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("b description");
+      });
+
+      it("moves to the agent row that now holds the index when the selected row goes away", () => {
+        const rows = running("a", "b", "c");
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        drop(rows, "b");
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("c description");
+      });
+
+      it("moves to the last agent row when no row holds the index", () => {
+        const rows = running("a", "b", "c");
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        m.press(DOWN);
+        drop(rows, "c");
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("b description");
+      });
+
+      it("stays on a nested agent that leaves running while selected", () => {
+        const rows = [makeRecord("parent", { isBackground: true }), makeRecord("child", { isBackground: true, parentAgentId: "parent" })];
+        const m = mount(rows);
+        m.press(DOWN);
+        m.press(DOWN);
+        rows[1].status = "completed";
+        rows[1].completedAt = Date.now();
+        expect(m.selected()).toHaveLength(1);
+        expect(m.selected()[0]).toContain("child description");
+      });
+
+      it("ends selection when the widget shows no agent row", () => {
+        const rows = running("a");
+        const m = mount(rows);
+        m.press(DOWN);
+        drop(rows, "a");
+        expect(m.lines()).toEqual([]);
+        rows.push(...running("b"));
+        expect(m.selected()).toEqual([]);
+        expect(m.lines()[0]).toContain(MANAGE);
+      });
+    });
+
+    describe("rule 7: the selected row always draws", () => {
+      it("draws a selected running row that the budget would hide", () => {
+        const rows = running("r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9");
+        const m = mount(rows);
+        expect(m.lines().join("\n")).not.toContain("r9 description");
+        m.press(DOWN);
+        for (let step = 0; step < 8; step++) m.press(DOWN);
+        const lines = m.lines();
+        expect(m.selected()[0]).toContain("r9 description");
+        expect(lines.length).toBeLessThanOrEqual(12);
+        expect(lines.join("\n")).toContain("more (");
+      });
+
+      it("draws a selected finished row that the budget would hide", () => {
+        const finished = Array.from({ length: 6 }, (_, i) => makeRecord(`f${i}`, { isBackground: true, status: "completed", completedAt: Date.now() }));
+        const rows = [...running("r1", "r2", "r3", "r4", "r5"), ...finished];
+        const m = mount(rows);
+        for (const record of finished) m.widget.markFinished(record.id);
+        m.press(DOWN);
+        for (let step = 0; step < 5; step++) m.press(DOWN);
+        expect(m.selected()[0]).toContain("f5 description");
+        expect(m.lines().length).toBeLessThanOrEqual(12);
+      });
+
+      it("hides other rows first and keeps every selected position within the line cap", () => {
+        const rows = [...running("r1", "r2", "r3", "r4", "r5", "r6", "r7"), makeRecord("q1", { isBackground: true, status: "queued" })];
+        const m = mount(rows);
+        m.press(DOWN);
+        for (let step = 0; step < 8; step++) {
+          const lines = m.lines();
+          expect(lines.length).toBeLessThanOrEqual(12);
+          expect(m.selected()).toHaveLength(1);
+          expect(lines.join("\n")).toContain("1 queued");
+          m.press(DOWN);
+        }
+      });
+    });
+
+    describe("rule 8: the heading shows the available keys", () => {
+      it("shows '↓ to manage' while selection can start", () => {
+        const m = mount(running("a"));
+        expect(m.lines()[0]).toBe(`● Agents ${MANAGE}`);
+      });
+
+      it("shows the selection keys while selection runs", () => {
+        const m = mount(running("a"));
+        m.press(DOWN);
+        expect(m.lines()[0]).toBe(`● Agents ${SELECTING}`);
+        expect(m.lines()[0]).not.toContain(MANAGE);
+      });
+
+      it("drops the hint while selection cannot start", () => {
+        const m = mount(running("a"));
+        m.setEditorText("draft");
+        expect(m.lines()[0]).toBe("● Agents");
+        m.setEditorText("");
+        m.setFocused({ kind: "selector" });
+        expect(m.lines()[0]).toBe("● Agents");
+      });
+
+      it("re-reads the condition on every render", () => {
+        const m = mount(running("a"));
+        expect(m.lines()[0]).toContain(MANAGE);
+        m.setEditorText("draft");
+        expect(m.lines()[0]).not.toContain(MANAGE);
+        m.setEditorText("");
+        expect(m.lines()[0]).toContain(MANAGE);
+      });
+
+      it("shows the manage hint again after selection ends", () => {
+        const m = mount(running("a"));
+        m.press(DOWN);
+        m.press(ESC);
+        expect(m.lines()[0]).toBe(`● Agents ${MANAGE}`);
+      });
+    });
+
+    describe("rule 9: widgetMode off", () => {
+      it("never starts selection", () => {
+        const m = mount(running("a"), "off");
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.lines()).toEqual([]);
+      });
+
+      it("ends a running selection when the mode turns off", () => {
+        const m = mount(running("a"));
+        m.press(DOWN);
+        m.setMode("off");
+        expect(m.press(DOWN)).toBeUndefined();
+        expect(m.selected()).toEqual([]);
+        m.setMode("all");
+        expect(m.selected()).toEqual([]);
+      });
+    });
+
+    describe("terminal input subscription", () => {
+      it("unsubscribes on dispose", () => {
+        const m = mount(running("a"));
+        m.widget.dispose();
+        expect(m.unsubscribe).toHaveBeenCalledTimes(1);
+      });
+
+      it("moves the subscription when the input context changes", () => {
+        const m = mount(running("a"));
+        m.widget.setInputCtx({ onTerminalInput: () => () => {}, getEditorText: () => "", notify: () => {}, custom: () => new Promise(() => {}) });
+        expect(m.unsubscribe).toHaveBeenCalledTimes(1);
+      });
+    });
+  });
 });
 
 describe("statusBarText", () => {
@@ -371,7 +803,7 @@ describe("AgentWidget status bar and teardown", () => {
     return { id, type: "general-purpose", description: id, status, toolUses: 0, startedAt: Date.now() };
   }
 
-  it("sets status on change, clears it and unregisters the widget when the fleet empties", () => {
+  it("sets status on change, clears it and unregisters the widget when the agents are gone", () => {
     let agents: any[] = [rec("a", "running"), rec("b", "running"), rec("c", "queued")];
     const widget = new AgentWidget({ listAgents: () => agents, getActivity: () => undefined } as any, () => "all");
     const statuses: (string | undefined)[] = [];
@@ -555,7 +987,7 @@ describe("AgentWidget overflow accounting", () => {
     };
   }
 
-  function renderFleet(counts: { running: number; queued: number; finished: number }): string[] {
+  function renderMix(counts: { running: number; queued: number; finished: number }): string[] {
     const agents = [
       ...Array.from({ length: counts.running }, (_, i) => record(`run${i}`, "running")),
       ...Array.from({ length: counts.queued }, (_, i) => record(`q${i}`, "queued")),
@@ -582,15 +1014,15 @@ describe("AgentWidget overflow accounting", () => {
     for (let queued = 0; queued <= 8; queued++)
       for (let finished = 0; finished <= 8; finished++) SHAPES.push({ running, queued, finished });
 
-  it("never exceeds the line cap, for any fleet shape", () => {
+  it("never exceeds the line cap, for any agent mix", () => {
     for (const counts of SHAPES) {
-      expect(renderFleet(counts).length, JSON.stringify(counts)).toBeLessThanOrEqual(12);
+      expect(renderMix(counts).length, JSON.stringify(counts)).toBeLessThanOrEqual(12);
     }
   });
 
-  it("never prints a footer that miscounts what it hid, for any fleet shape", () => {
+  it("never prints a footer that miscounts what it hid, for any agent mix", () => {
     for (const counts of SHAPES) {
-      const f = footer(renderFleet(counts));
+      const f = footer(renderMix(counts));
       if (!f) continue;
       const total = Number(/\+(\d+) more/.exec(f)?.[1]);
       const where = `${JSON.stringify(counts)} → ${f}`;
@@ -600,13 +1032,13 @@ describe("AgentWidget overflow accounting", () => {
   });
 
   it("keeps the queued summary visible when the running agents fill the widget", () => {
-    const lines = renderFleet({ running: 5, queued: 3, finished: 1 });
+    const lines = renderMix({ running: 5, queued: 3, finished: 1 });
     expect(lines.join("\n")).toContain("3 queued");
   });
 
   it("counts everything it hid — the footer total matches what is missing", () => {
     const counts = { running: 5, queued: 3, finished: 1 };
-    const lines = renderFleet(counts);
+    const lines = renderMix(counts);
     const body = lines.join("\n");
 
     const shownRunning = counts.running - [...Array(counts.running).keys()]
@@ -620,12 +1052,12 @@ describe("AgentWidget overflow accounting", () => {
   });
 
   it("gives the queued summary priority over finished lines", () => {
-    const lines = renderFleet({ running: 4, queued: 2, finished: 3 });
+    const lines = renderMix({ running: 4, queued: 2, finished: 3 });
     expect(lines.join("\n")).toContain("2 queued");
   });
 
-  it("renders everything with no footer when the fleet fits", () => {
-    const lines = renderFleet({ running: 2, queued: 1, finished: 1 });
+  it("renders everything with no footer when the rows fit", () => {
+    const lines = renderMix({ running: 2, queued: 1, finished: 1 });
     expect(lines.join("\n")).toContain("1 queued");
     expect(footer(lines)).toBeUndefined();
   });

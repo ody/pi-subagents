@@ -126,8 +126,6 @@ describe("applySettingValue enum and toggle settings", () => {
     ["showModel", "on", "showModel", true, "Model display enabled"],
     ["showModel", "off", "showModel", false, "Model display disabled"],
     ["viewerMarkdown", "assistant", "viewerMarkdown", "assistant", "Viewer markdown set to assistant"],
-    ["fleetView", "on", "fleetView", true, "Fleet view enabled"],
-    ["fleetView", "off", "fleetView", false, "Fleet view disabled"],
     ["agentMentions", "off", "agentMentions", "off", "Agent mentions disabled"],
     ["agentMentions", "model", "agentMentions", "model", "Agent mentions on — a conversation clone starts a mentioned agent off-screen"],
     ["agentMentions", "direct", "agentMentions", "direct", "Agent mentions on — a mentioned agent starts here, with no model call"],
@@ -571,5 +569,10 @@ describe("settings rows match the setting specs", () => {
   it("has no row outside the specs except ephemeralNesting", () => {
     const extra = SETTING_ROWS.map((row) => row.id).filter((id) => !(SETTING_KEYS as string[]).includes(id));
     expect(extra).toEqual(["ephemeralNesting"]);
+  });
+
+  it("has no row for selecting agents, which is part of the Agents widget", () => {
+    const removedKey = ["flee", "tView"].join("");
+    expect(SETTING_ROWS.map((row) => row.id)).not.toContain(removedKey);
   });
 });

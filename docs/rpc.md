@@ -24,7 +24,7 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `description` | string | What the agent is doing. Shown in the widget, FleetView and the completion notification |
+| `description` | string | What the agent is doing. Shown in the widget and the completion notification |
 | `agentConfig` | `Partial<AgentConfig>` with `systemPrompt` | Runs this definition instead of the registered `type`. See [Inline agent definitions](#inline-agent-definitions) |
 | `name` | string | A memorable second handle (`@auth-audit`). Slugged, never validated — anything unusable degrades rather than failing the spawn |
 | `model` | `Model` **or** `"provider/modelId"` | The RPC boundary resolves strings against `ctx.modelRegistry`. `null` means inherit, not override. Resolution is fuzzy — see [Model Scope](../README.md#model-scope) |
@@ -102,7 +102,7 @@ pi.events.emit("subagents:rpc:spawn", {
 Three things to know:
 
 - **An inline agent does not persist by default.** It writes a session to disk only when its `agentConfig` sets `persistSession: true`. `rememberAgents` does not apply to it.
-- **UI surfaces show a generic name.** The widget, FleetView and the conversation viewer look display names up by type, so an inline agent renders under a generic name next to its `description`.
+- **UI surfaces show a generic name.** The widget and the conversation viewer look display names up by type, so an inline agent renders under a generic name next to its `description`.
 - **`@handle` cannot reopen an evicted inline agent.** Reopening resolves the type against the registry and refuses when no agent has that name. If a registered agent has the same name, `@handle` reopens that agent instead, so pick a type no agent file uses. A live record whose session still exists resumes normally, under the tools it started with.
 
 ### Names that look right and are not

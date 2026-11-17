@@ -10,7 +10,6 @@ function topLevelAgentTool() {
   const deps = {
     manager: {} as any,
     widget: {} as any,
-    fleet: {} as any,
     notifier: {} as any,
     startBackgroundResume: vi.fn(),
     reloadCustomAgents: vi.fn(),

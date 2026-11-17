@@ -23,7 +23,6 @@ function makeNotifier(records: AgentRecord[]) {
     pi: { sendMessage },
     manager: { getActivity: () => undefined, getRecord: (id: string) => byId.get(id) },
     widget: { markFinished: vi.fn(), update: vi.fn() },
-    fleet: { onAgentFinished: vi.fn() },
     settings: { showCost: false },
   } as unknown as ConstructorParameters<typeof CompletionNotifier>[0]);
   return { notifier, sendMessage };

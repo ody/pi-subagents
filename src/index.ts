@@ -1,4 +1,4 @@
-// Size: extension entry point; it builds the shared closure state (manager, widget, fleet, settings) and wires the feature modules to it, which has to happen in one place.
+// Size: extension entry point; it builds the shared closure state (manager, widget, settings) and wires the feature modules to it, which has to happen in one place.
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getConfig, registerAgents } from "./agents/agent-types.js";
@@ -27,7 +27,6 @@ import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { registerAgentsCommand } from "./ui/agents-menu.js";
 import { ConversationViewerOpener, type ViewerUI } from "./ui/conversation-viewer-opener.js";
-import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
 import { PendingUsagePool, withUsageReporting } from "./usage.js";
@@ -83,8 +82,6 @@ export default function (pi: ExtensionAPI) {
     if (currentCtx?.hasUI) {
       widget.ensureTimer();
       widget.update();
-      fleet.ensureTimer();
-      fleet.update();
     }
     pi.events.emit("subagents:started", {
       id: record.id,
@@ -130,7 +127,7 @@ export default function (pi: ExtensionAPI) {
     currentCtx = ctx;
     if (ctx.hasUI) {
       widget.setUICtx(ctx.ui);
-      fleet.setUICtx(ctx.ui as any);
+      widget.setInputCtx(ctx.ui);
     }
     manager.clearCompleted(true);
     if (!rpcHandle) {
@@ -187,18 +184,18 @@ export default function (pi: ExtensionAPI) {
     manager.abortAll();
     notifier.dispose();
     viewer.close();
-    fleet.dispose();
+    widget.dispose();
     await manager.dispose(pi);
   });
 
   function createRuntimeSettings(): {
     reportUsage: boolean; showCost: boolean; showModel: boolean;
-    viewerMarkdown: ViewerMarkdownMode; widgetMode: WidgetMode; fleetView: boolean;
+    viewerMarkdown: ViewerMarkdownMode; widgetMode: WidgetMode;
     agentMentionMode: AgentMentionMode; defaultJoinMode: JoinMode; backgroundByDefault: boolean;
     toolDescriptionMode: ToolDescriptionMode; strictAgentFiles: boolean;
     setReportUsageFlag(b: boolean): void; setShowCostFlag(b: boolean): void;
     setShowModelFlag(b: boolean): void; setViewerMarkdownMode(m: ViewerMarkdownMode): void;
-    setWidgetModeFlag(m: WidgetMode): void; setFleetView(b: boolean): void;
+    setWidgetModeFlag(m: WidgetMode): void;
     setAgentMentionMode(m: AgentMentionMode): void; setJoinMode(m: JoinMode): void;
     setBgDefault(b: boolean): void;
     setToolDescMode(m: ToolDescriptionMode): void; setStrictAgentFiles(b: boolean): void;
@@ -209,7 +206,6 @@ export default function (pi: ExtensionAPI) {
       showModel: SETTING_SPECS.showModel.default,
       viewerMarkdown: SETTING_SPECS.viewerMarkdown.default,
       widgetMode: SETTING_SPECS.widgetMode.default,
-      fleetView: SETTING_SPECS.fleetView.default,
       agentMentionMode: SETTING_SPECS.agentMentions.default,
       defaultJoinMode: SETTING_SPECS.defaultJoinMode.default,
       backgroundByDefault: SETTING_SPECS.backgroundByDefault.default,
@@ -219,11 +215,10 @@ export default function (pi: ExtensionAPI) {
         this.reportUsage = b;
         if (!b) pendingUsage.drain();
       },
-      setShowCostFlag(b) { this.showCost = b; widget.update(); fleet.update(); },
+      setShowCostFlag(b) { this.showCost = b; widget.update(); },
       setShowModelFlag(b) { this.showModel = b; widget.update(); },
       setViewerMarkdownMode(m) { this.viewerMarkdown = m; },
       setWidgetModeFlag(m) { this.widgetMode = m; widget.update(); },
-      setFleetView(b) { this.fleetView = b; fleet.setEnabled(b); },
       setAgentMentionMode(m) { this.agentMentionMode = m; },
       setJoinMode(m) { this.defaultJoinMode = m; },
       setBgDefault(b) { this.backgroundByDefault = b; },
@@ -233,15 +228,11 @@ export default function (pi: ExtensionAPI) {
   }
 
   function getWidgetMode(): WidgetMode { return settings.widgetMode; }
-  const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled,
-    () => fleet.canOpen(), tui => fleet.onAgentsWidgetRegistered(tui));
+  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled, viewerMarkdown: getViewerMarkdown, chooseViewerMarkdown });
+  const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled, viewer);
   function setWidgetMode(m: WidgetMode): void { settings.setWidgetModeFlag(m); }
 
-  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled, viewerMarkdown: getViewerMarkdown, chooseViewerMarkdown });
-  const fleet = new FleetList(manager, viewer, isShowCostEnabled);
-  function setFleetViewEnabled(b: boolean): void { settings.setFleetView(b); }
-
-  const notifier = new CompletionNotifier({ pi, manager, widget, fleet, settings });
+  const notifier = new CompletionNotifier({ pi, manager, widget, settings });
 
   function setAgentMentionMode(mode: AgentMentionMode): void { settings.setAgentMentionMode(mode); }
   function isAgentMentionsEnabled(): boolean { return settings.agentMentionMode !== "off"; }
@@ -256,11 +247,11 @@ export default function (pi: ExtensionAPI) {
 
   function setToolDescriptionMode(mode: ToolDescriptionMode): void { settings.setToolDescMode(mode); }
 
-  const startBackgroundResume = createBackgroundResume({ pi, manager, notifier, widget, fleet, settings });
+  const startBackgroundResume = createBackgroundResume({ pi, manager, notifier, widget, settings });
 
   pi.on("tool_execution_start", async (_event, ctx) => {
     widget.setUICtx(ctx.ui as UICtx);
-    fleet.setUICtx(ctx.ui as unknown as FleetUICtx);
+    widget.setInputCtx(ctx.ui);
     widget.onTurnStart();
   });
 
@@ -274,7 +265,6 @@ export default function (pi: ExtensionAPI) {
     setScopeModels: setScopeModelsEnabled,
     setStrictAgentFiles: (b) => { strictAgentFiles = b; },
     setToolDescriptionMode: setToolDescriptionMode,
-    setFleetView: setFleetViewEnabled,
     setAgentMentions: setAgentMentionMode,
     setRememberAgents,
     setWidgetMode: setWidgetMode,
@@ -292,7 +282,6 @@ export default function (pi: ExtensionAPI) {
   const buildAgentTool = () => createAgentTool(pi, {
     manager,
     widget,
-    fleet,
     notifier,
     startBackgroundResume,
     reloadCustomAgents,

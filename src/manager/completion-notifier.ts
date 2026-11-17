@@ -2,7 +2,6 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentRecord, JoinMode, NotificationDetails } from "../types.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
-import type { FleetList } from "../ui/fleet-list.js";
 import type { AgentManager } from "./agent-manager.js";
 import { GroupJoinManager } from "./group-join.js";
 import { buildNotificationDetails, formatTaskNotification, isResultCut } from "./notification-format.js";
@@ -18,7 +17,6 @@ export interface CompletionNotifierDeps {
   pi: Pick<ExtensionAPI, "sendMessage">;
   manager: Pick<AgentManager, "getActivity" | "getRecord">;
   widget: Pick<AgentWidget, "markFinished" | "update">;
-  fleet: Pick<FleetList, "onAgentFinished">;
   settings: Readonly<Pick<RuntimeSettings, "showCost">>;
 }
 
@@ -26,7 +24,6 @@ export class CompletionNotifier {
   private readonly pi: Pick<ExtensionAPI, "sendMessage">;
   private readonly manager: Pick<AgentManager, "getActivity" | "getRecord">;
   private readonly widget: Pick<AgentWidget, "markFinished" | "update">;
-  private readonly fleet: Pick<FleetList, "onAgentFinished">;
   private readonly settings: Readonly<Pick<RuntimeSettings, "showCost">>;
   private readonly pendingNudges = new Map<string, { timer: ReturnType<typeof setTimeout>; ids: string[] }>();
   private readonly groupJoin: GroupJoinManager;
@@ -38,12 +35,11 @@ export class CompletionNotifier {
     this.pi = deps.pi;
     this.manager = deps.manager;
     this.widget = deps.widget;
-    this.fleet = deps.fleet;
     this.settings = deps.settings;
 
     this.groupJoin = new GroupJoinManager(
       (records, partial) => {
-        for (const r of records) { this.widget.markFinished(r.id); this.fleet.onAgentFinished(r.id); }
+        for (const r of records) this.widget.markFinished(r.id);
 
         const groupKey = `group:${records.map(r => r.id).join(",")}`;
         this.scheduleNudge(groupKey, records.map(r => r.id), () => {
@@ -79,7 +75,6 @@ export class CompletionNotifier {
   onAgentComplete = (record: AgentRecord): void => {
     if (record.resultConsumed) {
       this.widget.markFinished(record.id);
-      this.fleet.onAgentFinished(record.id);
       this.widget.update();
       return;
     }
@@ -149,7 +144,6 @@ export class CompletionNotifier {
 
   private sendIndividualNudge(record: AgentRecord) {
     this.widget.markFinished(record.id);
-    this.fleet.onAgentFinished(record.id);
     this.scheduleNudge(record.id, [record.id], () => this.emitIndividualNudge(record));
     this.widget.update();
   }

@@ -24,7 +24,6 @@ function setup(over: { settings?: Partial<AgentToolDeps["settings"]>; records?: 
   const deps: AgentToolDeps = {
     manager: manager as any,
     widget: { setUICtx: vi.fn(), ensureTimer: vi.fn(), update: vi.fn(), markFinished: vi.fn() } as any,
-    fleet: { ensureTimer: vi.fn(), update: vi.fn(), onAgentFinished: vi.fn() } as any,
     notifier,
     startBackgroundResume,
     reloadCustomAgents: vi.fn(),

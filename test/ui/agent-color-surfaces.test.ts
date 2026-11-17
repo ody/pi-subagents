@@ -4,7 +4,6 @@ import subagentsExtension from "../../src/index.js";
 import type { AgentActivity, AgentConfig, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
-import { FleetList, type FleetUICtx } from "../../src/ui/fleet-list.js";
 
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;
@@ -154,13 +153,16 @@ describe("custom agent color runtime surfaces", () => {
     const widget = new AgentWidget(
       withActivity({ listAgents: () => [record] } as unknown as ConstructorParameters<typeof AgentWidget>[0], new Map([[record.id, makeActivity()]])),
       () => "all",
+      () => false,
+      () => false,
+      { open: async () => {} },
     );
     let factory: WidgetFactory | undefined;
     let placement: string | undefined;
     widget.setUICtx({
       setStatus: vi.fn(),
       setWidget: (_key, content, options) => {
-        if (typeof content === "function") factory = content as WidgetFactory;
+        if (typeof content === "function") factory = content as unknown as WidgetFactory;
         placement = options?.placement;
       },
     });
@@ -177,48 +179,6 @@ describe("custom agent color runtime surfaces", () => {
       expect(output).toContain(PURPLE_BACKGROUND);
     } finally {
       widget.dispose();
-    }
-  });
-
-  it("renders the FleetView row with the display name and color", () => {
-    const record = makeRecord();
-    const manager = {
-      listAgents: () => [record],
-      abort: vi.fn(() => true),
-      steer: vi.fn(() => true),
-    } as unknown as ConstructorParameters<typeof FleetList>[0];
-    const fleet = new FleetList(withActivity(manager, new Map()), { open: async () => {}, close: () => {} });
-    let factory: WidgetFactory | undefined;
-    fleet.setUICtx({
-      setWidget: (_key, content) => {
-        if (typeof content === "function") factory = content as WidgetFactory;
-      },
-      onTerminalInput: vi.fn(() => vi.fn()),
-      getEditorText: vi.fn(() => ""),
-      notify: vi.fn(),
-      custom: (() => new Promise<undefined>(() => {})) as FleetUICtx["custom"],
-    });
-
-    try {
-      fleet.update();
-      fleet.handleKey("\x1b[B");
-      const output = factory?.(
-        { requestRender: vi.fn(), terminal: { columns: 120, rows: 40 } },
-        theme,
-      ).render(120).join("\n");
-
-      expect(output).toContain(DISPLAY_NAME);
-      expect(output).toContain(PURPLE_BACKGROUND);
-
-      registerColoredReviewer("invalid");
-      const fallback = factory?.(
-        { requestRender: vi.fn(), terminal: { columns: 120, rows: 40 } },
-        theme,
-      ).render(120).join("\n");
-      expect(fallback).toContain(`<muted>${DISPLAY_NAME}</muted>`);
-      expect(fallback).not.toContain(PURPLE_BACKGROUND);
-    } finally {
-      fleet.dispose();
     }
   });
 

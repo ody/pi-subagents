@@ -7,7 +7,6 @@ import type { CompletionNotifier } from "../manager/completion-notifier.js";
 import { streamToOutputFile } from "../platform/output-file.js";
 import type { AgentRecord } from "../types.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
-import type { FleetList } from "../ui/fleet-list.js";
 import { createActivityTracker } from "./activity-tracker.js";
 import { type AgentCallResolution, detailBaseFor } from "./agent-call-resolution.js";
 import { resolveJoinMode } from "./invocation-config.js";
@@ -17,7 +16,6 @@ export interface BackgroundAgentDeps {
   pi: ExtensionAPI;
   manager: Pick<AgentManager, "getRecord" | "getMaxConcurrent" | "spawn" | "awaitStartup">;
   widget: Pick<AgentWidget, "ensureTimer" | "update">;
-  fleet: Pick<FleetList, "ensureTimer" | "update">;
   notifier: Pick<CompletionNotifier, "addToBatch">;
   settings: Readonly<Pick<RuntimeSettings, "defaultJoinMode">>;
 }
@@ -38,7 +36,7 @@ export function backgroundRunFooter(record: AgentRecord | undefined, maxConcurre
 }
 
 export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: BackgroundAgentInput) {
-  const { pi, manager, widget, fleet, notifier, settings } = deps;
+  const { pi, manager, widget, notifier, settings } = deps;
   const { ctx, toolCallId, params, call, attachTranscript } = input;
   const {
     subagentType,
@@ -105,8 +103,6 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   widget.ensureTimer();
   widget.update();
-  fleet.ensureTimer();
-  fleet.update();
 
   pi.events.emit("subagents:created", {
     id,

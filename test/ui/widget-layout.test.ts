@@ -35,6 +35,29 @@ describe("layoutWidgetBody", () => {
     expect(hidden).toEqual({ running: 0, finished: 2 });
   });
 
+  it("keeps a pinned running pair first in the budget, in display order", () => {
+    const { body, hidden } = layoutWidgetBody(
+      { finished: ["├─ f"], running: [run(1), run(2), run(3)], queued: "├─ q", pinned: { section: "running", index: 2 } },
+      6,
+    );
+    expect(body).toEqual(["├─ run1", "│    ⎿ act1", "├─ run3", "│    ⎿ act3", "├─ q"]);
+    expect(hidden).toEqual({ running: 1, finished: 1 });
+  });
+
+  it("keeps a pinned finished line before running agents take the budget", () => {
+    const { body, hidden } = layoutWidgetBody(
+      { finished: ["├─ f1", "├─ f2"], running: [run(1), run(2), run(3)], pinned: { section: "finished", index: 1 } },
+      6,
+    );
+    expect(body).toEqual(["├─ f2", "├─ run1", "│    ⎿ act1", "├─ run2", "│    ⎿ act2"]);
+    expect(hidden).toEqual({ running: 1, finished: 1 });
+  });
+
+  it("orders finished before running when it overflows", () => {
+    const { body } = layoutWidgetBody({ finished: ["├─ f"], running: [run(1)], queued: "├─ q" }, 3);
+    expect(body).toEqual(["├─ f", "├─ q"]);
+  });
+
   it("hides running agents that do not fit, queued row still shown", () => {
     const { body, hidden } = layoutWidgetBody(
       { finished: ["├─ f"], running: [run(1), run(2), run(3)], queued: "├─ q" },

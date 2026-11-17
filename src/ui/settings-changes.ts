@@ -68,7 +68,6 @@ const PARSERS: Record<string, Parser> = {
   showCost: toggle("showCost", (enabled) => `Cost display ${enabledWord(enabled)}`),
   showModel: toggle("showModel", (enabled) => `Model display ${enabledWord(enabled)}`),
   viewerMarkdown: choice("viewerMarkdown", (v) => `Viewer markdown set to ${v}`),
-  fleetView: toggle("fleetView", (enabled) => `Fleet view ${enabledWord(enabled)}`),
   agentMentions: choice("agentMentions", (mode) =>
     mode === "off"
       ? "Agent mentions disabled"

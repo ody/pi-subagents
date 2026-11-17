@@ -21,7 +21,7 @@ export function perfSession(messages: unknown[] = []) {
   } as any;
 }
 
-export interface FleetOptions {
+export interface AgentCounts {
   running?: number;
   queued?: number;
   finished?: number;
@@ -50,7 +50,7 @@ export function makeRecord(i: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-export function makeFleet(opts: FleetOptions = {}): ReturnType<typeof makeRecord>[] {
+export function makeAgents(opts: AgentCounts = {}): ReturnType<typeof makeRecord>[] {
   const { running = 3, queued = 0, finished = 0 } = opts;
   const out: ReturnType<typeof makeRecord>[] = [];
   let i = 0;
@@ -136,6 +136,7 @@ export function mountWidget(
     () => opts.mode ?? "all",
     () => opts.showCost ?? false,
     () => opts.showModel ?? false,
+    { open: async () => {} },
   );
   let factory: any;
   widget.setUICtx({
@@ -150,27 +151,6 @@ export function mountWidget(
     render: (): string[] => (factory ? factory(tui, perfTheme).render() : []),
     update: () => widget.update(),
     dispose: () => widget.dispose?.(),
-  };
-}
-
-export function mountFleet(FleetList: any, records: unknown[]) {
-  const fleet = new FleetList(makeManager(records, makeActivity(records as { id: string; toolUses: number }[])), { open: async () => {}, close: () => {} });
-  let factory: any;
-  fleet.setUICtx({
-    setWidget: (_key: string, content: any) => { factory = content; },
-    onTerminalInput: () => () => {},
-    getEditorText: () => "",
-    notify: () => {},
-    custom: () => new Promise(() => {}),
-  });
-  fleet.update();
-  const tui = perfTui();
-  factory?.(tui, perfTheme).render(120);
-  return {
-    fleet,
-    render: (width = 120): string[] => (factory ? factory(tui, perfTheme).render(width) : []),
-    update: () => fleet.update(),
-    dispose: () => fleet.dispose?.(),
   };
 }
 

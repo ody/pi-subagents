@@ -1,36 +1,31 @@
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { Editor, isKeyRelease, matchesKey, type TUI, truncateToWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../manager/agent-manager.js";
-import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
-import type { AgentRecord, SubagentType, WidgetMode } from "../types.js";
-import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent, type LifetimeUsage } from "../usage.js";
-import { renderAgentName } from "./agent-color.js";
-import {
-  buildInvocationTags,
-  describeActivity,
-  formatCost,
-  formatMs,
-  formatSessionTokens,
-  formatTurns,
-  getPromptModeLabel,
-  renderModeTag,
-  renderStats,
-  renderStatusIcon,
-  SPINNER,
-  type Stat,
-  statusPresentation,
-  type Theme,
-} from "./agent-format.js";
-import { layoutWidgetBody } from "./widget-layout.js";
+import type { AgentRecord, WidgetMode } from "../types.js";
+import { renderStatusIcon, SPINNER, statusPresentation, type Theme } from "./agent-format.js";
+import type { ConversationViewerOpener, ViewerUI } from "./conversation-viewer-opener.js";
+import { layoutWidgetBody, type WidgetSections } from "./widget-layout.js";
+import { finishedRowLine, type RowLineDeps, runningRowLines } from "./widget-row-lines.js";
+import { agentRowIds, collectWidgetRows, type WidgetRows } from "./widget-rows.js";
+import { WidgetSelection } from "./widget-selection.js";
 
 const MAX_WIDGET_LINES = 12;
+const MANAGE_HINT = "↓ to manage";
+const SELECTING_HINT = "↑↓ select · enter open · esc done";
+
+type TerminalInputResult = { consume?: boolean; data?: string } | undefined;
 
 export type UICtx = {
   setStatus(key: string, text: string | undefined): void;
   setWidget(
     key: string,
-    content: undefined | ((tui: any, theme: Theme) => { render(): string[]; invalidate(): void }),
+    content: undefined | ((tui: TUI, theme: Theme) => { render(): string[]; invalidate(): void }),
     options?: { placement?: "aboveEditor" | "belowEditor" },
   ): void;
+};
+
+export type SelectionUICtx = ViewerUI & {
+  onTerminalInput(handler: (data: string) => TerminalInputResult): () => void;
+  getEditorText(): string;
 };
 
 export function statusBarText(running: number, queued: number): string {
@@ -38,6 +33,15 @@ export function statusBarText(running: number, queued: number): string {
   if (running > 0) parts.push(`${running} running`);
   if (queued > 0) parts.push(`${queued} queued`);
   return `${parts.join(", ")} agent${running + queued === 1 ? "" : "s"}`;
+}
+
+function editorHasFocus(tui: TUI | undefined): boolean {
+  const focused = (tui as unknown as { focusedComponent?: unknown } | undefined)?.focusedComponent;
+  return focused == null || focused instanceof Editor;
+}
+
+function hasNoRows(rows: WidgetRows): boolean {
+  return rows.running.length === 0 && rows.queued.length === 0 && rows.finished.length === 0;
 }
 
 export class AgentWidget {
@@ -48,62 +52,34 @@ export class AgentWidget {
   private static readonly ERROR_LINGER_TURNS = 2;
 
   private widgetRegistered = false;
-  private tui: any | undefined;
+  private tui: TUI | undefined;
   private lastStatusText: string | undefined;
+  private inputCtx: SelectionUICtx | undefined;
+  private inputUnsub: (() => void) | undefined;
+  private readonly selection = new WidgetSelection();
+  private viewingId: string | undefined;
 
   constructor(
     private manager: AgentManager,
     private mode: () => WidgetMode = () => "all",
     private showCost: () => boolean = () => false,
     private showModel: () => boolean = () => false,
-    private showFleetHint: () => boolean = () => false,
-    private onWidgetRegistered: (tui: unknown) => void = () => {},
+    private viewer: Pick<ConversationViewerOpener, "open">,
   ) {}
 
-  private widgetAgents(records: readonly AgentRecord[]) {
-    const all = records.filter(isTopLevelAgent);
-    switch (this.mode()) {
-      case "off": return [];
-      case "background": return all.filter(a => a.isBackground !== false);
-      default: return all;
-    }
-  }
-
-  private orphanedRunning(all: readonly AgentRecord[]): AgentRecord[] {
-    if (this.mode() === "off") return [];
-    const known = new Set(all.map(record => record.id));
-    return all
-      .filter(record => record.status === "running" && record.parentAgentId !== undefined && !known.has(record.parentAgentId))
-      .sort((a, b) => a.startedAt - b.startedAt);
-  }
-
-  private runningRows(all: readonly AgentRecord[], tops: readonly AgentRecord[]): { record: AgentRecord; depth: number }[] {
-    const orphans = this.orphanedRunning(all);
-    const byParent = new Map<string, AgentRecord[]>();
-    for (const record of all) {
-      if (record.parentAgentId === undefined || record.status !== "running") continue;
-      const bucket = byParent.get(record.parentAgentId);
-      if (bucket) bucket.push(record);
-      else byParent.set(record.parentAgentId, [record]);
-    }
-    for (const bucket of byParent.values()) bucket.sort((a, b) => a.startedAt - b.startedAt);
-
-    const rows: { record: AgentRecord; depth: number }[] = [];
-    const walk = (record: AgentRecord, depth: number): void => {
-      rows.push({ record, depth });
-      for (const child of byParent.get(record.id) ?? []) walk(child, depth + 1);
-    };
-    for (const root of [...tops, ...orphans]) walk(root, 0);
-    return rows;
-  }
-
   setUICtx(ctx: UICtx) {
-    if (ctx !== this.uiCtx) {
-      this.uiCtx = ctx;
-      this.widgetRegistered = false;
-      this.tui = undefined;
-      this.lastStatusText = undefined;
-    }
+    if (ctx === this.uiCtx) return;
+    this.uiCtx = ctx;
+    this.widgetRegistered = false;
+    this.tui = undefined;
+    this.lastStatusText = undefined;
+  }
+
+  setInputCtx(ctx: SelectionUICtx) {
+    if (ctx === this.inputCtx) return;
+    this.inputUnsub?.();
+    this.inputCtx = ctx;
+    this.inputUnsub = ctx.onTerminalInput(data => this.handleKey(data));
   }
 
   onTurnStart() {
@@ -135,62 +111,111 @@ export class AgentWidget {
     this.finishedTurnAge.delete(agentId);
   }
 
-  private renderFinishedLine(a: { id: string; type: SubagentType; displayName?: string; promptMode?: "replace" | "append"; status: AgentRecord["status"]; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string; lifetimeUsage?: LifetimeUsage }, theme: Theme): string {
-    const modeLabel = getPromptModeLabel(a);
-    const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
-
-    const { color, note } = statusPresentation(a.status);
-    const icon = renderStatusIcon(theme, a.status);
-    const statusText = a.status === "completed" ? ""
-      : a.status === "error" ? theme.fg(color, ` error${a.error ? `: ${a.error.slice(0, 60)}` : ""}`)
-      : theme.fg(color, note ? ` (${note})` : ` ${a.status}`);
-
-    const parts: Stat[] = [];
-    const activity = this.manager.getActivity(a.id);
-    if (activity) parts.push({ kind: "turns", text: formatTurns(activity.turnCount, activity.maxTurns) });
-    if (a.toolUses > 0) parts.push({ kind: "tools", text: `${a.toolUses} tool use${a.toolUses === 1 ? "" : "s"}` });
-    const costText = this.showCost() ? formatCost(getLifetimeCost(a.lifetimeUsage)) : "";
-    if (costText) parts.push({ kind: "cost", text: costText });
-    parts.push({ kind: "time", text: duration });
-
-    return `${icon} ${renderAgentName(a, theme, { fallbackColor: "dim" })}${renderModeTag(theme, modeLabel)}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${renderStats(theme, parts)}${statusText}`;
+  private heldIds(records: readonly AgentRecord[]): Set<string> {
+    const held = new Set<string>();
+    if (this.viewingId !== undefined) held.add(this.viewingId);
+    const selectedId = this.selection.selectedId;
+    const selected = selectedId === undefined ? undefined : records.find(record => record.id === selectedId);
+    if (selected?.parentAgentId !== undefined) held.add(selected.id);
+    return held;
   }
 
-  private renderWidget(tui: any, theme: Theme): string[] {
+  private snapshot(): { records: AgentRecord[]; rows: WidgetRows; ids: string[] } {
     const records = this.manager.listAgents();
-    const allAgents = this.widgetAgents(records);
-    const running = this.runningRows(records, allAgents.filter(a => a.status === "running"));
-    const queued = allAgents.filter(a => a.status === "queued");
-    const finished = allAgents.filter(a =>
-      a.status !== "running" && a.status !== "queued" && a.completedAt
-      && this.shouldShowFinished(a.id, a.status),
-    );
+    const rows = collectWidgetRows({
+      records,
+      mode: this.mode(),
+      lingers: record => this.shouldShowFinished(record.id, record.status),
+      held: this.heldIds(records),
+    });
+    const ids = agentRowIds(rows);
+    this.selection.reconcile(ids);
+    return { records, rows, ids };
+  }
 
-    const hasActive = running.length > 0 || queued.length > 0;
-    const hasFinished = finished.length > 0;
+  private canStartSelection(tui: TUI, ids: readonly string[]): boolean {
+    return ids.length > 0 && editorHasFocus(tui) && this.inputCtx?.getEditorText() === "";
+  }
 
-    if (!hasActive && !hasFinished) return [];
+  private handleKey(data: string): TerminalInputResult {
+    if (!this.inputCtx || isKeyRelease(data) || this.viewingId !== undefined) return undefined;
+    const { ids } = this.snapshot();
+    if (!editorHasFocus(this.tui)) {
+      if (this.selection.active) this.endSelection();
+      return undefined;
+    }
+
+    if (!this.selection.active) {
+      if (!matchesKey(data, "down") || this.inputCtx.getEditorText() !== "" || !this.selection.start(ids)) return undefined;
+      this.update();
+      return { consume: true };
+    }
+
+    if (matchesKey(data, "down")) this.selection.moveDown(ids);
+    else if (matchesKey(data, "up")) this.selection.moveUp(ids);
+    else if (matchesKey(data, "escape")) this.selection.end();
+    else if (matchesKey(data, "enter")) this.openSelected();
+    else {
+      this.endSelection();
+      return undefined;
+    }
+    this.update();
+    return { consume: true };
+  }
+
+  private endSelection(): void {
+    this.selection.end();
+    this.update();
+  }
+
+  private openSelected(): void {
+    const selectedId = this.selection.selectedId;
+    const record = this.manager.listAgents().find(candidate => candidate.id === selectedId);
+    if (!record || !this.inputCtx) {
+      this.selection.end();
+      return;
+    }
+    this.viewingId = record.id;
+    this.viewer.open(this.inputCtx, record).then(() => this.closeViewer(), () => this.closeViewer());
+  }
+
+  private closeViewer(): void {
+    if (this.viewingId === undefined) return;
+    this.selection.follow(this.viewingId);
+    this.viewingId = undefined;
+    this.update();
+  }
+
+  private renderWidget(tui: TUI, theme: Theme): string[] {
+    const { rows, ids } = this.snapshot();
+    if (hasNoRows(rows)) return [];
 
     const w = tui.terminal.columns;
     const truncate = (line: string) => truncateToWidth(line, w);
+    const hasActive = rows.running.length > 0 || rows.queued.length > 0;
     const headingColor = hasActive ? "accent" : "dim";
     const headingIcon = hasActive ? "●" : "○";
     const frame = SPINNER[this.widgetFrame % SPINNER.length];
+    const deps: RowLineDeps = { getActivity: id => this.manager.getActivity(id), showCost: this.showCost(), showModel: this.showModel() };
+    const selectedId = this.selection.selectedId;
 
-    const finishedLines: string[] = [];
-    for (const a of finished) {
-      finishedLines.push(truncate(theme.fg("dim", "├─") + " " + this.renderFinishedLine(a, theme)));
-    }
+    const sections: WidgetSections = {
+      finished: rows.finished.map(({ record, depth }) => truncate(finishedRowLine(record, depth, record.id === selectedId, theme, deps))),
+      running: rows.running.map(({ record, depth }) => runningRowLines(record, depth, record.id === selectedId, theme, frame, deps).map(truncate) as [string, string]),
+      queued: rows.queued.length > 0
+        ? truncate(theme.fg("dim", "├─") + ` ${renderStatusIcon(theme, "queued")} ${theme.fg("dim", `${rows.queued.length} queued`)}`)
+        : undefined,
+    };
+    const finishedIndex = rows.finished.findIndex(row => row.record.id === selectedId);
+    const runningIndex = rows.running.findIndex(row => row.record.id === selectedId);
+    if (finishedIndex >= 0) sections.pinned = { section: "finished", index: finishedIndex };
+    else if (runningIndex >= 0) sections.pinned = { section: "running", index: runningIndex };
 
-    const runningLines = running.map(({ record, depth }) => this.runningRowLines(record, depth, theme, frame).map(truncate) as [string, string]);
-
-    const queuedLine = queued.length > 0
-      ? truncate(theme.fg("dim", "├─") + ` ${renderStatusIcon(theme, "queued")} ${theme.fg("dim", `${queued.length} queued`)}`)
-      : undefined;
-
-    const fleetHint = this.showFleetHint() ? " " + theme.fg("dim", "↓ to manage") : "";
-    const lines: string[] = [truncate(theme.fg(headingColor, headingIcon) + " " + theme.fg(headingColor, "Agents") + fleetHint)];
-    const { body, hidden } = layoutWidgetBody({ finished: finishedLines, running: runningLines, queued: queuedLine }, MAX_WIDGET_LINES - 1);
+    let hint = "";
+    if (this.selection.active) hint = " " + theme.fg("dim", SELECTING_HINT);
+    else if (this.canStartSelection(tui, ids)) hint = " " + theme.fg("dim", MANAGE_HINT);
+    const lines: string[] = [truncate(theme.fg(headingColor, headingIcon) + " " + theme.fg(headingColor, "Agents") + hint)];
+    const { body, hidden } = layoutWidgetBody(sections, MAX_WIDGET_LINES - 1);
     lines.push(...body);
     if (hidden) {
       const overflowParts: string[] = [];
@@ -203,61 +228,17 @@ export class AgentWidget {
     return lines;
   }
 
-  private runningRowLines(a: AgentRecord, depth: number, theme: Theme, frame: string): [string, string] {
-    const indent = "   ".repeat(depth);
-    const modeLabel = getPromptModeLabel(a);
-    const elapsed = formatMs(Date.now() - a.startedAt);
-
-    const bg = this.manager.getActivity(a.id);
-    const toolUses = bg?.toolUses ?? a.toolUses;
-    const tokens = getLifetimeTotal(a.lifetimeUsage);
-    const contextPercent = getSessionContextPercent(bg?.session);
-    const tokenText = tokens > 0 ? formatSessionTokens(tokens, contextPercent, theme, a.compactionCount) : "";
-    const costText = this.showCost() ? formatCost(getLifetimeCost(a.lifetimeUsage)) : "";
-
-    const parts: Stat[] = [];
-    if (this.showModel()) {
-      const { modelName, tags } = buildInvocationTags(a.invocation);
-      if (modelName) parts.push({ kind: "model", text: modelName });
-      const thinkingTag = tags.find(tag => tag.startsWith("thinking: "));
-      if (thinkingTag) parts.push({ kind: "thinking", text: thinkingTag });
-    }
-    if (bg) parts.push({ kind: "turns", text: formatTurns(bg.turnCount, bg.maxTurns) });
-    if (toolUses > 0) parts.push({ kind: "tools", text: `${toolUses} tool use${toolUses === 1 ? "" : "s"}` });
-    if (tokenText) parts.push({ kind: "tokens", text: tokenText });
-    if (costText) parts.push({ kind: "cost", text: costText });
-    parts.push({ kind: "time", text: elapsed });
-    const statsText = renderStats(theme, parts);
-
-    const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
-
-    return [
-      theme.fg("dim", `${indent}├─`) + ` ${renderStatusIcon(theme, a.status, frame)} ${renderAgentName(a, theme, { bold: true })}${renderModeTag(theme, modeLabel)}  ${theme.fg("text", a.description)} ${theme.fg("dim", "·")} ${statsText}`,
-      theme.fg("dim", `${indent}│  `) + theme.fg("dim", `  ⎿  ${activity}`),
-    ];
-  }
-
   update() {
     if (!this.uiCtx) return;
-    const records = this.manager.listAgents();
-    const allAgents = this.widgetAgents(records);
+    const { records, rows } = this.snapshot();
 
-    let runningCount = 0;
-    let queuedCount = 0;
-    let hasFinished = false;
-    for (const a of allAgents) {
-      if (a.status === "running") { runningCount++; }
-      else if (a.status === "queued") { queuedCount++; }
-      else if (a.completedAt && this.shouldShowFinished(a.id, a.status)) { hasFinished = true; }
-    }
-    const hasActive = runningCount > 0 || queuedCount > 0;
-
-    if (!hasActive && !hasFinished && this.orphanedRunning(records).length === 0) {
-      this.clearWidget(allAgents);
+    if (hasNoRows(rows)) {
+      this.clearWidget(records);
       return;
     }
 
-    const newStatusText = hasActive ? statusBarText(runningCount, queuedCount) : undefined;
+    const hasActive = rows.runningTopLevel > 0 || rows.queued.length > 0;
+    const newStatusText = hasActive ? statusBarText(rows.runningTopLevel, rows.queued.length) : undefined;
     if (newStatusText !== this.lastStatusText) {
       this.uiCtx.setStatus("subagents", newStatusText);
       this.lastStatusText = newStatusText;
@@ -267,7 +248,7 @@ export class AgentWidget {
     this.registerWidget(this.uiCtx);
   }
 
-  private clearWidget(allAgents: AgentRecord[]) {
+  private clearWidget(records: readonly AgentRecord[]) {
     if (this.uiCtx && this.widgetRegistered) {
       this.uiCtx.setWidget("agents", undefined);
       this.widgetRegistered = false;
@@ -279,7 +260,7 @@ export class AgentWidget {
     }
     if (this.widgetInterval) { clearInterval(this.widgetInterval); this.widgetInterval = undefined; }
     for (const [id] of this.finishedTurnAge) {
-      if (!allAgents.some(a => a.id === id)) this.finishedTurnAge.delete(id);
+      if (!records.some(a => a.id === id)) this.finishedTurnAge.delete(id);
     }
   }
 
@@ -288,11 +269,6 @@ export class AgentWidget {
       this.tui?.requestRender();
       return;
     }
-    this.registerAgentsWidget(uiCtx);
-    this.onWidgetRegistered(this.tui);
-  }
-
-  private registerAgentsWidget(uiCtx: UICtx) {
     uiCtx.setWidget("agents", (tui, theme) => {
       this.tui = tui;
       return {
@@ -311,10 +287,16 @@ export class AgentWidget {
       clearInterval(this.widgetInterval);
       this.widgetInterval = undefined;
     }
+    this.inputUnsub?.();
+    this.inputUnsub = undefined;
+    this.inputCtx = undefined;
+    this.selection.end();
+    this.viewingId = undefined;
     if (this.uiCtx) {
       this.uiCtx.setWidget("agents", undefined);
       this.uiCtx.setStatus("subagents", undefined);
     }
+    this.uiCtx = undefined;
     this.widgetRegistered = false;
     this.tui = undefined;
     this.lastStatusText = undefined;

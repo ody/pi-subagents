@@ -29,7 +29,6 @@ export const SETTING_SPECS: SettingSpecs = {
   showCost: { kind: "boolean", default: false },
   showModel: { kind: "boolean", default: false },
   viewerMarkdown: { kind: "enum", default: "assistant", values: ["off", "assistant", "all"] },
-  fleetView: { kind: "boolean", default: true },
   agentMentions: { kind: "enum", default: "model", values: ["model", "direct", "off"] },
   rememberAgents: { kind: "boolean", default: true },
   widgetMode: { kind: "enum", default: "all", values: ["all", "background", "off"] },

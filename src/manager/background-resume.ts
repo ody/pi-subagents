@@ -5,7 +5,6 @@ import { createActivityTracker } from "../tool/activity-tracker.js";
 import { resolveJoinMode } from "../tool/invocation-config.js";
 import type { AgentRecord } from "../types.js";
 import type { AgentWidget } from "../ui/agent-widget.js";
-import type { FleetList } from "../ui/fleet-list.js";
 import type { AgentManager } from "./agent-manager.js";
 import type { CompletionNotifier } from "./completion-notifier.js";
 
@@ -27,12 +26,11 @@ export interface BackgroundResumeDeps {
   manager: Pick<AgentManager, "resume" | "getRecord">;
   notifier: Pick<CompletionNotifier, "addToBatch">;
   widget: Pick<AgentWidget, "markRunning" | "ensureTimer" | "update">;
-  fleet: Pick<FleetList, "ensureTimer" | "update">;
   settings: Readonly<Pick<RuntimeSettings, "defaultJoinMode">>;
 }
 
 export function createBackgroundResume(deps: BackgroundResumeDeps): StartBackgroundResume {
-  const { pi, manager, notifier, widget, fleet, settings } = deps;
+  const { pi, manager, notifier, widget, settings } = deps;
 
   return async (
     ctx: ExtensionContext,
@@ -73,8 +71,6 @@ export function createBackgroundResume(deps: BackgroundResumeDeps): StartBackgro
     widget.markRunning(id);
     widget.ensureTimer();
     widget.update();
-    fleet.ensureTimer();
-    fleet.update();
 
     pi.events.emit("subagents:created", {
       id,

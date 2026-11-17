@@ -18,11 +18,11 @@ vi.mock("node:fs", async (importOriginal) => {
 
 const { AgentWidget } = await import("../../src/ui/agent-widget.js");
 const { ConversationViewer } = await import("../../src/ui/conversation-viewer.js");
-const { makeFleet, makeSession, mountViewer, mountWidget } = await import("../harness/perf-fixtures.js");
+const { makeAgents, makeSession, mountViewer, mountWidget } = await import("../harness/perf-fixtures.js");
 
 describe("a rendered frame touches no filesystem", () => {
   it("AgentWidget.render", () => {
-    const w = mountWidget(AgentWidget, makeFleet({ running: 5, queued: 3, finished: 2 }));
+    const w = mountWidget(AgentWidget, makeAgents({ running: 5, queued: 3, finished: 2 }));
     w.render();
     FS_CALLS.length = 0;
 

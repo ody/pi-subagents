@@ -11,7 +11,6 @@ import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { SUBAGENT_TOOL_NAMES } from "../session/extension-scope.js";
 import type { AgentRecord } from "../types.js";
 import type { AgentWidget, UICtx } from "../ui/agent-widget.js";
-import type { FleetList } from "../ui/fleet-list.js";
 import { resolveAgentCall } from "./agent-call-resolution.js";
 import { startBackgroundAgent } from "./agent-tool-background.js";
 import { buildAgentToolDescription } from "./agent-tool-description.js";
@@ -28,7 +27,6 @@ export interface AgentToolDeps {
     "getRecord" | "getMaxConcurrent" | "resume" | "spawn" | "awaitStartup" | "getActivity" | "listAgents" | "spawnAndWait"
   >;
   widget: Pick<AgentWidget, "setUICtx" | "ensureTimer" | "update" | "markFinished">;
-  fleet: Pick<FleetList, "ensureTimer" | "update" | "onAgentFinished">;
   notifier: Pick<CompletionNotifier, "addToBatch">;
   startBackgroundResume: StartBackgroundResume;
   reloadCustomAgents: () => void;
@@ -39,7 +37,7 @@ export interface AgentToolDeps {
 }
 
 export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
-  const { manager, widget, fleet, notifier, startBackgroundResume, reloadCustomAgents, settings } = deps;
+  const { manager, widget, notifier, startBackgroundResume, reloadCustomAgents, settings } = deps;
 
   const agentToolDescription = buildAgentToolDescription({
     mode: settings.toolDescriptionMode,
@@ -161,13 +159,13 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
 
       if (runInBackground) {
         return startBackgroundAgent(
-          { pi, manager, widget, fleet, notifier, settings },
+          { pi, manager, widget, notifier, settings },
           { ctx, toolCallId, params, call, attachTranscript },
         );
       }
 
       return runForegroundAgent(
-        { pi, manager, widget, fleet, settings },
+        { pi, manager, widget, settings },
         { ctx, params, signal, onUpdate, call, attachTranscript },
       );
     },

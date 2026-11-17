@@ -7,7 +7,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 - **Native tools and UI** — the `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools follow pi's calling conventions and UI patterns
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent, the default), `background` (hides foreground runs, which already render inline as the `agent` tool result), or `off`
-- **FleetView** — navigable **tree** of `main` + every running subagent listed directly above the editor on demand, with [nested children](#nested-subagents) indented under their owner. `↓` at an empty prompt opens it. `↑`/`↓` move the selection and wrap. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` closes the view. Toggle via `/agents → Settings → Fleet view`
+- **Widget selection** — `↓` at an empty prompt selects a row in the Agents widget. `↑`/`↓` move the cursor, `Enter` opens that agent's live conversation, and `Esc` ends selection. [Nested children](#nested-subagents) show indented under their owner while they run. See [Selecting an agent](#selecting-an-agent)
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too. The overlay is 95% wide and up to 90% tall, and closes when pi shuts the extension down. `/agents` and the Agents widget open it the same way. An agent with no session shows a notice that names its status.
   - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
@@ -98,45 +98,31 @@ The token field carries two optional signals inside parens:
 - **`NN%`** — context-window utilization (color-coded: <70% dim, 70–85% warning, ≥85% error). Omitted when the model has no declared `contextWindow`, or briefly right after compaction.
 - **`⇊N`** — number of times the session has compacted, when > 0. Stays dim; the percent's color carries urgency.
 
-### FleetView
+### Selecting an agent
 
-The list draws only while open. While subagents run and the list stays shut, the Agents widget heading shows `↓ to manage`. Press `↓` at an empty prompt to open the list **directly above** the editor, below the Agents widget:
+Selection is a mode of the Agents widget. While the widget shows an agent row, its heading shows `↓ to manage`. Press `↓` at an empty prompt to start selecting. `▸` marks the selected row:
 
 ```text
-  ↑↓ select · ←→ collapse · enter view · esc back
-
-   ● main
-  ▾○ worker           Sleep then report 1                               11s · ↓ 13.1k tokens
-     ○ reviewer       Find the route table                               4s · ↓ 2.1k tokens
-   ○ worker           Sleep then report 2                               11s · ↓ 13.1k tokens
-                                                                                   ↓ 3 more
+● Agents ↑↓ select · enter open · esc done
+▸  ⠹ Agent  Refactor auth module · ↻5≤30 · 5 tool uses · 33.8k token (62%) · 12.3s
+│    ⎿  editing 2 files…
+├─ ⠹ reviewer  Find auth files · ↻3 · 3 tool uses · 12.4k token (8%) · 4.1s
+│    ⎿  searching…
+└─ 2 queued
 ```
 
-The list is a tree. A [nested child](#nested-subagents) sits indented under the agent that spawned it, at any depth. So every agent in the session is reachable, openable, steerable and stoppable, which nested ones were not when the list showed only the top level.
+The keys:
 
-Three rules govern the tree:
+- `↓` at an empty prompt starts selection on the first agent row. The editor must have focus. With `widgetMode` `off`, selection never starts.
+- Only agent rows take the cursor. The queued row and the overflow line do not.
+- `↑`/`↓` move the cursor. `↑` on the first agent row ends selection. `↓` on the last row keeps the cursor there.
+- `Enter` opens the selected agent's [conversation viewer](#ui). While the viewer is open, the widget keeps that agent's row. Closing the viewer returns to selection on that row.
+- `Esc` ends selection. Any other key ends selection and passes through to the editor.
+- The cursor follows the agent, not the row index. If the selected row goes away, the cursor moves to the agent row that now holds its index, else to the last agent row. Selection ends when the widget shows no agent row.
+- The selected row always draws. When the 12-line budget overflows, the widget hides other rows first. A nested agent that leaves `running` while selected keeps its row until the cursor moves off it.
+- Inside the viewer, `Enter` steers the running agent. Type a message and press `Enter` to send it (`Esc` or an empty submit returns). This redirects the agent the same way the `agent_steer` tool does.
 
-- A row that owns children carries `▾` when expanded and `▸` when collapsed. `→` expands, `←` collapses, and `←` on a leaf moves up to its parent.
-- An agent whose owner is gone — evicted by cleanup — renders at the top level marked `↯`, rather than vanishing.
-- Selection follows the row, not its position, so an agent starting or settling elsewhere in the tree never moves the cursor out from under you.
-
-Which rows appear:
-
-- The list orders siblings earliest-launched first.
-- The list shows only agents you can actually open. A pending or queued agent with no session yet appears once it starts.
-- An owner is always kept while a descendant of it is live, so an active grandchild never shows up detached.
-
-The keys, at an **empty prompt**:
-
-- `↓` opens the list and selects `main`. No other key opens it, and `←` passes through to the prompt. `●` marks the selected row, and `○` marks the rest.
-- `↑`/`↓` move the selection and wrap: `↑` on `main` selects the last row, and `↓` on the last row selects `main`. Moving never closes the list.
-- `Esc`, or `Enter` on `main`, closes the list. Any other key closes it and passes through to the prompt.
-- `Enter` opens the selected agent's live conversation overlay, which auto-updates as the agent works.
-- Inside that overlay, `Enter` steers the running agent. Type a message and press `Enter` to send it (`Esc` or an empty submit returns). This redirects the agent the same way the `agent_steer` tool does.
-
-The selected row renders in the theme's primary text color rather than the muted/dim treatment of the others. An agent with a configured `color` shows its badge there too, bolded.
-
-A viewer stays open when its agent finishes so you can read the final output. Finished agents linger in the list for a few seconds before dropping out. Closing the viewer returns to the open list with that agent selected. The list only captures arrow keys when the prompt is empty. Disable it entirely via `/agents → Settings → Fleet view`.
+With `widgetMode` `off`, or for an agent the widget does not show, `/agents → Agents` is the way to open an agent. `↓` at an empty prompt never reaches the editor while the widget shows an agent row.
 
 ### Agent mentions
 
@@ -175,7 +161,7 @@ The cost is a visible turn — the model's reasoning and its tool block, narrati
 @cyan whats your favorite color        →  (nothing in the chat)
   └─ clone of this conversation, off-screen
        └─ agent(subagent_type: "cyan", prompt: …)
-            ▸ Cyan Agent   favorite color        ← widget, fleet row, handle
+            ▸ Cyan Agent   favorite color        ← widget, handle
 ```
 
 It is a literal clone: the session's own entries and the same system prompt, not [`inherit_context`](#frontmatter-fields)'s text rendering of them. The extension takes it from memory and it is compaction-aware, so the copy reads what the main model is working from.
@@ -242,7 +228,7 @@ Three rules decide what a handle can name:
 
 - `main` is a reserved name and can never be an agent's handle. A type slugging to it gets `main-2`.
 - Handles have a 64-character limit.
-- [Nested subagents](#nested-subagents) are not addressable. They are absent from every programmatic top-level surface. Only their owner may steer them *by tool*. A handle that would name one starts a fresh top-level agent instead of reaching through that boundary. They are still visible and steerable by hand in [FleetView](#fleetview) and `/agents → Agents`.
+- [Nested subagents](#nested-subagents) are not addressable. They are absent from every programmatic top-level surface. Only their owner may steer them *by tool*. A handle that would name one starts a fresh top-level agent instead of reaching through that boundary. They are still visible and steerable by hand in the [Agents widget](#selecting-an-agent) and `/agents → Agents`.
 
 Suggestions list live agents first, then resumable ones, then startable types, and then pi's own file rows in the same popup. `@` stays the file picker it always was. The extension adds the handles to it rather than replacing it. Disable the whole thing via `/agents → Settings → Agent mentions`.
 
@@ -374,7 +360,7 @@ All fields are optional — sensible defaults for everything.
 - Any value works except one containing `:`, which plugin-scoped identifiers reserve. The extension skips such a file with a warning.
 - Two files may declare the same name; the later load wins, as a filename clash always did.
 
-`color` sets the badge in the agent tool header, widget, FleetView, and conversation viewer. Accepted value:
+`color` sets the badge in the agent tool header, widget, and conversation viewer. Accepted value:
 
 - Quoted six-digit hex such as `"#8B5CF6"`. Color names are not accepted.
 
@@ -440,7 +426,7 @@ Three things survive that boundary:
 - Their token usage folds into every ancestor's totals up to the top-level agent (lifecycle events, completion notifications, `/agents`). Nested spend therefore stays attributable at any depth.
 - The extension labels a nested result that ends `stopped`, `aborted`, or `steered` as partial, the same guarantee top-level results carry.
 
-The **human** surfaces are not part of that ownership boundary. A nested child appears indented under its owner in [FleetView](#fleetview), in `/agents → Agents`, and, while running, in the above-editor widget. You can open, steer and stop it from any of them. Ownership scoping keeps siblings and other extensions out of each other's agents. It does not hide an agent from the person running the session.
+The **human** surfaces are not part of that ownership boundary. A nested child appears indented under its owner in `/agents → Agents` and, while running, in the above-editor widget. You can open, steer and stop it from any of them. Ownership scoping keeps siblings and other extensions out of each other's agents. It does not hide an agent from the person running the session.
 
 The hard cap is depth 2 by default: main session (0) → subagent (1) → nested child (2). Change it project-wide with `maxSubagentDepth` in `subagents.json` (or `/agents → Settings → Nested depth`).
 
@@ -568,7 +554,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 
 ### `agent_stop`
 
-Stop a running or queued background agent. The run records `stopCause` `agent`. This is the model's own lever to end a run. A human takes the same action with `x` in FleetView, the conversation viewer, or `/agents`, and `subagents:rpc:stop` gives it to another extension.
+Stop a running or queued background agent. The run records `stopCause` `agent`. This is the model's own lever to end a run. A human takes the same action with `x` in the conversation viewer or `/agents`, and `subagents:rpc:stop` gives it to another extension.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -629,7 +615,7 @@ Every `stopped` run has a `stopCause`. The status text the model reads names it.
 
 | `stopCause` | Set by |
 | --- | --- |
-| `user` | `/agents`, FleetView, the conversation viewer, or the session's interrupted tool call |
+| `user` | `/agents`, the conversation viewer, or the session's interrupted tool call |
 | `agent` | `agent_stop` or its nested mirror |
 | `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
@@ -647,7 +633,7 @@ The two are deliberately **not** one limit. A foreground agent blocks the parent
 
 Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume of a record whose earlier run has not settled, or whose worktree save is still running.
 
-Stopping a resume from `/agents` or the fleet view stops that resume. A foreground resume emits `subagents:started`, then `subagents:completed` or `subagents:failed`, and appends a `subagents:record` entry.
+Stopping a resume from `/agents` or the conversation viewer stops that resume. A foreground resume emits `subagents:started`, then `subagents:completed` or `subagents:failed`, and appends a `subagents:record` entry.
 
 Nested children are outside the pool entirely: a nested child would deadlock behind a parent waiting on it.
 
@@ -719,7 +705,6 @@ Runtime tuning values set via `/agents` → Settings persist across pi restarts:
 | `showCost` | boolean | `false` |
 | `showModel` | boolean | `false` |
 | `viewerMarkdown` | `off` / `assistant` / `all` | `assistant` |
-| `fleetView` | boolean | `true` |
 | `agentMentions` | `model` / `direct` / `off` | `model` |
 | `rememberAgents` | boolean | `true` |
 | `widgetMode` | `all` / `background` / `off` | `all` |
@@ -867,7 +852,7 @@ Agents that finish in the background have no tool result of their own to ride on
 
 ### Show cost
 
-`showCost`, default `false`: whether the subagent surfaces print an estimated cost beside their token counts. The surfaces are the widget (running *and* finished lines), [FleetView](#fleetview), the conversation viewer, foreground results, `agent_get_result`, and completion notifications:
+`showCost`, default `false`: whether the subagent surfaces print an estimated cost beside their token counts. The surfaces are the widget (running *and* finished lines), the conversation viewer, foreground results, `agent_get_result`, and completion notifications:
 
 ```text
 ├─ ⠹ reviewer  inspect code · ↻3 · 8.2k token · ~$0.0042 · 4.1s
@@ -956,10 +941,6 @@ The extension leaves unknown placeholders verbatim and prints a stderr warning. 
 
 Note the usual trust umbrella: a project-level file shapes the orchestrator's prompt, same as project agents and extensions do.
 
-### Fleet view
-
-`fleetView`, default `true`: whether `↓` at an empty prompt can open the [FleetView](#fleetview) tree above the editor. Toggle via `/agents → Settings → Fleet view`; applied live.
-
 ### Widget
 
 `widgetMode`, default `"all"`: which agents the above-editor widget shows. Toggle via `/agents → Settings → Widget`; applied live.
@@ -969,6 +950,8 @@ Note the usual trust umbrella: a project-level file shapes the orchestrator's pr
 - `"off"`: hides the widget.
 
 A running nested agent whose owner record is gone shows as a root row in `all` and `background`. A running nested agent under a top-level agent that `widgetMode` hides does not show.
+
+A nested agent that leaves `running` drops off the widget, except the row that [selection](#selecting-an-agent) or an open viewer holds. With `off`, selection never starts.
 
 ### Example — global defaults for a beefy machine
 
@@ -1085,7 +1068,7 @@ Every RPC spawn returns its id immediately and runs detached either way. What `i
 - `maxConcurrentForeground` never applies here whatever `isBackground` says: it bounds only spawns where a caller blocks inline, and every RPC spawn runs detached.
 - It does not affect `subagents:created`, which is never emitted for an RPC spawn at all — the first event you see for one is `subagents:started`.
 
-A top-level RPC spawn renders in the widget and FleetView while it runs. It shows the same live tool activity and turn counter an `agent`-tool spawn gets. The widget's default `background` mode drops only an explicit `isBackground: false` spawn, the way it drops a foreground `agent` call. Nested spawns stay hidden from both.
+A top-level RPC spawn renders in the widget while it runs. It shows the same live tool activity and turn counter an `agent`-tool spawn gets. The widget's default `background` mode drops only an explicit `isBackground: false` spawn, the way it drops a foreground `agent` call. Nested spawns stay hidden from both.
 
 `options.model` accepts either a `Model` object (e.g. `ctx.model`) or a `"provider/modelId"` string. The extension resolves strings against `ctx.modelRegistry` at the RPC boundary, so cross-extension callers can forward serializable values without losing auth context. Resolution is fuzzy, so a bare `"sonnet"` can land on a provider you never named.
 

@@ -89,7 +89,7 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
     id: "showCost",
     label: "Show cost",
     description:
-      "Show an estimated `~$0.0042` beside subagent token counts in the widget, fleet view, results and notifications. Priced by pi from the model's rates — omitted entirely for a model it has no rates for.",
+      "Show an estimated `~$0.0042` beside subagent token counts in the widget, results and notifications. Priced by pi from the model's rates — omitted entirely for a model it has no rates for.",
     values: ON_OFF,
   },
   {
@@ -105,12 +105,6 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
     description:
       "How much of the conversation viewer renders as Markdown. assistant = assistant text only (default); all = tool results too, for tools that emit Markdown — accepting that a Markdown pass over a diff or a log eats `#` comments, swallows a `---` line and re-fences indented output; off = everything verbatim. `m` in the viewer cycles the same setting (footer: raw / md / md+).",
     values: ["off", "assistant", "all"],
-  },
-  {
-    id: "fleetView",
-    label: "Fleet view",
-    description: "Navigable main+subagents tree below the editor (↓/← to navigate, Enter to view)",
-    values: ON_OFF,
   },
   {
     id: "agentMentions",

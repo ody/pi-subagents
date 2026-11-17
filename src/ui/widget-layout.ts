@@ -2,6 +2,7 @@ export interface WidgetSections {
   finished: string[];
   running: [string, string][];
   queued?: string;
+  pinned?: { section: "finished" | "running"; index: number };
 }
 
 export interface WidgetLayout {
@@ -10,7 +11,7 @@ export interface WidgetLayout {
 }
 
 export function layoutWidgetBody(sections: WidgetSections, maxBody: number): WidgetLayout {
-  const { finished, running, queued } = sections;
+  const { finished, running, queued, pinned } = sections;
   const totalBody = finished.length + running.length * 2 + (queued ? 1 : 0);
 
   if (totalBody <= maxBody) {
@@ -22,38 +23,40 @@ export function layoutWidgetBody(sections: WidgetSections, maxBody: number): Wid
   }
 
   let budget = maxBody - 1;
-  let hiddenRunning = 0;
-  let hiddenFinished = 0;
-  const body: string[] = [];
+  const keptFinished = new Set<number>();
+  const keptRunning = new Set<number>();
 
-  const queuedReserve = queued ? 1 : 0;
-  budget -= queuedReserve;
-
-  for (const pair of running) {
-    if (budget >= 2) {
-      body.push(...pair);
-      budget -= 2;
-    } else {
-      hiddenRunning++;
+  if (pinned) {
+    const cost = pinned.section === "running" ? 2 : 1;
+    if (budget >= cost) {
+      (pinned.section === "running" ? keptRunning : keptFinished).add(pinned.index);
+      budget -= cost;
     }
   }
 
-  if (queued) {
-    budget += queuedReserve;
-    body.push(queued);
+  budget -= queued ? 1 : 0;
+
+  running.forEach((_pair, index) => {
+    if (keptRunning.has(index) || budget < 2) return;
+    keptRunning.add(index);
+    budget -= 2;
+  });
+  finished.forEach((_line, index) => {
+    if (keptFinished.has(index) || budget < 1) return;
+    keptFinished.add(index);
     budget--;
-  }
+  });
 
-  for (const line of finished) {
-    if (budget >= 1) {
-      body.push(line);
-      budget--;
-    } else {
-      hiddenFinished++;
-    }
-  }
+  const body: string[] = [];
+  finished.forEach((line, index) => {
+    if (keptFinished.has(index)) body.push(line);
+  });
+  running.forEach((pair, index) => {
+    if (keptRunning.has(index)) body.push(...pair);
+  });
+  if (queued) body.push(queued);
 
-  return { body, hidden: { running: hiddenRunning, finished: hiddenFinished } };
+  return { body, hidden: { running: running.length - keptRunning.size, finished: finished.length - keptFinished.size } };
 }
 
 function closeLastConnector(body: string[], endsWithRunningPair: boolean): void {
