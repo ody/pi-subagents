@@ -1,6 +1,6 @@
 import type { Component, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../manager/agent-manager.js";
-import type { AgentRecord, ViewerMarkdownMode } from "../types.js";
+import type { AgentRecord } from "../types.js";
 import type { Theme } from "./agent-format.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT, VIEWPORT_WIDTH_PCT } from "./conversation-viewer.js";
 import type { ViewerKeybindings } from "./viewer-keys.js";
@@ -16,8 +16,6 @@ export interface ViewerUI {
 export interface ConversationViewerOpenerDeps {
   manager: Pick<AgentManager, "getActivity" | "abort" | "steer">;
   showCost: () => boolean;
-  viewerMarkdown: () => ViewerMarkdownMode;
-  chooseViewerMarkdown: (mode: ViewerMarkdownMode, ui: ViewerUI) => void;
 }
 
 export class ConversationViewerOpener {
@@ -31,7 +29,7 @@ export class ConversationViewerOpener {
       ui.notify(`Agent is ${record.status} — no session available.`, "info");
       return;
     }
-    const { manager, showCost, viewerMarkdown, chooseViewerMarkdown } = this.deps;
+    const { manager, showCost } = this.deps;
     const activity = manager.getActivity(record.id);
     let close: (() => void) | undefined;
 
@@ -53,8 +51,6 @@ export class ConversationViewerOpener {
             keybindings,
             (message: string) => manager.steer(record.id, message),
             showCost(),
-            viewerMarkdown,
-            (mode) => chooseViewerMarkdown(mode, ui),
           );
         },
         {

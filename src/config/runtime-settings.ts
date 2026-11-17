@@ -1,5 +1,5 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
+import type { AgentMentionMode, JoinMode, WidgetMode } from "../types.js";
 import {
   type SettingChange,
   type SettingsAppliers,
@@ -12,7 +12,6 @@ export interface RuntimeSettings {
   reportUsage: boolean;
   showCost: boolean;
   showModel: boolean;
-  viewerMarkdown: ViewerMarkdownMode;
   widgetMode: WidgetMode;
   agentMentionMode: AgentMentionMode;
   defaultJoinMode: JoinMode;

@@ -4,19 +4,9 @@ import { makeSession, mountViewer } from "../harness/perf-fixtures.js";
 
 const SIZES = [50, 500, 5000];
 
-describe("ConversationViewer.render — markdown: assistant (default)", () => {
+describe("ConversationViewer.render — warm cache", () => {
   for (const n of SIZES) {
     const viewer = mountViewer(ConversationViewer, makeSession(n));
-    viewer.render(120);
-    bench(`${n} messages`, () => {
-      viewer.render(120);
-    });
-  }
-});
-
-describe("ConversationViewer.render — markdown: off (raw wrap)", () => {
-  for (const n of SIZES) {
-    const viewer = mountViewer(ConversationViewer, makeSession(n), undefined, () => "off");
     viewer.render(120);
     bench(`${n} messages`, () => {
       viewer.render(120);

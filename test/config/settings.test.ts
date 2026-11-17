@@ -155,13 +155,9 @@ describe("settings persistence", () => {
     expect(loadSettings(projectDir)).toEqual({});
   });
 
-  it("round-trips viewerMarkdown; keeps valid values, drops invalid", () => {
-    saveSettings({ viewerMarkdown: "off" }, projectDir);
-    expect(loadSettings(projectDir)).toEqual({ viewerMarkdown: "off" });
-    saveSettings({ viewerMarkdown: "all" }, projectDir);
-    expect(loadSettings(projectDir)).toEqual({ viewerMarkdown: "all" });
-    writeProject({ viewerMarkdown: "markdown" } as any);
-    expect(loadSettings(projectDir)).toEqual({});
+  it("drops a stored viewerMarkdown key", () => {
+    writeProject({ viewerMarkdown: "all", widgetMode: "off" } as any);
+    expect(loadSettings(projectDir)).toEqual({ widgetMode: "off" });
   });
 
   it("round-trips outputTranscript; drops non-boolean", () => {
@@ -476,7 +472,6 @@ describe("settings persistence", () => {
         setAgentMentions: vi.fn(),
       setRememberAgents: vi.fn(),
         setWidgetMode: vi.fn(),
-        setViewerMarkdown: vi.fn(),
         setOutputTranscript: vi.fn(),
         setWorktreeIsolation: vi.fn(),
         setMaxSubagentDepth: vi.fn(),
@@ -575,13 +570,6 @@ describe("settings persistence", () => {
       expect(appliers.setWidgetMode).toHaveBeenCalledTimes(1);
     });
 
-    it("applies viewerMarkdown; skips it when absent", () => {
-      applySettings({ viewerMarkdown: "all" }, appliers);
-      expect(appliers.setViewerMarkdown).toHaveBeenCalledWith("all");
-      applySettings({}, appliers);
-      expect(appliers.setViewerMarkdown).toHaveBeenCalledTimes(1);
-    });
-
     it("applies agentMentions; skips it when absent", () => {
       applySettings({ agentMentions: "direct" }, appliers);
       expect(appliers.setAgentMentions).toHaveBeenCalledWith("direct");
@@ -672,7 +660,6 @@ describe("settings persistence", () => {
         setAgentMentions: vi.fn(),
       setRememberAgents: vi.fn(),
         setWidgetMode: vi.fn(),
-        setViewerMarkdown: vi.fn(),
         setOutputTranscript: vi.fn(),
         setWorktreeIsolation: vi.fn(),
         setMaxSubagentDepth: vi.fn(),

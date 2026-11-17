@@ -1,9 +1,12 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import subagentsExtension from "../../src/index.js";
 import type { AgentActivity, AgentConfig, AgentRecord } from "../../src/types.js";
 import { AgentWidget } from "../../src/ui/agent-widget.js";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
+
+initTheme();
 
 function withActivity<T>(manager: T, activity: Map<string, unknown>): T {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as T;

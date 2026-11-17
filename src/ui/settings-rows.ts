@@ -100,13 +100,6 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
     values: ON_OFF,
   },
   {
-    id: "viewerMarkdown",
-    label: "Viewer markdown",
-    description:
-      "How much of the conversation viewer renders as Markdown. assistant = assistant text only (default); all = tool results too, for tools that emit Markdown — accepting that a Markdown pass over a diff or a log eats `#` comments, swallows a `---` line and re-fences indented output; off = everything verbatim. `m` in the viewer cycles the same setting (footer: raw / md / md+).",
-    values: ["off", "assistant", "all"],
-  },
-  {
     id: "agentMentions",
     label: "Agent mentions",
     description:

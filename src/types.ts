@@ -42,8 +42,6 @@ export type JoinMode = 'async' | 'group' | 'smart';
 
 export type WidgetMode = 'all' | 'background' | 'off';
 
-export type ViewerMarkdownMode = 'off' | 'assistant' | 'all';
-
 export interface AgentActivity {
   activeTools: Map<string, string>;
   toolUses: number;

@@ -37,8 +37,8 @@ beforeEach(() => {
 });
 
 describe("ConversationViewer — cost stays linear in transcript length", () => {
-  function wrapsFor(n: number, mode: string): number {
-    const viewer = mountViewer(ConversationViewer, makeSession(n), undefined, () => mode);
+  function wrapsFor(n: number): number {
+    const viewer = mountViewer(ConversationViewer, makeSession(n));
     viewer.render(120);
     counts.wrap = 0;
     counts.markdownRender = 0;
@@ -46,24 +46,16 @@ describe("ConversationViewer — cost stays linear in transcript length", () => 
     return counts.wrap + counts.markdownRender;
   }
 
-  it("does ~10x the work for 10x the messages (raw wrap path)", () => {
-    const small = wrapsFor(30, "off");
-    const large = wrapsFor(300, "off");
-
-    expect(small).toBeGreaterThan(0);
-    expect(large / small).toBeLessThanOrEqual(11);
-  });
-
-  it("does ~10x the work for 10x the messages (markdown path)", () => {
-    const small = wrapsFor(30, "assistant");
-    const large = wrapsFor(300, "assistant");
+  it("does ~10x the work for 10x the messages", () => {
+    const small = wrapsFor(30);
+    const large = wrapsFor(300);
 
     expect(small).toBeGreaterThan(0);
     expect(large / small).toBeLessThanOrEqual(11);
   });
 
   it("re-renders without re-parsing: the markdown cache survives a frame", () => {
-    const viewer = mountViewer(ConversationViewer, makeSession(60), undefined, () => "assistant");
+    const viewer = mountViewer(ConversationViewer, makeSession(60));
     viewer.render(120);
     const afterFirst = counts.markdownNew;
     expect(afterFirst).toBeGreaterThan(0);

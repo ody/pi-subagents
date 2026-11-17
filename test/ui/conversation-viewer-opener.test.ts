@@ -1,6 +1,9 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { ConversationViewerOpener, type ViewerUI } from "../../src/ui/conversation-viewer-opener.js";
+
+initTheme();
 
 const theme = { fg: (_c: string, s: string) => s, bold: (s: string) => s } as never;
 const tui = { requestRender: () => {}, terminal: { columns: 120, rows: 40 } } as never;
@@ -23,12 +26,9 @@ function record(over: Partial<AgentRecord> = {}): AgentRecord {
 
 function setup() {
   const manager = { getActivity: vi.fn(() => undefined), abort: vi.fn(() => true), steer: vi.fn(() => true) };
-  const chooseViewerMarkdown = vi.fn();
   const opener = new ConversationViewerOpener({
     manager,
     showCost: () => false,
-    viewerMarkdown: () => "all",
-    chooseViewerMarkdown,
   });
   const notify = vi.fn();
   const customOptions: unknown[] = [];
@@ -43,7 +43,7 @@ function setup() {
     });
   });
   const ui = { notify, custom } as unknown as ViewerUI;
-  return { manager, chooseViewerMarkdown, opener, ui, notify, custom, customOptions, components, dones };
+  return { manager, opener, ui, notify, custom, customOptions, components, dones };
 }
 
 describe("ConversationViewerOpener", () => {
@@ -80,13 +80,6 @@ describe("ConversationViewerOpener", () => {
     viewer.handleInput("x");
     expect(t.manager.abort).toHaveBeenCalledWith("live", "user");
     expect(t.notify).toHaveBeenCalledWith('Stopped "the one".', "info");
-  });
-
-  it("reports a markdown mode chosen with m through the same ui", () => {
-    const t = setup();
-    void t.opener.open(t.ui, record());
-    t.components[0].handleInput("m");
-    expect(t.chooseViewerMarkdown).toHaveBeenCalledWith("off", t.ui);
   });
 
   it("close() closes every open viewer", async () => {

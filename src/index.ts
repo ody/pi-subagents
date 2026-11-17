@@ -22,11 +22,11 @@ import { setMaxSubagentDepth } from "./tool/nested-tools.js";
 import { type RpcHandle, registerRpcHandlers } from "./triggers/cross-extension-rpc.js";
 import { registerMentionInput } from "./triggers/mention-input.js";
 import { createSpawnFunnel } from "./triggers/spawn-funnel.js";
-import { type AgentMentionMode, type JoinMode, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
+import { type AgentMentionMode, type JoinMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { registerAgentsCommand } from "./ui/agents-menu.js";
-import { ConversationViewerOpener, type ViewerUI } from "./ui/conversation-viewer-opener.js";
+import { ConversationViewerOpener } from "./ui/conversation-viewer-opener.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
 import { PendingUsagePool, withUsageReporting } from "./usage.js";
@@ -49,12 +49,6 @@ export default function (pi: ExtensionAPI) {
   const setShowCost = (b: boolean): void => { settings.setShowCostFlag(b); };
   const isShowModelEnabled = () => settings.showModel;
   const setShowModel = (b: boolean): void => { settings.setShowModelFlag(b); };
-  const getViewerMarkdown = () => settings.viewerMarkdown;
-  const setViewerMarkdown = (m: ViewerMarkdownMode): void => { settings.setViewerMarkdownMode(m); };
-  function chooseViewerMarkdown(mode: ViewerMarkdownMode, ui: Pick<ViewerUI, "notify">): void {
-    setViewerMarkdown(mode);
-    ui.notify(`Viewer markdown set to ${mode} (this session)`, "info");
-  }
   const pendingUsage = new PendingUsagePool();
 
   registerNotificationRenderer(pi, { settings });
@@ -190,11 +184,11 @@ export default function (pi: ExtensionAPI) {
 
   function createRuntimeSettings(): {
     reportUsage: boolean; showCost: boolean; showModel: boolean;
-    viewerMarkdown: ViewerMarkdownMode; widgetMode: WidgetMode;
+    widgetMode: WidgetMode;
     agentMentionMode: AgentMentionMode; defaultJoinMode: JoinMode; backgroundByDefault: boolean;
     toolDescriptionMode: ToolDescriptionMode; strictAgentFiles: boolean;
     setReportUsageFlag(b: boolean): void; setShowCostFlag(b: boolean): void;
-    setShowModelFlag(b: boolean): void; setViewerMarkdownMode(m: ViewerMarkdownMode): void;
+    setShowModelFlag(b: boolean): void;
     setWidgetModeFlag(m: WidgetMode): void;
     setAgentMentionMode(m: AgentMentionMode): void; setJoinMode(m: JoinMode): void;
     setBgDefault(b: boolean): void;
@@ -204,7 +198,6 @@ export default function (pi: ExtensionAPI) {
       reportUsage: SETTING_SPECS.reportUsage.default,
       showCost: SETTING_SPECS.showCost.default,
       showModel: SETTING_SPECS.showModel.default,
-      viewerMarkdown: SETTING_SPECS.viewerMarkdown.default,
       widgetMode: SETTING_SPECS.widgetMode.default,
       agentMentionMode: SETTING_SPECS.agentMentions.default,
       defaultJoinMode: SETTING_SPECS.defaultJoinMode.default,
@@ -217,7 +210,6 @@ export default function (pi: ExtensionAPI) {
       },
       setShowCostFlag(b) { this.showCost = b; widget.update(); },
       setShowModelFlag(b) { this.showModel = b; widget.update(); },
-      setViewerMarkdownMode(m) { this.viewerMarkdown = m; },
       setWidgetModeFlag(m) { this.widgetMode = m; widget.update(); },
       setAgentMentionMode(m) { this.agentMentionMode = m; },
       setJoinMode(m) { this.defaultJoinMode = m; },
@@ -228,7 +220,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function getWidgetMode(): WidgetMode { return settings.widgetMode; }
-  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled, viewerMarkdown: getViewerMarkdown, chooseViewerMarkdown });
+  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled });
   const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled, viewer);
   function setWidgetMode(m: WidgetMode): void { settings.setWidgetModeFlag(m); }
 
@@ -274,7 +266,6 @@ export default function (pi: ExtensionAPI) {
     setReportUsage,
     setShowCost,
     setShowModel,
-    setViewerMarkdown,
   };
   const settingsPersist = createSettingsPersistence(appliers, (event, payload) => pi.events.emit(event, payload));
   applyAndEmitLoaded(appliers, (event, payload) => pi.events.emit(event, payload));

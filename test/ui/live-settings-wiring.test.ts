@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const captured = vi.hoisted(() => ({ menu: undefined as any, settingsDeps: undefined as any }));
@@ -13,6 +14,8 @@ vi.mock("../../src/ui/settings-menu.js", () => ({
 }));
 
 import subagentsExtension from "../../src/index.js";
+
+initTheme();
 
 function runInBackgroundDescription(tools: Map<string, any>): string {
   return tools.get("agent").parameters.properties.run_in_background.description;
@@ -75,23 +78,6 @@ describe("live settings wiring", () => {
     expect(runInBackgroundDescription(tools)).toMatch(/^Defaults to false/);
     captured.settingsDeps.settingsPersist.persist(ctx, "x", { layer: "project", key: "backgroundByDefault", value: true });
     expect(runInBackgroundDescription(tools)).toMatch(/^Defaults to true/);
-  });
-
-  it("viewer markdown key sets the runtime value, writes no file, and toasts", () => {
-    const notify = vi.fn();
-    const components: { handleInput(data: string): void }[] = [];
-    const ui = {
-      notify,
-      custom: (factory: (...args: unknown[]) => { handleInput(data: string): void }) => {
-        components.push(factory({ requestRender: () => {}, terminal: { columns: 120, rows: 40 } }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, undefined, () => {}));
-        return new Promise(() => {});
-      },
-    };
-    const record = { id: "a1", type: "general-purpose", description: "d", status: "running", toolUses: 0, startedAt: Date.now(), session: { subscribe: () => () => {}, messages: [] }, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 }, compactionCount: 0 };
-    void captured.menu.viewer.open(ui, record);
-    components[0].handleInput("m");
-    expect(notify).toHaveBeenCalledWith("Viewer markdown set to all (this session)", "info");
-    expect(existsSync(join(tmpDir, ".pi", "subagents.json"))).toBe(false);
   });
 
   it("closes an open viewer when the extension shuts down", async () => {

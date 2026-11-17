@@ -125,7 +125,6 @@ describe("applySettingValue enum and toggle settings", () => {
     ["showCost", "off", "showCost", false, "Cost display disabled"],
     ["showModel", "on", "showModel", true, "Model display enabled"],
     ["showModel", "off", "showModel", false, "Model display disabled"],
-    ["viewerMarkdown", "assistant", "viewerMarkdown", "assistant", "Viewer markdown set to assistant"],
     ["agentMentions", "off", "agentMentions", "off", "Agent mentions disabled"],
     ["agentMentions", "model", "agentMentions", "model", "Agent mentions on — a conversation clone starts a mentioned agent off-screen"],
     ["agentMentions", "direct", "agentMentions", "direct", "Agent mentions on — a mentioned agent starts here, with no model call"],

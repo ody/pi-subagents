@@ -1,3 +1,7 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
+
+initTheme();
+
 export const perfTheme = {
   fg: (_color: string, text: string) => text,
   bold: (text: string) => text,
@@ -18,6 +22,12 @@ export function perfSession(messages: unknown[] = []) {
       tokens: { input: 12_000, output: 3_000, cacheWrite: 500 },
       contextUsage: { percent: 42 },
     }),
+    getToolDefinition: () => undefined,
+    extensionRunner: {
+      getMessageRenderer: () => undefined,
+      resolveToolRenderers: (_name: string, base: () => unknown) => base(),
+    },
+    sessionManager: { getCwd: () => "/work" },
   } as any;
 }
 
@@ -101,29 +111,29 @@ export function makeSession(n: number) {
   for (let i = 0; i < n; i++) {
     const slot = i % 3;
     if (slot === 0) {
-      messages.push({ role: "user", content: `Message ${i}: ${PARAGRAPH}` });
+      messages.push({ role: "user", content: `Message ${i}: ${PARAGRAPH}`, timestamp: 0 });
     } else if (slot === 1) {
       messages.push({
         role: "assistant",
         content: [
           { type: "text", text: `${ASSISTANT_MARKDOWN}\n(message ${i})` },
-          { type: "toolCall", name: "read" },
+          { type: "toolCall", id: `call-${i}`, name: "read", arguments: { path: "a.ts" } },
         ],
+        stopReason: "toolUse",
+        timestamp: 0,
       });
     } else {
       messages.push({
         role: "toolResult",
+        toolCallId: `call-${i - 1}`,
         toolName: "read",
         content: [{ type: "text", text: `${TOOL_RESULT}(result ${i})` }],
+        isError: false,
+        timestamp: 0,
       });
     }
   }
-  return {
-    messages,
-    subscribe: () => () => {},
-    dispose: () => {},
-    getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheWrite: 0 } }),
-  } as any;
+  return { ...perfSession(messages), getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheWrite: 0 } }) };
 }
 
 export function mountWidget(
@@ -158,7 +168,6 @@ export function mountViewer(
   Viewer: any,
   session: any,
   record: unknown = makeRecord(0),
-  markdownMode?: () => string,
 ) {
   const viewer = new Viewer(
     perfTui(120, 40),
@@ -171,7 +180,6 @@ export function mountViewer(
     undefined,
     undefined,
     false,
-    markdownMode,
   );
   return viewer;
 }

@@ -1,3 +1,4 @@
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
@@ -5,6 +6,10 @@ import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
 import type { ViewerKeybindings } from "../../src/ui/viewer-keys.js";
 import { createViewerKeys } from "../../src/ui/viewer-keys.js";
 
+initTheme();
+
+const CTRL_E = "\x05";
+const CTRL_O = "\x0f";
 const CTRL_P = "\x10";
 const CTRL_N = "\x0e";
 const UP = "\x1b[A";
@@ -72,6 +77,22 @@ describe("viewer-keys", () => {
     expect(keys.scrollDown(CTRL_N)).toBe(false);
     expect(keys.pageUp(PAGE_UP)).toBe(true);
     expect(keys.pageDown(PAGE_DOWN)).toBe(true);
+  });
+
+  it("expands with ctrl+o without a manager", () => {
+    const keys = createViewerKeys();
+    expect(keys.expand(CTRL_O)).toBe(true);
+    expect(keys.expand(CTRL_E)).toBe(false);
+  });
+
+  it("expands with the key app.tools.expand is bound to", () => {
+    const manager = new KeybindingsManager(
+      { ...TUI_KEYBINDINGS, "app.tools.expand": { defaultKeys: "ctrl+o", description: "Toggle tool output" } },
+      { "app.tools.expand": "ctrl+e" },
+    );
+    const keys = createViewerKeys(manager);
+    expect(keys.expand(CTRL_E)).toBe(true);
+    expect(keys.expand(CTRL_O)).toBe(false);
   });
 
   it("keeps the k/j and shift+arrow aliases with and without a manager", () => {

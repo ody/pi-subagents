@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { AgentMentionMode, JoinMode, ViewerMarkdownMode, WidgetMode } from "../types.js";
+import type { AgentMentionMode, JoinMode, WidgetMode } from "../types.js";
 import { policyEventPayload } from "./capability-policy-config.js";
 import { isValidSettingValue, SETTING_KEYS, SETTING_SPECS } from "./settings-defaults.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
@@ -24,7 +24,6 @@ export interface SubagentsSettings {
   reportUsage?: boolean;
   showCost?: boolean;
   showModel?: boolean;
-  viewerMarkdown?: ViewerMarkdownMode;
 }
 
 export type ToolDescriptionMode = "full" | "compact" | "custom";
@@ -48,7 +47,6 @@ export interface SettingsAppliers {
   setReportUsage: (b: boolean) => void;
   setShowCost: (b: boolean) => void;
   setShowModel: (b: boolean) => void;
-  setViewerMarkdown: (mode: ViewerMarkdownMode) => void;
 }
 
 export type SettingsEmit = (event: string, payload: unknown) => void;
@@ -122,7 +120,6 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (typeof s.reportUsage === "boolean") appliers.setReportUsage(s.reportUsage);
   if (typeof s.showCost === "boolean") appliers.setShowCost(s.showCost);
   if (typeof s.showModel === "boolean") appliers.setShowModel(s.showModel);
-  if (s.viewerMarkdown) appliers.setViewerMarkdown(s.viewerMarkdown);
 }
 
 export function persistToastFor(
