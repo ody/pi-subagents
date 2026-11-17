@@ -2,11 +2,11 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { personalAgentsDir } from "../../src/agents/agent-file-toggle.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { loadCustomAgents } from "../../src/agents/custom-agents.js";
-import type { AgentConfig } from "../../src/types.js";
+import type { AgentConfig, AgentRecord } from "../../src/types.js";
 import { type AgentsCommandDeps, detailMenuOptions, registerAgentsCommand } from "../../src/ui/agents-menu.js";
 
 const cfg = (over: Partial<AgentConfig>) => over as AgentConfig;
@@ -40,10 +40,9 @@ function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; l
   } as unknown as ExtensionAPI;
 
   registerAgentsCommand(pi, {
-    manager: { listAgents: () => [], getActivity: () => undefined },
+    manager: { listAgents: () => [] },
     reloadCustomAgents: (strict?: boolean) => registerAgents(loadCustomAgents(cwd, strict)),
-    settings: { showCost: false, viewerMarkdown: "all" },
-    chooseViewerMarkdown: () => {},
+    viewer: { open: async () => {} },
     showSettings: async () => {},
   } as unknown as AgentsCommandDeps);
 
@@ -74,6 +73,35 @@ function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; l
     },
   };
 }
+
+describe("/agents -> Agents", () => {
+  it("opens the viewer through the shared function with the command ui and the record", async () => {
+    const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+    const pi = {
+      registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => {
+        commands.set(name, command);
+      },
+    } as unknown as ExtensionAPI;
+    const record = { id: "a1", type: "general-purpose", description: "the one", status: "running", toolUses: 0, startedAt: Date.now() } as AgentRecord;
+    const viewer = { open: vi.fn(async () => {}) };
+    registerAgentsCommand(pi, {
+      manager: { listAgents: () => [record] },
+      reloadCustomAgents: () => {},
+      viewer,
+      showSettings: async () => {},
+    });
+    let selects = 0;
+    const ui = {
+      select: async (_title: string, options: string[]) => (selects++ < 2 ? options[0] : undefined),
+      notify: () => {},
+    };
+
+    await commands.get("agents")?.handler("", { cwd: "/", ui });
+
+    expect(viewer.open).toHaveBeenCalledTimes(1);
+    expect(viewer.open).toHaveBeenCalledWith(ui, record);
+  });
+});
 
 describe("/agents on a skill-embedded agent", () => {
   let tmpDir: string;

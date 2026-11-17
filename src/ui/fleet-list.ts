@@ -1,11 +1,11 @@
 import { Editor, isKeyRelease, Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../manager/agent-manager.js";
-import type { AgentRecord, ViewerMarkdownMode } from "../types.js";
+import type { AgentRecord } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal } from "../usage.js";
 import { hasAgentBadge, renderAgentName } from "./agent-color.js";
 import { formatCost, type Theme } from "./agent-format.js";
 import { type AgentTreeNode, agentKey, ancestorKeys, buildAgentTree, MAIN_KEY, resolveSelectedKey } from "./agent-tree.js";
-import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
+import type { ConversationViewerOpener } from "./conversation-viewer-opener.js";
 
 const FLEET_KEY = "fleet";
 const MAX_AGENT_ROWS = 5;
@@ -61,14 +61,12 @@ export class FleetList {
   private selectedKey: string = MAIN_KEY;
   private collapsedKeys = new Set<string>();
   private showGlyphs = false;
-  private viewerClose: (() => void) | undefined;
   private viewingAgentId: string | undefined;
 
   constructor(
     private manager: AgentManager,
+    private viewer: Pick<ConversationViewerOpener, "open" | "close">,
     private showCost: () => boolean = () => false,
-    private viewerMarkdown?: () => ViewerMarkdownMode,
-    private onViewerMarkdown?: (mode: ViewerMarkdownMode) => void,
   ) {}
 
   setEnabled(enabled: boolean): void {
@@ -99,7 +97,7 @@ export class FleetList {
     if (this.timer) { clearInterval(this.timer); this.timer = undefined; }
     this.inputUnsub?.();
     this.inputUnsub = undefined;
-    if (this.viewerClose) { this.viewerClose(); this.viewerClose = undefined; }
+    this.viewer.close();
     this.viewingAgentId = undefined;
     if (this.ui && this.widgetRegistered) this.ui.setWidget(FLEET_KEY, undefined);
     this.widgetRegistered = false;
@@ -179,7 +177,7 @@ export class FleetList {
   handleKey(data: string): { consume?: boolean; data?: string } | undefined {
     if (!this.enabled || !this.ui) return undefined;
     if (isKeyRelease(data)) return undefined;
-    if (this.viewerClose) return undefined;
+    if (this.viewingAgentId !== undefined) return undefined;
     if (!this.editorHasFocus()) {
       if (this.active) this.deactivate();
       return undefined;
@@ -251,44 +249,12 @@ export class FleetList {
     }
     const record = entry.record;
     if (!this.ui) return;
-    if (!record.session) {
-      this.ui.notify(`Agent is ${record.status} — no session available.`, "info");
-      return;
-    }
-    const session = record.session;
-    const activity = this.manager.getActivity(record.id);
     this.viewingAgentId = record.id;
-
-    void this.ui.custom<undefined>(
-      (tui, theme, keybindings, done) => {
-        this.viewerClose = () => done(undefined);
-        return new ConversationViewer(
-          tui,
-          session,
-          record,
-          activity,
-          theme,
-          done,
-          () => {
-            if (this.manager.abort(record.id, "user")) this.ui?.notify(`Stopped "${record.description}".`, "info");
-          },
-          keybindings,
-          (message: string) => this.manager.steer(record.id, message),
-          this.showCost(),
-          this.viewerMarkdown,
-          this.onViewerMarkdown,
-        );
-      },
-      {
-        overlay: true,
-        overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` },
-      },
-    ).then(() => this.clearViewer(), () => this.clearViewer());
+    this.viewer.open(this.ui, record).then(() => this.clearViewer(), () => this.clearViewer());
   }
 
   private clearViewer(): void {
     if (this.viewingAgentId !== undefined) this.selectedKey = agentKey(this.viewingAgentId);
-    this.viewerClose = undefined;
     this.viewingAgentId = undefined;
     this.update();
   }

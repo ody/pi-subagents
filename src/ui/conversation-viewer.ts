@@ -11,7 +11,8 @@ import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./vie
 
 const CHROME_LINES_BASE = 6;
 const MIN_VIEWPORT = 3;
-export const VIEWPORT_HEIGHT_PCT = 70;
+export const VIEWPORT_WIDTH_PCT = 95;
+export const VIEWPORT_HEIGHT_PCT = 90;
 
 export const RESULT_MAX_CHARS = 16_000;
 

@@ -79,11 +79,35 @@ describe("live settings wiring", () => {
 
   it("viewer markdown key sets the runtime value, writes no file, and toasts", () => {
     const notify = vi.fn();
-    const settings = captured.menu.settings;
-    expect(settings.viewerMarkdown).toBe("assistant");
-    captured.menu.chooseViewerMarkdown("all", { ui: { notify } });
-    expect(settings.viewerMarkdown).toBe("all");
+    const components: { handleInput(data: string): void }[] = [];
+    const ui = {
+      notify,
+      custom: (factory: (...args: unknown[]) => { handleInput(data: string): void }) => {
+        components.push(factory({ requestRender: () => {}, terminal: { columns: 120, rows: 40 } }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, undefined, () => {}));
+        return new Promise(() => {});
+      },
+    };
+    const record = { id: "a1", type: "general-purpose", description: "d", status: "running", toolUses: 0, startedAt: Date.now(), session: { subscribe: () => () => {}, messages: [] }, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 }, compactionCount: 0 };
+    void captured.menu.viewer.open(ui, record);
+    components[0].handleInput("m");
     expect(notify).toHaveBeenCalledWith("Viewer markdown set to all (this session)", "info");
     expect(existsSync(join(tmpDir, ".pi", "subagents.json"))).toBe(false);
+  });
+
+  it("closes an open viewer when the extension shuts down", async () => {
+    let opened: Promise<unknown> | undefined;
+    const ui = {
+      notify: vi.fn(),
+      custom: (factory: (...args: unknown[]) => unknown) => {
+        opened = new Promise((resolve) => {
+          factory({ requestRender: () => {}, terminal: { columns: 120, rows: 40 } }, { fg: (_c: string, s: string) => s, bold: (s: string) => s }, undefined, resolve);
+        });
+        return opened;
+      },
+    };
+    const record = { id: "a1", type: "general-purpose", description: "d", status: "running", toolUses: 0, startedAt: Date.now(), session: { subscribe: () => () => {}, messages: [] }, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 }, compactionCount: 0 };
+    const viewing = captured.menu.viewer.open(ui, record);
+    await shutdown?.();
+    await expect(viewing).resolves.toBeUndefined();
   });
 });

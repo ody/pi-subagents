@@ -6,21 +6,19 @@ import { Container, type SettingItem, SettingsList, Spacer, Text } from "@earend
 import { disableInContent, enableInContent, isEmptyStub, locateAgentFile, personalAgentsDir, projectAgentsDir, serializeAgentFile } from "../agents/agent-file-toggle.js";
 import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
 import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../config/model-resolver.js";
-import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
-import type { AgentConfig, AgentRecord, ViewerMarkdownMode } from "../types.js";
+import type { AgentConfig } from "../types.js";
 import { formatDuration, getDisplayName } from "./agent-format.js";
 import { buildAgentTree } from "./agent-tree.js";
-import { ConversationViewer, VIEWPORT_HEIGHT_PCT } from "./conversation-viewer.js";
+import type { ConversationViewerOpener } from "./conversation-viewer-opener.js";
 import { selectItem } from "./select-item.js";
 
 type UserAgentFile = NonNullable<ReturnType<typeof locateAgentFile>>;
 
 export interface AgentsCommandDeps {
-  manager: Pick<AgentManager, "listAgents" | "getActivity" | "abort" | "steer">;
+  manager: Pick<AgentManager, "listAgents">;
   reloadCustomAgents: (strict?: boolean) => void;
-  settings: Readonly<Pick<RuntimeSettings, "showCost" | "viewerMarkdown">>;
-  chooseViewerMarkdown: (mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext) => void;
+  viewer: Pick<ConversationViewerOpener, "open">;
   showSettings: (ctx: ExtensionCommandContext) => Promise<void>;
 }
 
@@ -34,7 +32,7 @@ export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] 
 }
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
-  const { manager, reloadCustomAgents, settings, chooseViewerMarkdown, showSettings } = deps;
+  const { manager, reloadCustomAgents, viewer, showSettings } = deps;
 
   function getModelLabel(type: string, registry?: ModelRegistry): string {
     const cfg = getAgentConfig(type);
@@ -174,32 +172,8 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     });
     if (!node) return;
 
-    if (node.kind === "agent") await viewAgentConversation(ctx, node.record);
+    if (node.kind === "agent") await viewer.open(ctx.ui, node.record);
     await showRunningAgents(ctx);
-  }
-
-  async function viewAgentConversation(ctx: ExtensionCommandContext, record: AgentRecord) {
-    if (!record.session) {
-      ctx.ui.notify(`Agent is ${record.status === "queued" ? "queued" : "expired"} — no session available.`, "info");
-      return;
-    }
-
-    const session = record.session;
-    const activity = manager.getActivity(record.id);
-
-    await ctx.ui.custom<undefined>(
-      (tui, theme, keybindings, done) => {
-        return new ConversationViewer(tui, session, record, activity, theme, done, () => {
-          if (manager.abort(record.id, "user")) {
-            ctx.ui.notify(`Stopped "${record.description}".`, "info");
-          }
-        }, keybindings, (message: string) => manager.steer(record.id, message), settings.showCost, () => settings.viewerMarkdown, (mode) => chooseViewerMarkdown(mode, ctx));
-      },
-      {
-        overlay: true,
-        overlayOptions: { anchor: "center", width: "90%", maxHeight: `${VIEWPORT_HEIGHT_PCT}%` },
-      },
-    );
   }
 
   async function showAgentDetail(ctx: ExtensionCommandContext, name: string) {

@@ -187,7 +187,7 @@ describe("custom agent color runtime surfaces", () => {
       abort: vi.fn(() => true),
       steer: vi.fn(() => true),
     } as unknown as ConstructorParameters<typeof FleetList>[0];
-    const fleet = new FleetList(withActivity(manager, new Map()));
+    const fleet = new FleetList(withActivity(manager, new Map()), { open: async () => {}, close: () => {} });
     let factory: WidgetFactory | undefined;
     fleet.setUICtx({
       setWidget: (_key, content) => {

@@ -4,6 +4,7 @@ import { registerAgents } from "../../src/agents/agent-types.js";
 import type { AgentManager } from "../../src/manager/agent-manager.js";
 import type { AgentActivity, AgentConfig, AgentRecord, ViewerMarkdownMode } from "../../src/types.js";
 import { getDisplayName } from "../../src/ui/agent-format.js";
+import { ConversationViewerOpener } from "../../src/ui/conversation-viewer-opener.js";
 import {
   FleetList,
   type FleetUICtx,
@@ -58,6 +59,8 @@ function makeRecord(over: Partial<AgentRecord> = {}): AgentRecord {
 function withActivity(manager: AgentManager, activity: Map<string, AgentActivity>): AgentManager {
   return { ...(manager as object), getActivity: (id: string) => activity.get(id) } as AgentManager;
 }
+
+const NO_VIEWER = { open: async () => {}, close: () => {} };
 
 function fakeManager(agents: AgentRecord[]): AgentManager {
   return {
@@ -119,7 +122,13 @@ function harness(
   };
 
   const manager = fakeManager(agents);
-  const fleet = new FleetList(manager, undefined, opts.viewerMarkdown, opts.onViewerMarkdown);
+  const viewer = new ConversationViewerOpener({
+    manager,
+    showCost: () => false,
+    viewerMarkdown: opts.viewerMarkdown ?? (() => "assistant"),
+    chooseViewerMarkdown: (mode) => opts.onViewerMarkdown?.(mode),
+  });
+  const fleet = new FleetList(manager, viewer);
   fleet.setUICtx(ui);
   fleet.update();
 
@@ -446,7 +455,7 @@ describe("FleetList navigation", () => {
       const agents = [makeRecord({ id: "a1" })];
       const listAgents = vi.fn(() => agents);
       const manager = { listAgents, abort: () => true } as unknown as AgentManager;
-      const fleet = new FleetList(manager);
+      const fleet = new FleetList(manager, NO_VIEWER);
       fleet.setUICtx({
         setWidget: () => {}, onTerminalInput: () => () => {}, getEditorText: () => "",
         notify: () => {}, custom: (() => new Promise<undefined>(() => {})) as FleetUICtx["custom"],
@@ -689,7 +698,7 @@ describe("FleetList cost display", () => {
 
   function row(showCost: boolean, cost: number, activity?: Map<string, AgentActivity>): string {
     const record = makeRecord({ lifetimeUsage: { input: 13100, output: 0, cacheWrite: 0, cost } });
-    const fleet = new FleetList(withActivity(fakeManager([record]), activity ?? new Map()), () => showCost);
+    const fleet = new FleetList(withActivity(fakeManager([record]), activity ?? new Map()), NO_VIEWER, () => showCost);
     let factory: any;
     fleet.setUICtx({
       setWidget: (_k: string, c: any) => { factory = c; },
@@ -714,6 +723,7 @@ describe("FleetList cost display", () => {
     expect(row(true, 0)).not.toContain("$");
   });
 
+
   it("reads the record, so the figures do not change when the agent finishes", () => {
     const tracked = new Map<string, AgentActivity>([["a1", {
       activeTools: new Map(), toolUses: 0, responseText: "", turnCount: 1,
@@ -721,5 +731,26 @@ describe("FleetList cost display", () => {
     } as unknown as AgentActivity]]);
 
     expect(row(true, 0.0042, tracked)).toBe(row(true, 0.0042));
+  });
+});
+
+describe("FleetList opens the viewer through the shared function", () => {
+  it("calls viewer.open with the fleet ui and the record, and viewer.close on dispose", () => {
+    const record = makeRecord({ id: "a1" });
+    const viewer = { open: vi.fn(() => new Promise<void>(() => {})), close: vi.fn() };
+    const ui = {
+      setWidget: () => {}, onTerminalInput: () => () => {}, getEditorText: () => "",
+      notify: () => {}, custom: (() => new Promise<undefined>(() => {})) as FleetUICtx["custom"],
+    } satisfies FleetUICtx;
+    const fleet = new FleetList(fakeManager([record]), viewer);
+    fleet.setUICtx(ui);
+    fleet.update();
+    fleet.handleKey(DOWN);
+    fleet.handleKey(DOWN);
+    fleet.handleKey(ENTER);
+    expect(viewer.open).toHaveBeenCalledTimes(1);
+    expect(viewer.open).toHaveBeenCalledWith(ui, record);
+    fleet.dispose();
+    expect(viewer.close).toHaveBeenCalledTimes(1);
   });
 });

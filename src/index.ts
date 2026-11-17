@@ -1,6 +1,6 @@
 // Size: extension entry point; it builds the shared closure state (manager, widget, fleet, settings) and wires the feature modules to it, which has to happen in one place.
 
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, getConfig, registerAgents } from "./agents/agent-types.js";
 import { loadCustomAgents } from "./agents/custom-agents.js";
 import { setScopeModelsEnabled } from "./config/model-scope.js";
@@ -26,6 +26,7 @@ import { type AgentMentionMode, type JoinMode, type ViewerMarkdownMode, type Wid
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { registerAgentsCommand } from "./ui/agents-menu.js";
+import { ConversationViewerOpener, type ViewerUI } from "./ui/conversation-viewer-opener.js";
 import { FleetList, type FleetUICtx } from "./ui/fleet-list.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
@@ -51,9 +52,9 @@ export default function (pi: ExtensionAPI) {
   const setShowModel = (b: boolean): void => { settings.setShowModelFlag(b); };
   const getViewerMarkdown = () => settings.viewerMarkdown;
   const setViewerMarkdown = (m: ViewerMarkdownMode): void => { settings.setViewerMarkdownMode(m); };
-  function chooseViewerMarkdown(mode: ViewerMarkdownMode, ctx?: ExtensionCommandContext): void {
+  function chooseViewerMarkdown(mode: ViewerMarkdownMode, ui: Pick<ViewerUI, "notify">): void {
     setViewerMarkdown(mode);
-    ctx?.ui.notify(`Viewer markdown set to ${mode} (this session)`, "info");
+    ui.notify(`Viewer markdown set to ${mode} (this session)`, "info");
   }
   const pendingUsage = new PendingUsagePool();
 
@@ -185,6 +186,7 @@ export default function (pi: ExtensionAPI) {
     }
     manager.abortAll();
     notifier.dispose();
+    viewer.close();
     fleet.dispose();
     await manager.dispose(pi);
   });
@@ -235,8 +237,8 @@ export default function (pi: ExtensionAPI) {
     () => fleet.canOpen(), tui => fleet.onAgentsWidgetRegistered(tui));
   function setWidgetMode(m: WidgetMode): void { settings.setWidgetModeFlag(m); }
 
-  const fleet = new FleetList(manager, isShowCostEnabled, getViewerMarkdown,
-    (mode) => chooseViewerMarkdown(mode, currentCtx as unknown as ExtensionCommandContext | undefined));
+  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled, viewerMarkdown: getViewerMarkdown, chooseViewerMarkdown });
+  const fleet = new FleetList(manager, viewer, isShowCostEnabled);
   function setFleetViewEnabled(b: boolean): void { settings.setFleetView(b); }
 
   const notifier = new CompletionNotifier({ pi, manager, widget, fleet, settings });
@@ -320,8 +322,7 @@ export default function (pi: ExtensionAPI) {
   registerAgentsCommand(pi, {
     manager,
     reloadCustomAgents,
-    settings,
-    chooseViewerMarkdown,
+    viewer,
     showSettings: (ctx) => showSettings(ctx, { cwd: process.cwd(), settingsPersist }),
   });
 }

@@ -154,7 +154,7 @@ export function mountWidget(
 }
 
 export function mountFleet(FleetList: any, records: unknown[]) {
-  const fleet = new FleetList(makeManager(records, makeActivity(records as { id: string; toolUses: number }[])));
+  const fleet = new FleetList(makeManager(records, makeActivity(records as { id: string; toolUses: number }[])), { open: async () => {}, close: () => {} });
   let factory: any;
   fleet.setUICtx({
     setWidget: (_key: string, content: any) => { factory = content; },
