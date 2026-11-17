@@ -90,23 +90,20 @@ export class ConversationViewer implements Component {
 
     if (this.keys.scrollUp(data)) {
       this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-      this.autoScroll = this.scrollOffset >= maxScroll;
     } else if (this.keys.scrollDown(data)) {
       this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
-      this.autoScroll = this.scrollOffset >= maxScroll;
     } else if (this.keys.pageUp(data)) {
       this.scrollOffset = Math.max(0, this.scrollOffset - viewportHeight);
-      this.autoScroll = false;
     } else if (this.keys.pageDown(data)) {
       this.scrollOffset = Math.min(maxScroll, this.scrollOffset + viewportHeight);
-      this.autoScroll = this.scrollOffset >= maxScroll;
     } else if (matchesKey(data, "home")) {
       this.scrollOffset = 0;
-      this.autoScroll = false;
     } else if (matchesKey(data, "end")) {
       this.scrollOffset = maxScroll;
-      this.autoScroll = true;
+    } else {
+      return;
     }
+    this.autoScroll = this.scrollOffset >= maxScroll;
   }
 
   render(width: number): string[] {
@@ -198,7 +195,12 @@ export class ConversationViewer implements Component {
     if (this.isStoppable()) {
       actions.push(this.stopArmed ? th.fg("error", "x again to STOP") : th.fg("dim", "x stop"));
     }
-    const footerRight = th.fg("dim", "↑↓ scroll · PgUp/PgDn or Shift+↑↓ · Esc close");
+    if (!this.autoScroll) actions.push(th.fg("warning", "follow off · End to follow"));
+    const { keys } = this;
+    const footerRight = th.fg(
+      "dim",
+      `${keys.label("tui.select.up")}/${keys.label("tui.select.down")} scroll · ${keys.label("tui.select.pageUp")}/${keys.label("tui.select.pageDown")} page · ${keys.label("app.tools.expand")} expand · Esc close`,
+    );
 
     const scrollPct = scroll.lineCount <= scroll.viewportHeight
       ? "100%"

@@ -56,11 +56,21 @@ function createViewer(keybindings?: ViewerKeybindings) {
   return viewer;
 }
 
+function footerOf(viewer: ConversationViewer): string {
+  return viewer.render(120).at(-2) ?? "";
+}
+
 function scrollOffset(viewer: ConversationViewer): number {
   return (viewer as any).scrollOffset;
 }
 
 describe("viewer-keys", () => {
+  it("labels keys through the manager", () => {
+    const keys = createViewerKeys(createEmacsKeybindings());
+    expect(keys.label("tui.select.up")).toBe("up/ctrl+p");
+    expect(keys.label("tui.select.pageDown")).toBe("pageDown");
+  });
+
   it("honors user keybindings when a manager is provided", () => {
     const keys = createViewerKeys(createEmacsKeybindings());
     expect(keys.scrollUp(CTRL_P)).toBe(true);
@@ -146,6 +156,26 @@ describe("ConversationViewer custom keybindings", () => {
     viewer.handleInput(DOWN);
     viewer.handleInput("j");
     expect(scrollOffset(viewer)).toBe(bottom);
+  });
+
+  it("names the default keys in the footer without a keybindings manager", () => {
+    const footer = footerOf(createViewer());
+    expect(footer).toContain("up/down scroll");
+    expect(footer).toContain("pageUp/pageDown page");
+    expect(footer).toContain("ctrl+o expand");
+    expect(footer).toContain("Esc close");
+  });
+
+  it("names the keys the active keybindings bind in the footer", () => {
+    const manager = new KeybindingsManager(
+      { ...TUI_KEYBINDINGS, "app.tools.expand": { defaultKeys: "ctrl+o", description: "Toggle tool output" } },
+      { "tui.select.up": ["up", "ctrl+p"], "tui.select.down": "ctrl+n", "tui.select.pageUp": "ctrl+u", "app.tools.expand": "ctrl+e" },
+    );
+    const footer = footerOf(createViewer(manager));
+    expect(footer).toContain("up/ctrl+p/ctrl+n scroll");
+    expect(footer).toContain("ctrl+u/pageDown page");
+    expect(footer).toContain("ctrl+e expand");
+    expect(footer).not.toContain("ctrl+o");
   });
 
   it("treats ctrl+p/ctrl+n as unbound without a keybindings manager", () => {

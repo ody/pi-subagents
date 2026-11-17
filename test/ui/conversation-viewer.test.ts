@@ -173,8 +173,9 @@ describe("ConversationViewer header and footer", () => {
     const body = Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n");
     const session = mockSession([assistantMessage(text(body))]);
     const viewer = new ConversationViewer(mockTui(20, 120), session, mockRecord({ status: "completed" }), undefined, tagTheme, vi.fn());
+    viewer.render(200);
     viewer.handleInput("\x1b[H");
-    const footer = viewer.render(120).at(-2) ?? "";
+    const footer = viewer.render(200).at(-2) ?? "";
     const m = footer.match(/(\d+) lines · (\d+)%/);
     expect(m).not.toBeNull();
     expect(Number(m?.[2])).toBeGreaterThan(0);
@@ -622,5 +623,91 @@ describe("ConversationViewer transcript", () => {
 
       expect(tui.requestRender).toHaveBeenCalled();
     });
+  });
+});
+
+describe("ConversationViewer follow", () => {
+  const tagTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+  const UP = "\x1b[A";
+  const DOWN = "\x1b[B";
+  const PAGE_UP = "\x1b[5~";
+  const PAGE_DOWN = "\x1b[6~";
+  const HOME = "\x1b[H";
+  const END = "\x1b[F";
+
+  function viewerWith(lineCount: number) {
+    const body = Array.from({ length: lineCount }, (_, i) => `line ${i}`).join("\n");
+    const session = mockSession([assistantMessage(text(body))]);
+    const viewer = new ConversationViewer(mockTui(20, 120), session, mockRecord({ status: "running" }), undefined, tagTheme, vi.fn());
+    viewer.render(120);
+    return viewer;
+  }
+
+  const footerOf = (viewer: ConversationViewer) => viewer.render(120).at(-2) ?? "";
+  const following = (viewer: ConversationViewer): boolean => (viewer as any).autoScroll;
+
+  it("follows when the viewer opens", () => {
+    expect(following(viewerWith(60))).toBe(true);
+  });
+
+  it("keeps follow on when PgUp is pressed and the view still shows the latest line", () => {
+    const viewer = viewerWith(10);
+    viewer.handleInput(PAGE_UP);
+    expect(following(viewer)).toBe(true);
+  });
+
+  it("keeps follow on when Home is pressed and the view still shows the latest line", () => {
+    const viewer = viewerWith(10);
+    viewer.handleInput(HOME);
+    expect(following(viewer)).toBe(true);
+  });
+
+  it("turns follow off when PgUp moves away from the latest line", () => {
+    const viewer = viewerWith(60);
+    viewer.handleInput(PAGE_UP);
+    expect(following(viewer)).toBe(false);
+  });
+
+  it("turns follow off when Home moves away from the latest line", () => {
+    const viewer = viewerWith(60);
+    viewer.handleInput(HOME);
+    expect(following(viewer)).toBe(false);
+  });
+
+  it("turns follow back on when a line scroll reaches the latest line", () => {
+    const viewer = viewerWith(60);
+    viewer.handleInput(UP);
+    expect(following(viewer)).toBe(false);
+    viewer.handleInput(DOWN);
+    expect(following(viewer)).toBe(true);
+  });
+
+  it("turns follow back on when PgDn reaches the latest line", () => {
+    const viewer = viewerWith(60);
+    viewer.handleInput(PAGE_UP);
+    viewer.handleInput(PAGE_DOWN);
+    expect(following(viewer)).toBe(true);
+  });
+
+  it("turns follow on with End and shows the latest line", () => {
+    const viewer = viewerWith(60);
+    viewer.handleInput(HOME);
+    viewer.handleInput(END);
+    expect(following(viewer)).toBe(true);
+    expect(viewer.render(120).join("\n")).toContain("line 59");
+  });
+
+  it("says follow is off and names End while follow is off", () => {
+    const viewer = viewerWith(60);
+    expect(footerOf(viewer)).not.toContain("follow off");
+    viewer.handleInput(HOME);
+    expect(footerOf(viewer)).toContain("follow off · End to follow");
+  });
+
+  it("drops the follow notice when follow turns back on", () => {
+    const viewer = viewerWith(60);
+    viewer.handleInput(HOME);
+    viewer.handleInput(END);
+    expect(footerOf(viewer)).not.toContain("follow off");
   });
 });
