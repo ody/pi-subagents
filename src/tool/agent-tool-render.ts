@@ -7,6 +7,7 @@ import {
   formatCost,
   formatMs,
   formatTurns,
+  renderStatusIcon,
   SPINNER,
   type Theme,
 } from "../ui/agent-format.js";
@@ -76,8 +77,7 @@ function renderFinishedAgent(
   stats: string,
 ): Text {
   const isSteered = details.status === "steered";
-  const icon = isSteered ? theme.fg("warning", "✓") : theme.fg("success", "✓");
-  let line = icon + (stats ? " " + stats : "");
+  let line = renderStatusIcon(theme, isSteered ? "steered" : "completed") + (stats ? " " + stats : "");
   line += " " + theme.fg("dim", "·") + " " + theme.fg("dim", formatMs(details.durationMs));
 
   if (expanded) {
@@ -90,7 +90,7 @@ function renderFinishedAgent(
 }
 
 function renderFailedAgent(details: AgentDetails, theme: PiTheme, stats: string): Text {
-  let line = theme.fg("error", "✗") + (stats ? " " + stats : "");
+  let line = renderStatusIcon(theme, details.status === "error" ? "error" : "aborted") + (stats ? " " + stats : "");
   if (details.status === "error") {
     line += "\n" + theme.fg("error", `  ⎿  Error: ${details.error ?? "unknown"}`);
   } else {
@@ -128,7 +128,7 @@ export function renderAgentResult(
   }
 
   if (details.status === "stopped") {
-    let line = theme.fg("dim", "■") + (stats ? " " + stats : "");
+    let line = renderStatusIcon(theme, "stopped") + (stats ? " " + stats : "");
     line += "\n" + theme.fg("dim", "  ⎿  Stopped");
     return new Text(line, 0, 0);
   }
