@@ -6,7 +6,7 @@ pi extension providing sub-agents (`agent` tool, `/agents` menu), packaged as `@
 
 - `docs/decisions/*.md` is current truth. Follow it. Ignore `docs/decisions/drafts/` unless asked to work on a draft.
 - Format, drafts, and superseding: [ADR 0001](docs/decisions/0001-decision-records.md).
-- Backlog: GitHub issues at `github.com/ody/pi-subagents`, driven with `gh` and the `gh` skill. Labels: `task`, `bug`, `chore`.
+- Backlog: GitHub issues at `github.com/ody/pi-subagents`, driven with the GitHub MCP server (`mcp__github`). Labels: `task`, `bug`, `chore`.
 
 ## Rules index
 
