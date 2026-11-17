@@ -4,6 +4,7 @@ import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./agent-format.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT, VIEWPORT_WIDTH_PCT } from "./conversation-viewer.js";
+import type { MainSessionStatus } from "./main-session-status.js";
 
 export interface ViewerUI {
   notify(message: string, type?: "info" | "warning" | "error"): void;
@@ -16,6 +17,7 @@ export interface ViewerUI {
 export interface ConversationViewerOpenerDeps {
   manager: Pick<AgentManager, "getActivity" | "abort" | "steer">;
   showCost: () => boolean;
+  mainSession: MainSessionStatus;
 }
 
 export class ConversationViewerOpener {
@@ -29,7 +31,7 @@ export class ConversationViewerOpener {
       ui.notify(`Agent is ${record.status} — no session available.`, "info");
       return;
     }
-    const { manager, showCost } = this.deps;
+    const { manager, showCost, mainSession } = this.deps;
     const activity = manager.getActivity(record.id);
     let close: (() => void) | undefined;
 
@@ -51,6 +53,7 @@ export class ConversationViewerOpener {
             keybindings,
             (message: string) => manager.steer(record.id, message),
             showCost(),
+            mainSession,
           );
         },
         {

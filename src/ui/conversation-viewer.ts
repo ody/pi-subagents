@@ -5,6 +5,7 @@ import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../
 import { renderAgentName } from "./agent-color.js";
 import type { Theme } from "./agent-format.js";
 import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag, renderStatusIcon } from "./agent-format.js";
+import type { MainSessionStatus } from "./main-session-status.js";
 import { createViewerKeys, type ViewerKeys } from "./viewer-keys.js";
 import { PendingSteers } from "./viewer-steers.js";
 import { ViewerTranscript } from "./viewer-transcript.js";
@@ -18,6 +19,7 @@ export class ConversationViewer implements Component {
   private scrollOffset = 0;
   private autoScroll = true;
   private unsubscribe: (() => void) | undefined;
+  private unsubscribeMain: (() => void) | undefined;
   private lastInnerW = 0;
   private closed = false;
   private stopArmed = false;
@@ -37,6 +39,7 @@ export class ConversationViewer implements Component {
     private keybindings?: KeybindingsManager,
     private onSteer?: (message: string) => void,
     private showCost = false,
+    private mainSession?: MainSessionStatus,
   ) {
     this.transcript = new ViewerTranscript(tui, session);
     this.steers = new PendingSteers(session);
@@ -45,6 +48,9 @@ export class ConversationViewer implements Component {
       if (this.closed) return;
       this.steers.refresh();
       this.tui.requestRender();
+    });
+    this.unsubscribeMain = mainSession?.subscribe(() => {
+      if (!this.closed) this.tui.requestRender();
     });
   }
 
@@ -124,7 +130,7 @@ export class ConversationViewer implements Component {
     };
     const row = (content: string) =>
       th.fg("border", "│") + " " + truncateToWidth(pad(content, innerW), innerW, "...", true) + " " + th.fg("border", "│");
-    const hrTop = th.fg("border", `╭${"─".repeat(width - 2)}╮`);
+    const hrTop = this.topBorder(width);
     const hrBot = th.fg("border", `╰${"─".repeat(width - 2)}╯`);
     const hrMid = row(th.fg("dim", "─".repeat(innerW)));
 
@@ -157,6 +163,25 @@ export class ConversationViewer implements Component {
     lines.push(hrBot);
 
     return lines;
+  }
+
+  private topBorder(width: number): string {
+    const th = this.theme;
+    const status = this.mainSessionLine();
+    const room = width - 6;
+    if (!status || room < 1) return th.fg("border", `╭${"─".repeat(width - 2)}╮`);
+    const fitted = truncateToWidth(status, room, "…");
+    const fill = Math.max(1, width - 5 - visibleWidth(fitted));
+    return th.fg("border", "╭─ ") + fitted + th.fg("border", ` ${"─".repeat(fill)}╮`);
+  }
+
+  private mainSessionLine(): string | undefined {
+    const main = this.mainSession;
+    if (!main) return undefined;
+    const th = this.theme;
+    const label = main.isRunning ? th.fg("accent", "● main working") : th.fg("dim", "○ main idle");
+    const last = main.lastMessageLine;
+    return last ? `${label}${th.fg("dim", " · ")}${th.fg("muted", last)}` : label;
   }
 
   private headerLine(): string {
@@ -259,6 +284,8 @@ export class ConversationViewer implements Component {
       this.unsubscribe();
       this.unsubscribe = undefined;
     }
+    this.unsubscribeMain?.();
+    this.unsubscribeMain = undefined;
   }
 
   private viewportHeight(): number {

@@ -3,6 +3,7 @@ import { TUI_KEYBINDINGS, KeybindingsManager as TuiKeybindingsManager, visibleWi
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
+import { MainSessionStatus } from "../../src/ui/main-session-status.js";
 
 initTheme();
 
@@ -789,5 +790,75 @@ describe("ConversationViewer follow", () => {
     viewer.handleInput(HOME);
     viewer.handleInput(END);
     expect(footerOf(viewer)).not.toContain("follow off");
+  });
+});
+
+describe("ConversationViewer main-session line", () => {
+  const plainTheme = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+
+  function topBorder(main: MainSessionStatus | undefined, width = 80): string {
+    const viewer = new ConversationViewer(
+      mockTui(30, width), mockSession([]), mockRecord(), undefined, plainTheme,
+      vi.fn(), undefined, undefined, undefined, false, main,
+    );
+    const lines = viewer.render(width);
+    assertAllLinesFit(lines, width);
+    return lines[0];
+  }
+
+  it("keeps a plain border when no main session is given", () => {
+    expect(topBorder(undefined)).toBe(`╭${"─".repeat(78)}╮`);
+  });
+
+  it("shows idle with the last assistant line while the main session is idle", () => {
+    const main = new MainSessionStatus();
+    main.messageEnd({ role: "assistant", content: [text("All done.\nSecond line")] });
+    const border = topBorder(main);
+    expect(border).toContain("main idle");
+    expect(border).toContain("All done.");
+    expect(border).not.toContain("Second line");
+    expect(border).not.toContain("working");
+  });
+
+  it("shows a working indicator while the main session runs", () => {
+    const main = new MainSessionStatus();
+    main.messageEnd({ role: "assistant", content: [text("Reading files")] });
+    main.agentStart();
+    const border = topBorder(main);
+    expect(border).toContain("main working");
+    expect(border).toContain("Reading files");
+    main.agentEnd();
+    expect(topBorder(main)).toContain("main idle");
+  });
+
+  it("cuts a long last message to fit the border", () => {
+    const main = new MainSessionStatus();
+    main.messageEnd({ role: "assistant", content: [text("x".repeat(500))] });
+    const border = topBorder(main, 60);
+    expect(visibleWidth(border)).toBe(60);
+    expect(border).toContain("…");
+    expect(border.endsWith("╮")).toBe(true);
+  });
+
+  it("ignores user messages and assistant messages without text", () => {
+    const main = new MainSessionStatus();
+    main.messageEnd({ role: "assistant", content: [text("kept")] });
+    main.messageEnd({ role: "user", content: [text("question")] });
+    main.messageEnd({ role: "assistant", content: [toolCall("c1", "bash")] });
+    expect(topBorder(main)).toContain("kept");
+  });
+
+  it("redraws when the main session changes and stops after dispose", () => {
+    const main = new MainSessionStatus();
+    const tui = mockTui(30, 80);
+    const viewer = new ConversationViewer(
+      tui, mockSession([]), mockRecord(), undefined, plainTheme,
+      vi.fn(), undefined, undefined, undefined, false, main,
+    );
+    main.agentStart();
+    expect(tui.requestRender).toHaveBeenCalledTimes(1);
+    viewer.dispose();
+    main.agentEnd();
+    expect(tui.requestRender).toHaveBeenCalledTimes(1);
   });
 });

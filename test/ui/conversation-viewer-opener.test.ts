@@ -3,6 +3,7 @@ import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { ConversationViewerOpener, type ViewerUI } from "../../src/ui/conversation-viewer-opener.js";
+import { MainSessionStatus } from "../../src/ui/main-session-status.js";
 
 initTheme();
 
@@ -30,6 +31,7 @@ function setup() {
   const opener = new ConversationViewerOpener({
     manager,
     showCost: () => false,
+    mainSession: new MainSessionStatus(),
   });
   const notify = vi.fn();
   const customOptions: unknown[] = [];

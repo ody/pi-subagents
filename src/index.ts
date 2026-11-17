@@ -27,6 +27,7 @@ import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { registerAgentsCommand } from "./ui/agents-menu.js";
 import { ConversationViewerOpener } from "./ui/conversation-viewer-opener.js";
+import { MainSessionStatus } from "./ui/main-session-status.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
 import { PendingUsagePool, withUsageReporting } from "./usage.js";
@@ -119,6 +120,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
+    mainSession.reset();
     if (ctx.hasUI) {
       widget.setUICtx(ctx.ui);
       widget.setInputCtx(ctx.ui);
@@ -220,7 +222,11 @@ export default function (pi: ExtensionAPI) {
   }
 
   function getWidgetMode(): WidgetMode { return settings.widgetMode; }
-  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled });
+  const mainSession = new MainSessionStatus();
+  pi.on("agent_start", () => mainSession.agentStart());
+  pi.on("agent_end", () => mainSession.agentEnd());
+  pi.on("message_end", (event) => mainSession.messageEnd(event.message));
+  const viewer = new ConversationViewerOpener({ manager, showCost: isShowCostEnabled, mainSession });
   const widget = new AgentWidget(manager, getWidgetMode, isShowCostEnabled, isShowModelEnabled, viewer);
   function setWidgetMode(m: WidgetMode): void { settings.setWidgetModeFlag(m); }
 
