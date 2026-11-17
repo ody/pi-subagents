@@ -85,14 +85,29 @@ describe("/agents -> Agents", () => {
     const record = { id: "a1", type: "general-purpose", description: "the one", status: "running", toolUses: 0, startedAt: Date.now() } as AgentRecord;
     const viewer = { open: vi.fn(async () => {}) };
     registerAgentsCommand(pi, {
-      manager: { listAgents: () => [record] },
+      manager: { listAgents: () => [record], getActivity: () => undefined },
       reloadCustomAgents: () => {},
       viewer,
+      showCost: () => false,
+      showModel: () => false,
       showSettings: async () => {},
     });
     let selects = 0;
+    let lists = 0;
     const ui = {
-      select: async (_title: string, options: string[]) => (selects++ < 2 ? options[0] : undefined),
+      select: async (_title: string, options: string[]) => (selects++ < 1 ? options[0] : undefined),
+      custom: async (factory: (...args: unknown[]) => { handleInput(data: string): void }) => {
+        if (lists++ > 0) return undefined;
+        let chosen: unknown;
+        const component = factory(
+          { requestRender: () => {} },
+          { fg: (_c: string, s: string) => s, bold: (s: string) => s },
+          { matches: (_data: string, id: string) => id === "tui.select.confirm" },
+          (value: unknown) => { chosen = value; },
+        );
+        component.handleInput("enter");
+        return chosen;
+      },
       notify: () => {},
     };
 

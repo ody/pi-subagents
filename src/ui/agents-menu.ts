@@ -8,15 +8,16 @@ import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
 import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentConfig } from "../types.js";
-import { formatDuration, getDisplayName } from "./agent-format.js";
 import { buildAgentTree } from "./agent-tree.js";
+import { selectAgentRow } from "./agents-list.js";
 import type { ConversationViewerOpener } from "./conversation-viewer-opener.js";
-import { selectItem } from "./select-item.js";
 
 type UserAgentFile = NonNullable<ReturnType<typeof locateAgentFile>>;
 
 export interface AgentsCommandDeps {
-  manager: Pick<AgentManager, "listAgents">;
+  manager: Pick<AgentManager, "listAgents" | "getActivity">;
+  showCost: () => boolean;
+  showModel: () => boolean;
   reloadCustomAgents: (strict?: boolean) => void;
   viewer: Pick<ConversationViewerOpener, "open">;
   showSettings: (ctx: ExtensionCommandContext) => Promise<void>;
@@ -32,7 +33,7 @@ export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] 
 }
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
-  const { manager, reloadCustomAgents, viewer, showSettings } = deps;
+  const { manager, reloadCustomAgents, viewer, showSettings, showCost, showModel } = deps;
 
   function getModelLabel(type: string, registry?: ModelRegistry): string {
     const cfg = getAgentConfig(type);
@@ -158,13 +159,10 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return;
     }
 
-    const node = await selectItem(ctx.ui, "Agents", nodes, n => {
-      const indent = "  ".repeat(n.depth);
-      const a = n.record;
-      const dn = getDisplayName(a);
-      const dur = formatDuration(a.startedAt, a.completedAt);
-      const detached = n.orphan ? " · detached" : "";
-      return `${indent}${dn} (${a.description}) · ${a.toolUses} tools · ${a.status} · ${dur}${detached}`;
+    const node = await selectAgentRow(ctx.ui, nodes, {
+      getActivity: id => manager.getActivity(id),
+      showCost: showCost(),
+      showModel: showModel(),
     });
     if (!node) return;
 

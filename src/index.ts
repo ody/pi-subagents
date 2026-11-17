@@ -309,6 +309,8 @@ export default function (pi: ExtensionAPI) {
     manager,
     reloadCustomAgents,
     viewer,
+    showCost: isShowCostEnabled,
+    showModel: isShowModelEnabled,
     showSettings: (ctx) => showSettings(ctx, { cwd: process.cwd(), settingsPersist }),
   });
 }
