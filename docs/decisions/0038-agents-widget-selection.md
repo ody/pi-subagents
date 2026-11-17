@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The user opens an agent by selecting its row in the Agents widget
+# 0038. The user opens an agent by selecting its row in the Agents widget
 
 Replaces: 0030-fleet-view-opens-on-demand, last present in 177dca5
 
@@ -19,7 +17,7 @@ Selection is a mode of `AgentWidget` in `src/ui/agent-widget.ts`. No separate fl
 1. `↓` at an empty prompt starts selection when the editor has focus and the widget shows an agent row. Selection starts on the first agent row.
 2. Only agent rows take the cursor. The queued row and the overflow line never do.
 3. `↑` and `↓` move the cursor. `↑` on the first agent row ends selection. `↓` on the last row keeps the cursor there.
-4. `Enter` opens the selected agent's conversation viewer. While the viewer is open, the widget keeps that agent's row. Closing the viewer returns to selection on that row.
+4. `Enter` opens the selected agent's conversation viewer (ADR 0039). While the viewer is open, the widget keeps that agent's row. Closing the viewer returns to selection on that row.
 5. `Esc` ends selection. Any other key ends selection and passes through to the editor.
 6. The cursor follows the agent, not the row index. If the selected row goes away, the cursor moves to the agent row that now holds its index, else to the last agent row. Selection ends when the widget shows no agent row.
 7. The selected row always draws. The line budget hides other rows first.

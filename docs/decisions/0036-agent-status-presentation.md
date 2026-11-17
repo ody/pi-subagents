@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Every surface shows an agent's status the same way
+# 0036. Every surface shows an agent's status the same way
 
 ## Context
 

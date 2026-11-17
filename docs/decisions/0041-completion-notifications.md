@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A completion notification speaks to the model and shows a preview to the user
+# 0041. A completion notification speaks to the model and shows a preview to the user
 
 ## Context
 
@@ -27,7 +25,7 @@ A completion notification is one pi custom message of type `subagent-notificatio
 
 ### User rendering
 
-1. A header line shows the status icon from the status presentation ADR, the description, and the status word.
+1. A header line shows the status icon from ADR 0036, the description, and the status word.
 2. A stats line shows turns, tool uses, tokens, and duration. Cost shows only with `showCost` on.
 3. An `error` run shows its error text.
 4. Folded, the block shows the first preview line. pi's `app.tools.expand` key, `Ctrl+O` by default, unfolds it to at most 30 preview lines.

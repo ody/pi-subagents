@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The conversation viewer follows the agent and steers or stops it on request
+# 0040. The conversation viewer follows the agent and steers or stops it on request
 
 ## Context
 
@@ -12,7 +10,7 @@ In pi's main session, `Esc` interrupts the agent. In an overlay, `Esc` also mean
 
 ## Decision
 
-The viewer's keys live in `src/ui/conversation-viewer.ts` and `src/ui/viewer-keys.ts`.
+The keys of the viewer that ADR 0039 sets live in `src/ui/conversation-viewer.ts` and `src/ui/viewer-keys.ts`.
 
 ### Follow
 

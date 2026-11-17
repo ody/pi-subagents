@@ -8,7 +8,7 @@ Without that line, three failures follow:
 
 - Double reporting: an owned child and its owner would both emit completion events and notifications for the same work.
 - Cross-owner control: one extension or sibling agent could steer, stop, or consume a record another caller is waiting on.
-- Pool deadlock: a child counted against the same concurrency pool as its waiting parent can leave the parent holding a slot for a child that never starts.
+- Pool deadlock: a child can count against the same concurrency pool as its waiting parent. The parent then holds a slot for a child that never starts.
 
 Applying the ownership test to UI visibility makes nested agents unreachable: the user cannot watch, steer, or stop them. Ownership must bound programmatic control without filtering what the user sees.
 
@@ -29,14 +29,13 @@ Ownership is a property of the record, set at spawn and never changed: `parentAg
 
 ### Nesting
 
-- Nested delegation tools are created per owning run. Every operation on an existing record (resume, result, steer, stop) requires `record.parentAgentId === context.parentAgentId`, so a nested agent reaches only its own children. Anything else is reported as not found.
-- Configuration that enables nesting (`allowed_subagents`, `maxSubagentDepth`) is documented in `README.md`.
+- Each owning run gets its own nested delegation tools. Every operation on an existing record (resume, result, steer, stop) requires `record.parentAgentId === context.parentAgentId`, so a nested agent reaches only its own children. The tools report any other record as not found.
+- `README.md` documents the configuration that enables nesting (`allowed_subagents`, `maxSubagentDepth`).
 
 ### UI
 
-- UI surfaces show every agent. FleetView, `/agents -> Agents`, and the above-editor widget render nested agents indented under their owner. An agent whose owner is gone appears as a root row.
+- UI surfaces show every agent. `/agents -> Agents` and the above-editor widget render nested agents indented under their owner. An agent whose owner is gone appears as a root row.
 - The widget lists only running descendants, to stay inside its line budget.
-- FleetView selection is keyed by row, not by index.
 - `AgentManager.getActivity(id)` is the only store of live activity state. UI code reads it and never builds its own, so every spawn route reports activity.
 
 Done check: `npm run check` passes.

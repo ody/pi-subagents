@@ -1,12 +1,10 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. The Agents widget is a bounded summary of running work
+# 0037. The Agents widget is a bounded summary of running work
 
 ## Context
 
 The Agents widget sits above the editor for the whole time agents run. Every row it draws pushes the transcript up, so it must stay small while many agents run.
 
-ADR 0007 makes every agent visible and lets the widget list only running descendants. ADR 0014 limits the widget's override disclosure to model and thinking. The status presentation ADR sets how each status looks.
+ADR 0007 makes every agent visible and lets the widget list only running descendants. ADR 0014 limits the widget's override disclosure to model and thinking. ADR 0036 sets how each status looks.
 
 ## Decision
 
@@ -20,7 +18,7 @@ The widget is `AgentWidget` in `src/ui/agent-widget.ts`, registered as `"agents"
 4. A running agent whose owner is gone shows as a root row (ADR 0007). A running agent whose top-level ancestor `widgetMode` hides does not show.
 5. Queued top-level agents collapse into one row that gives their count.
 6. A finished top-level agent stays until the next turn start, or two turn starts when its status is in the failure class.
-7. Nested agents never show once they leave `running`, except the row that selection or an open viewer holds (widget selection ADR).
+7. Nested agents never show once they leave `running`, except the row that selection or an open viewer holds (ADR 0038).
 8. The status bar text counts the running and queued top-level agents that `widgetMode` selects.
 
 ### Rows and budget

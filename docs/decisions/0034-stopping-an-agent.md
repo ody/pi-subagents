@@ -16,7 +16,7 @@ Every stop goes through `AgentManager.abort()`, which takes the stop cause. `abo
 
 | `stopCause` | Set by |
 | --- | --- |
-| `user` | `/agents`, FleetView, the viewer, or the session's interrupted tool call |
+| `user` | `/agents`, the viewer, or the session's interrupted tool call |
 | `agent` | `stop_subagent` or its nested mirror |
 | `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
