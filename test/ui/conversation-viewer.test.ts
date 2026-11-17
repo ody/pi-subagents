@@ -1,5 +1,5 @@
-import { createBashToolDefinition, initTheme } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { createBashToolDefinition, initTheme, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import { TUI_KEYBINDINGS, KeybindingsManager as TuiKeybindingsManager, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
@@ -8,6 +8,10 @@ initTheme();
 
 const CTRL_O = "\x0f";
 
+function piKeybindings(): KeybindingsManager {
+  return new TuiKeybindingsManager(TUI_KEYBINDINGS) as unknown as KeybindingsManager;
+}
+
 function mockTui(rows = 40, columns = 80) {
   return {
     terminal: { rows, columns },
@@ -15,9 +19,10 @@ function mockTui(rows = 40, columns = 80) {
   } as any;
 }
 
-function mockSession(messages: any[] = [], messageRenderer?: unknown) {
+function mockSession(messages: any[] = [], messageRenderer?: unknown, steering: string[] = []) {
   return {
     messages,
+    getSteeringMessages: () => steering,
     subscribe: vi.fn(() => vi.fn()),
     dispose: vi.fn(),
     getSessionStats: () => ({ tokens: { input: 0, output: 0, cacheWrite: 0 } }),
@@ -351,11 +356,15 @@ describe("ConversationViewer", () => {
     function makeViewer(opts: { status?: AgentRecord["status"]; onSteer?: (m: string) => void } = {}) {
       const onSteer = opts.onSteer ?? vi.fn();
       const tui = mockTui(30, W);
+      const done = vi.fn();
+      const steering: string[] = [];
+      const messages: any[] = [];
+      const record = mockRecord({ status: opts.status ?? "running" });
       const viewer = new ConversationViewer(
-        tui, mockSession(), mockRecord({ status: opts.status ?? "running" }),
-        undefined, ansiTheme(), vi.fn(), undefined, undefined, onSteer,
+        tui, mockSession(messages, undefined, steering), record,
+        undefined, ansiTheme(), done, undefined, piKeybindings(), onSteer,
       );
-      return { viewer, tui, onSteer };
+      return { viewer, tui, onSteer, done, steering, messages, record };
     }
 
     it("offers the steer affordance for a running agent and opens on Enter", () => {
@@ -396,6 +405,77 @@ describe("ConversationViewer", () => {
       expect(viewer.render(W).join("\n")).not.toContain("Enter send");
     });
 
+    it("opens a pi editor box with borders", () => {
+      const { viewer } = makeViewer();
+      const before = viewer.render(W).length;
+      viewer.handleInput("\r");
+      const lines = viewer.render(W);
+      expect(lines.length).toBeGreaterThanOrEqual(before);
+      expect(strip(lines.join("\n"))).toContain("─".repeat(10));
+    });
+
+    it("Esc closes only the input box, not the viewer", () => {
+      const { viewer, done } = makeViewer();
+      viewer.handleInput("\r");
+      viewer.handleInput("\x1b");
+      expect(done).not.toHaveBeenCalled();
+      viewer.handleInput("\x1b");
+      expect(done).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows a dim Steering line after send and nothing before", () => {
+      const { viewer } = makeViewer();
+      expect(strip(viewer.render(W).join("\n"))).not.toContain("Steering:");
+      viewer.handleInput("\r");
+      for (const ch of "  go left  ") viewer.handleInput(ch);
+      viewer.handleInput("\r");
+      const out = viewer.render(W).join("\n");
+      expect(strip(out)).toContain("Steering: go left");
+      expect(out).toContain("\x1b[38;5;240mSteering: go left");
+    });
+
+    it("shows no Steering line after cancel or empty submit", () => {
+      const { viewer } = makeViewer();
+      viewer.handleInput("\r");
+      for (const ch of "draft") viewer.handleInput(ch);
+      viewer.handleInput("\x1b");
+      viewer.handleInput("\r");
+      viewer.handleInput("\r");
+      expect(strip(viewer.render(W).join("\n"))).not.toContain("Steering:");
+    });
+
+    it("removes the Steering line once the session takes it from its queue", () => {
+      const { viewer, steering } = makeViewer();
+      viewer.handleInput("\r");
+      for (const ch of "go left") viewer.handleInput(ch);
+      viewer.handleInput("\r");
+      expect(strip(viewer.render(W).join("\n"))).toContain("Steering: go left");
+
+      steering.push("go left");
+      expect(strip(viewer.render(W).join("\n"))).toContain("Steering: go left");
+
+      steering.length = 0;
+      expect(strip(viewer.render(W).join("\n"))).not.toContain("Steering:");
+    });
+
+    it("removes the Steering line when the steer reaches the transcript before it was seen queued", () => {
+      const { viewer, messages } = makeViewer();
+      viewer.handleInput("\r");
+      for (const ch of "go left") viewer.handleInput(ch);
+      viewer.handleInput("\r");
+      messages.push(userMessage("go left"));
+      expect(strip(viewer.render(W).join("\n"))).not.toContain("Steering:");
+    });
+
+    it("removes the Steering line when the agent settles", () => {
+      const { viewer, record } = makeViewer();
+      viewer.handleInput("\r");
+      for (const ch of "go left") viewer.handleInput(ch);
+      viewer.handleInput("\r");
+      record.status = "completed";
+      expect(strip(viewer.render(W).join("\n"))).not.toContain("Steering:");
+    });
+
     it("scroll keys are inert while composing (input owns them)", () => {
       const { viewer } = makeViewer();
       viewer.handleInput("\r");
@@ -424,7 +504,7 @@ describe("ConversationViewer", () => {
         const tui = mockTui(30, w);
         const viewer = new ConversationViewer(
           tui, mockSession(), mockRecord({ status: "running" }),
-          undefined, ansiTheme(), vi.fn(), undefined, undefined, vi.fn(),
+          undefined, ansiTheme(), vi.fn(), undefined, piKeybindings(), vi.fn(),
         );
         viewer.handleInput("\r");
         for (const ch of "x".repeat(200)) viewer.handleInput(ch);

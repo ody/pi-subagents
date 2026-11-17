@@ -1,4 +1,5 @@
 import { initTheme } from "@earendil-works/pi-coding-agent";
+import { KeybindingsManager, TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentRecord } from "../../src/types.js";
 import { ConversationViewerOpener, type ViewerUI } from "../../src/ui/conversation-viewer-opener.js";
@@ -39,7 +40,7 @@ function setup() {
     return new Promise<undefined>((resolve) => {
       const done = (r: undefined) => resolve(r);
       dones.push(done);
-      components.push(factory(tui, theme, undefined, done));
+      components.push(factory(tui, theme, new KeybindingsManager(TUI_KEYBINDINGS), done));
     });
   });
   const ui = { notify, custom } as unknown as ViewerUI;

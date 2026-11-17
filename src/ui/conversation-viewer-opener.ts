@@ -1,14 +1,14 @@
+import type { KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import type { Component, OverlayOptions, TUI } from "@earendil-works/pi-tui";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentRecord } from "../types.js";
 import type { Theme } from "./agent-format.js";
 import { ConversationViewer, VIEWPORT_HEIGHT_PCT, VIEWPORT_WIDTH_PCT } from "./conversation-viewer.js";
-import type { ViewerKeybindings } from "./viewer-keys.js";
 
 export interface ViewerUI {
   notify(message: string, type?: "info" | "warning" | "error"): void;
   custom<T>(
-    factory: (tui: TUI, theme: Theme, keybindings: ViewerKeybindings, done: (result: T) => void) => Component & { dispose?(): void },
+    factory: (tui: TUI, theme: Theme, keybindings: KeybindingsManager, done: (result: T) => void) => Component & { dispose?(): void },
     options?: { overlay?: boolean; overlayOptions?: OverlayOptions },
   ): Promise<T>;
 }

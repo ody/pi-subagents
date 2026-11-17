@@ -9,7 +9,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent, the default), `background` (hides foreground runs, which already render inline as the `agent` tool result), or `off`
 - **Widget selection** — `↓` at an empty prompt selects a row in the Agents widget. `↑`/`↓` move the cursor, `Enter` opens that agent's live conversation, and `Esc` ends selection. [Nested children](#nested-subagents) show indented under their owner while they run. See [Selecting an agent](#selecting-an-agent)
 - **Conversation viewer** — select any agent in `/agents` to open a live-scrolling overlay of its full conversation (auto-follows new content, scroll up to pause). Steering and stopping both work for background agents too. The overlay is 95% wide and up to 90% tall, and closes when pi shuts the extension down. `/agents` and the Agents widget open it the same way. An agent with no session shows a notice that names its status.
-  - Steer a running agent inline. Press `Enter` to open a composer, type, then press `Enter` to send (`Esc` or an empty submit returns). The message appears as a user message and redirects the agent after its current tool.
+  - Steer a running agent inline. Press `Enter` to open pi's input box, type, then press `Enter` to send (`Esc` closes only the input box, and an empty submit sends nothing). A sent steer shows as a dim `Steering: <text>` line below the transcript until the agent takes it from its queue. It then appears as a user message and redirects the agent after its current tool.
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
   - Each message renders with the same pi component the main session uses for its kind. `Ctrl+O` (pi's `app.tools.expand` key) expands and folds the messages, as in the main session.
   - The viewer follows the agent while the view shows the latest line. After any scroll key, follow is on exactly when the view shows the latest line. `Home` goes to the start, and `End` goes to the latest line and turns follow on. While follow is off, the footer says `follow off · End to follow`.
@@ -122,7 +122,7 @@ The keys:
 - `Esc` ends selection. Any other key ends selection and passes through to the editor.
 - The cursor follows the agent, not the row index. If the selected row goes away, the cursor moves to the agent row that now holds its index, else to the last agent row. Selection ends when the widget shows no agent row.
 - The selected row always draws. When the 12-line budget overflows, the widget hides other rows first. A nested agent that leaves `running` while selected keeps its row until the cursor moves off it.
-- Inside the viewer, `Enter` steers the running agent. Type a message and press `Enter` to send it (`Esc` or an empty submit returns). This redirects the agent the same way the `agent_steer` tool does.
+- Inside the viewer, `Enter` steers the running agent. Type a message in the input box and press `Enter` to send it (`Esc` closes only the input box, and an empty submit sends nothing). This redirects the agent the same way the `agent_steer` tool does.
 
 With `widgetMode` `off`, or for an agent the widget does not show, `/agents → Agents` is the way to open an agent. `↓` at an empty prompt never reaches the editor while the widget shows an agent row.
 
@@ -583,7 +583,7 @@ Settings                                    ← every persistent setting (see Pe
 ```
 
 - **Agents** — the whole hierarchy, indented, with nested children under their spawner. The list marks an agent whose owner is gone as `detached`. Select an agent to open its live conversation viewer, where:
-  - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `agent_steer` tool. `Esc`, or an empty submit, returns.
+  - `Enter` opens pi's input box, and `Enter` again sends a message that redirects the agent. Same mechanism as the `agent_steer` tool. `Esc` closes only the input box, and an empty submit sends nothing. A sent steer shows as a dim `Steering: <text>` line until the agent takes it from its queue.
   - `x` (then `x` again to confirm) stops or aborts it, **background** agents included. A global Esc can't unambiguously target those, and still stops a blocking foreground `agent` call instead. A stopped agent reports its partial output and flags it as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot. It also fires its completion notification within a few seconds, rather than holding both forever.
   - `Ctrl+O` (pi's `app.tools.expand` key) expands and folds the messages.
 - **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model. The full description of the highlighted agent appears below the list. The model column flags `(unavailable, fallback: inherit)` when the extension can't resolve a configured model (it would silently inherit the parent model). It shows `(→ provider/id)` when the model resolves to a different provider or version than configured. Select an agent to manage it:

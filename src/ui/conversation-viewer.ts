@@ -1,11 +1,12 @@
-import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { type Component, Input, matchesKey, type TUI, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { type AgentSession, CustomEditor, getSelectListTheme, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
+import { type Component, matchesKey, type TUI, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentActivity, AgentRecord } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
 import { renderAgentName } from "./agent-color.js";
 import type { Theme } from "./agent-format.js";
 import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag, renderStatusIcon } from "./agent-format.js";
-import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
+import { createViewerKeys, type ViewerKeys } from "./viewer-keys.js";
+import { PendingSteers } from "./viewer-steers.js";
 import { ViewerTranscript } from "./viewer-transcript.js";
 
 const CHROME_LINES_BASE = 6;
@@ -21,8 +22,9 @@ export class ConversationViewer implements Component {
   private closed = false;
   private stopArmed = false;
   private keys: ViewerKeys;
-  private composer: Input | undefined;
+  private composer: CustomEditor | undefined;
   private readonly transcript: ViewerTranscript;
+  private readonly steers: PendingSteers;
 
   constructor(
     private tui: TUI,
@@ -32,21 +34,24 @@ export class ConversationViewer implements Component {
     private theme: Theme,
     private done: (result: undefined) => void,
     private onStop?: () => void,
-    keybindings?: ViewerKeybindings,
+    private keybindings?: KeybindingsManager,
     private onSteer?: (message: string) => void,
     private showCost = false,
   ) {
     this.transcript = new ViewerTranscript(tui, session);
+    this.steers = new PendingSteers(session);
     this.keys = createViewerKeys(keybindings);
     this.unsubscribe = session.subscribe(() => {
       if (this.closed) return;
+      this.steers.refresh();
       this.tui.requestRender();
     });
   }
 
   handleInput(data: string): void {
     if (this.composer) {
-      this.composer.handleInput(data);
+      if (matchesKey(data, "escape")) this.composer = undefined;
+      else this.composer.handleInput(data);
       this.tui.requestRender();
       return;
     }
@@ -177,11 +182,11 @@ export class ConversationViewer implements Component {
 
   private composerFooter(innerW: number): string[] {
     const th = this.theme;
-    const input = this.composer?.render(innerW)[0] ?? "";
+    const input = this.composer?.render(innerW) ?? [];
     const composeHint = th.fg("dim", "Enter send · Esc cancel");
     const composeLeft = th.fg("accent", "✎ steer");
     const composeGap = Math.max(1, innerW - visibleWidth(composeLeft) - visibleWidth(composeHint));
-    return [input, composeLeft + " ".repeat(composeGap) + composeHint];
+    return [...input, composeLeft + " ".repeat(composeGap) + composeHint];
   }
 
   private idleFooter(
@@ -220,23 +225,27 @@ export class ConversationViewer implements Component {
   }
 
   private canSteer(): boolean {
-    return !!this.onSteer && (this.record.status === "running" || this.record.status === "queued");
+    return !!this.onSteer && !!this.keybindings && (this.record.status === "running" || this.record.status === "queued");
   }
 
   private openComposer(): void {
-    const input = new Input();
-    input.focused = true;
-    input.onSubmit = (value: string) => {
+    if (!this.keybindings) return;
+    const editor = new CustomEditor(
+      this.tui,
+      { borderColor: (text) => this.theme.fg("borderMuted", text), selectList: getSelectListTheme() },
+      this.keybindings,
+    );
+    editor.focused = true;
+    editor.onSubmit = (value: string) => {
       const message = value.trim();
       this.composer = undefined;
-      if (message) this.onSteer?.(message);
+      if (message) {
+        this.steers.add(message);
+        this.onSteer?.(message);
+      }
       this.tui.requestRender();
     };
-    input.onEscape = () => {
-      this.composer = undefined;
-      this.tui.requestRender();
-    };
-    this.composer = input;
+    this.composer = editor;
     this.tui.requestRender();
   }
 
@@ -258,7 +267,8 @@ export class ConversationViewer implements Component {
   }
 
   private chromeLines(): number {
-    return CHROME_LINES_BASE + (this.invocationLine() ? 1 : 0) + (this.composer ? 1 : 0);
+    const composerLines = this.composer ? this.composer.render(Math.max(1, this.lastInnerW)).length : 0;
+    return CHROME_LINES_BASE + (this.invocationLine() ? 1 : 0) + composerLines;
   }
 
   private invocationLine(): string | undefined {
@@ -278,14 +288,15 @@ export class ConversationViewer implements Component {
 
     if (lines.length === 0) {
       lines.push(th.fg("dim", "(waiting for first message...)"));
-      return lines;
-    }
-
-    if (this.record.status === "running" && this.activity) {
+    } else if (this.record.status === "running" && this.activity) {
       const act = describeActivity(this.activity.activeTools, this.activity.responseText);
       lines.push("");
       lines.push(truncateToWidth(th.fg("accent", "▍ ") + th.fg("dim", act), width));
     }
+
+    if (!this.canSteer()) this.steers.clear();
+    this.steers.refresh();
+    for (const text of this.steers.texts()) lines.push(th.fg("dim", `Steering: ${text.replace(/\s*\n\s*/g, " ")}`));
 
     return lines.map(l => truncateToWidth(l, width));
   }

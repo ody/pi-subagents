@@ -23,7 +23,7 @@ interface Block {
   spaced: boolean;
 }
 
-function userText(message: UserMessage): string {
+export function userText(message: UserMessage): string {
   if (typeof message.content === "string") return message.content;
   return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
