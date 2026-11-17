@@ -145,7 +145,7 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 | `Agent is not running` | stop — same handler. The record exists, so it has already settled |
 | `Agent not found or still running` | consume — `subagents:rpc:consume` handler in the same file |
 
-**The in-session `stop_subagent` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel throws `Agent is not running`. The tool reports its terminal status as a normal (non-error) result.
+**The in-session `agent_stop` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel throws `Agent is not running`. The tool reports its terminal status as a normal (non-error) result.
 
 The model's intent — "that agent should not be running" — is already true, and an `isError: true` result is the wrong signal for "nothing to do". An extension, by contrast, can and should branch on an error envelope.
 
@@ -183,7 +183,7 @@ The forced entry copies the streamed response text into `record.result` when no 
 
 ## The notification race
 
-When a background agent finishes, pi-subagents sends the user a completion notification. If you have already shown the model that result yourself, the notification arrives on top of an answer the model already has. It costs the parent a turn to dismiss. `subagents:rpc:consume` is how you say you have handled it — the bus-side half of what `get_subagent_result` does when it returns a result.
+When a background agent finishes, pi-subagents sends the user a completion notification. If you have already shown the model that result yourself, the notification arrives on top of an answer the model already has. It costs the parent a turn to dismiss. `subagents:rpc:consume` is how you say you have handled it — the bus-side half of what `agent_get_result` does when it returns a result.
 
 **When you send it decides whether it works.** The timeline:
 

@@ -136,9 +136,9 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
     });
 
     expect(toolsSeen.get("orchestrator")).toContain("agent");
-    expect(toolsSeen.get("orchestrator")).toContain("get_subagent_result");
-    expect(toolsSeen.get("orchestrator")).toContain("steer_subagent");
-    expect(toolsSeen.get("orchestrator")).toContain("stop_subagent");
+    expect(toolsSeen.get("orchestrator")).toContain("agent_get_result");
+    expect(toolsSeen.get("orchestrator")).toContain("agent_steer");
+    expect(toolsSeen.get("orchestrator")).toContain("agent_stop");
 
     expect(toolsSeen.get("worker")).toBeDefined();
     expect(toolsSeen.get("worker")).not.toContain("agent");
@@ -161,12 +161,12 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
       if (text.includes("Delegate this downward")) {
         const results = toolResultTexts(context);
         const spawned = results.find((r) => r.name === "agent")?.text ?? "";
-        const polled = results.find((r) => r.name === "get_subagent_result")?.text;
+        const polled = results.find((r) => r.name === "agent_get_result")?.text;
         if (polled !== undefined) return `orchestrator polled: ${polled}`;
         if (spawned) {
           const id = /Agent ID:\s*(\S+)/.exec(spawned)?.[1];
           expect(id).toBeTruthy();
-          return fauxToolCall("get_subagent_result", { agent_id: id as string, wait: true });
+          return fauxToolCall("agent_get_result", { agent_id: id as string, wait: true });
         }
         return agentCall({
           subagent_type: "worker",

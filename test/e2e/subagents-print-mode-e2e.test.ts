@@ -268,13 +268,13 @@ describe.runIf(LIVE)("subagents print-mode e2e (live LLM, opt-in)", () => {
   );
 
   it(
-    "BACKGROUND spawn + get_subagent_result — model backgrounds work then retrieves it",
+    "BACKGROUND spawn + agent_get_result — model backgrounds work then retrieves it",
     async () => {
       run = await runPrintMode({
         prompt:
           "Spawn a general-purpose subagent IN THE BACKGROUND (run_in_background: true) whose " +
           "only task is to reply with the exact word BGPONG. After it finishes, use the " +
-          "get_subagent_result tool to fetch its result, then tell me exactly what it said.",
+          "agent_get_result tool to fetch its result, then tell me exactly what it said.",
         timeoutMs: LIVE_TIMEOUT,
       });
       const calls = agentToolCalls(run.parentSession);
@@ -313,7 +313,7 @@ describe.runIf(LIVE)("subagents print-mode e2e (live LLM, opt-in)", () => {
           "1) FOREGROUND: spawn a general-purpose subagent (run_in_background: false) whose only",
           "   task is to reply with the exact token FG_OK. Confirm you got FG_OK back.",
           "2) BACKGROUND: spawn a general-purpose subagent with run_in_background: true whose only",
-          "   task is to reply with the exact token BG_OK. After it finishes, call get_subagent_result",
+          "   task is to reply with the exact token BG_OK. After it finishes, call agent_get_result",
           "   to retrieve its output. Confirm you got BG_OK.",
           "3) EXPLORE: spawn a subagent with subagent_type 'Explore' to summarize the current",
           "   working directory in one line.",
@@ -327,7 +327,7 @@ describe.runIf(LIVE)("subagents print-mode e2e (live LLM, opt-in)", () => {
 
       expect(calls.some((c) => c.run_in_background !== true)).toBe(true);
       expect(calls.some((c) => c.run_in_background === true)).toBe(true);
-      expect(tools).toContain("get_subagent_result");
+      expect(tools).toContain("agent_get_result");
       expect(calls.some((c) => String(c.subagent_type ?? "").toLowerCase() === "explore")).toBe(true);
       const transcript = conversationText(run.parentSession);
       expect(transcript).toMatch(/FG_OK/i);

@@ -114,7 +114,7 @@ describe("issue #108: unread completed background agents survive session events"
 
     await lifecycle.get("session_before_switch")?.();
 
-    const res = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
+    const res = await tools.get("agent_get_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     const out = textOf(res);
     expect(out).not.toContain("Agent not found");
     expect(out).toContain("THE-RESULT-PAYLOAD");
@@ -129,7 +129,7 @@ describe("issue #108: unread completed background agents survive session events"
 
     await lifecycle.get("session_start")?.({}, ctx());
 
-    const res = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
+    const res = await tools.get("agent_get_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     const out = textOf(res);
     expect(out).not.toContain("Agent not found");
     expect(out).toContain("THE-RESULT-PAYLOAD");
@@ -142,12 +142,12 @@ describe("issue #108: unread completed background agents survive session events"
     subagentsExtension(pi);
     const id = await spawnCompletedBackgroundAgent(tools);
 
-    const first = await tools.get("get_subagent_result").execute("tc-read1", { agent_id: id }, undefined, undefined, ctx());
+    const first = await tools.get("agent_get_result").execute("tc-read1", { agent_id: id }, undefined, undefined, ctx());
     expect(textOf(first)).toContain("THE-RESULT-PAYLOAD");
 
     await lifecycle.get("session_before_switch")?.();
 
-    const second = await tools.get("get_subagent_result").execute("tc-read2", { agent_id: id }, undefined, undefined, ctx());
+    const second = await tools.get("agent_get_result").execute("tc-read2", { agent_id: id }, undefined, undefined, ctx());
     expect(textOf(second)).toContain("Agent not found");
 
     await lifecycle.get("session_shutdown")?.({}, ctx());

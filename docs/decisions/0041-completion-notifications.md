@@ -21,7 +21,7 @@ A completion notification is one pi custom message of type `subagent-notificatio
 
 1. The message `content` is for the model. It is a `<task-notification>` block per agent, built in `src/manager/notification-format.ts`, with the ids, output file, status, a result preview, and usage.
 2. The message `details` is for the user. The renderer in `src/ui/notification-renderer.ts` draws it, and its output never reaches the model.
-3. Neither part carries the full result. When a preview cuts the result, it says so, and the model text names `get_subagent_result` as the way to read the rest.
+3. Neither part carries the full result. When a preview cuts the result, it says so, and the model text names `agent_get_result` as the way to read the rest.
 
 ### User rendering
 

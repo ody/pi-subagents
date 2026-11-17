@@ -52,9 +52,9 @@ async function spawnBackground(tools: Map<string, any>): Promise<string> {
 }
 
 const steer = (tools: Map<string, any>, agent_id: string, message: string) =>
-  tools.get("steer_subagent").execute("tc-steer", { agent_id, message }, undefined, undefined, ctx());
+  tools.get("agent_steer").execute("tc-steer", { agent_id, message }, undefined, undefined, ctx());
 
-describe("steer_subagent before the session exists", () => {
+describe("agent_steer before the session exists", () => {
   it("queues the message on the record and says so", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -105,7 +105,7 @@ describe("steer_subagent before the session exists", () => {
   });
 });
 
-describe("steer_subagent once the session exists", () => {
+describe("agent_steer once the session exists", () => {
   it("reports failure and emits no event when the steer throws", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);

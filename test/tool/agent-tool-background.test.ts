@@ -4,7 +4,7 @@ import type { AgentRecord } from "../../src/types.js";
 
 const closing =
   "\nYou will be notified when this agent completes.\n" +
-  "Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.";
+  "Use agent_get_result to retrieve full results, or agent_steer to send it messages.";
 
 function record(overrides: Partial<AgentRecord>): AgentRecord {
   return {

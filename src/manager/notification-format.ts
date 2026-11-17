@@ -25,7 +25,7 @@ export function formatTaskNotification(record: AgentRecord, resultMaxLen: number
 
   const resultPreview = record.result
     ? record.result.length > resultMaxLen
-      ? record.result.slice(0, resultMaxLen) + "\n...(truncated, use get_subagent_result for full output)"
+      ? record.result.slice(0, resultMaxLen) + "\n...(truncated, use agent_get_result for full output)"
       : record.result
     : "No output.";
 

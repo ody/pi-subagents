@@ -77,7 +77,7 @@ async function spawnBackground(tools: Map<string, any>): Promise<{ id: string; q
   return { id, queued: textOf(r).includes("queued in background") };
 }
 
-describe("get_subagent_result wait:true on a queued agent", () => {
+describe("agent_get_result wait:true on a queued agent", () => {
   it("waits through queue start and returns the result (no 'still running')", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -92,7 +92,7 @@ describe("get_subagent_result wait:true on a queued agent", () => {
     expect(queuedId, "expected to hit the concurrency limit within 20 spawns").toBeDefined();
 
     const waitPromise = tools
-      .get("get_subagent_result")
+      .get("agent_get_result")
       .execute("tc-wait", { agent_id: queuedId, wait: true }, undefined, undefined, ctx());
 
     let settled = false;
@@ -136,7 +136,7 @@ describe("get_subagent_result wait:true on a queued agent", () => {
     const controller = new AbortController();
     const removeListener = vi.spyOn(controller.signal, "removeEventListener");
     const waitOutcome = tools
-      .get("get_subagent_result")
+      .get("agent_get_result")
       .execute("tc-wait-abort", { agent_id: id, wait: true }, controller.signal, undefined, ctx())
       .then(
         () => "resolved",
@@ -156,7 +156,7 @@ describe("get_subagent_result wait:true on a queued agent", () => {
     await new Promise((r) => setTimeout(r, 350));
 
     const completedResult = await tools
-      .get("get_subagent_result")
+      .get("agent_get_result")
       .execute("tc-result", { agent_id: id }, undefined, undefined, ctx());
 
     await lifecycle.get("session_shutdown")?.();
@@ -182,7 +182,7 @@ describe("get_subagent_result wait:true on a queued agent", () => {
 
     const controller = new AbortController();
     const waitOutcome = tools
-      .get("get_subagent_result")
+      .get("agent_get_result")
       .execute("tc-queued-abort", { agent_id: queuedId, wait: true }, controller.signal, undefined, ctx())
       .then(
         () => "resolved",
@@ -200,7 +200,7 @@ describe("get_subagent_result wait:true on a queued agent", () => {
       while (resolvers.length > 0) resolvers.shift()!();
       await flush();
       const result = await tools
-        .get("get_subagent_result")
+        .get("agent_get_result")
         .execute("tc-queued-result", { agent_id: queuedId }, undefined, undefined, ctx());
       if (textOf(result).includes("THE-RESULT-PAYLOAD")) completedResult = result;
       await new Promise((r) => setTimeout(r, 25));

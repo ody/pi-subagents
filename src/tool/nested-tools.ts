@@ -51,7 +51,7 @@ let maxSubagentDepth = SETTING_SPECS.maxSubagentDepth.default;
 export function getMaxSubagentDepth(): number { return maxSubagentDepth; }
 export function setMaxSubagentDepth(n: number): void { maxSubagentDepth = Math.max(0, Math.floor(n)); }
 
-export const NESTED_TOOL_NAMES = ["agent", "get_subagent_result", "steer_subagent", "stop_subagent"] as const;
+export const NESTED_TOOL_NAMES = ["agent", "agent_get_result", "agent_steer", "agent_stop"] as const;
 
 interface NestedSpawnOptions {
   description: string;
@@ -407,7 +407,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
       max_turns: Type.Optional(Type.Number({ minimum: 0 })),
       run_in_background: Type.Optional(
         Type.Boolean({
-          description: "Defaults to false for nested spawns — the call blocks and returns the child's result inline. Set true only for work you will collect later with get_subagent_result; a detached child is stopped when you finish.",
+          description: "Defaults to false for nested spawns — the call blocks and returns the child's result inline. Set true only for work you will collect later with agent_get_result; a detached child is stopped when you finish.",
         }),
       ),
       resume: Type.Optional(Type.String({ description: "Resume a nested agent owned by this parent." })),

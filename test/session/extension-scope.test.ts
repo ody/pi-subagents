@@ -260,8 +260,8 @@ describe("resolveSessionToolScope", () => {
     const scope = resolveSessionToolScope({
       noExtensions: true,
       toolNames: ["read", "bash", "agent"],
-      disallowedSet: new Set(["bash", "steer_subagent"]),
-      nestedToolNames: new Set(["agent", "steer_subagent"]),
+      disallowedSet: new Set(["bash", "agent_steer"]),
+      nestedToolNames: new Set(["agent", "agent_steer"]),
     });
     expect(scope).toEqual({ sessionTools: ["read", "agent"], sessionExcludeTools: undefined });
   });
@@ -275,7 +275,7 @@ describe("resolveSessionToolScope", () => {
     expect(scope.sessionTools).toBeUndefined();
     const deny = new Set(scope.sessionExcludeTools);
     expect(deny.has("agent")).toBe(false);
-    expect(deny.has("get_subagent_result")).toBe(true);
+    expect(deny.has("agent_get_result")).toBe(true);
     expect(deny.has("foo")).toBe(true);
     expect(deny.has("read")).toBe(false);
     expect(deny.has("bash")).toBe(true);

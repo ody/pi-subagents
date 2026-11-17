@@ -6,7 +6,7 @@ Replaces: 0008-stopped-agents-always-settle, last present in f56bafc
 
 The user, the model, another extension, an owner's settle, and shutdown can each stop a run. The model reads why a run stopped from its status text, and acts on it. A stop by the user is not a failure to retry.
 
-The model needs a way to stop its own agents. `steer_subagent` cannot reach a wedged agent, because a steering message lands only after the current tool call.
+The model needs a way to stop its own agents. `agent_steer` cannot reach a wedged agent, because a steering message lands only after the current tool call.
 
 ## Decision
 
@@ -17,14 +17,14 @@ Every stop goes through `AgentManager.abort()`, which takes the stop cause. `abo
 | `stopCause` | Set by |
 | --- | --- |
 | `user` | `/agents`, the viewer, or the session's interrupted tool call |
-| `agent` | `stop_subagent` or its nested mirror |
+| `agent` | `agent_stop` or its nested mirror |
 | `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
 | `shutdown` | `abortAll` |
 
 A signal that is already aborted at spawn gives the cause of that signal's owner. A spawn or resume that carries a signal names that cause in `signalCause`, and the call throws without it. The spawn funnel for `subagents:rpc:spawn` and the manager registry always sets `extension`, whatever the caller passes.
 
-The `stop_subagent` tool in `src/tool/agent-control-tools.ts`, and its nested mirror in `src/tool/nested-tools.ts`:
+The `agent_stop` tool in `src/tool/agent-control-tools.ts`, and its nested mirror in `src/tool/nested-tools.ts`:
 
 - The top-level `agent_id` accepts an agent id, handle, or alias. The nested tool accepts only the id of a direct child of the caller.
 - It acts only on agents the caller owns (ADR 0007). An unknown or unowned agent reports not found.
@@ -40,4 +40,4 @@ Done check: `npx vitest run test/manager/stop-cause.test.ts test/stop-subagent-w
 
 - A stop path that skips `abort()` loses the forced settle and the cause.
 - A new stop source needs a cause value and its status text.
-- Marking the result consumed on stop would suppress the stopped-status signal and the result preview. `get_subagent_result` stays the way to read the full output.
+- Marking the result consumed on stop would suppress the stopped-status signal and the result preview. `agent_get_result` stays the way to read the full output.

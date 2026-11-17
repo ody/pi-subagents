@@ -14,14 +14,14 @@ Text this extension injects into a model's context never tells the model which n
 
 - `description`, `promptSnippet`, `promptGuidelines`, and parameter `description` strings of every tool this extension registers, top-level and nested.
 - Text generated for `toolDescriptionMode` `"custom"`: `{{typeList}}`, `{{compactTypeList}}`, and `{{isolationGuideline}}`.
-- Every `content[].text` that the `agent`, nested `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools return.
+- Every `content[].text` that the `agent`, nested `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools return.
 - `<task-notification>` messages and the mention reminder.
 - The append-mode `<sub_agent_context>` bridge and the fallback identity in `src/session/prompts.ts`.
 
 Rules:
 
 - For work the model does not delegate, say "handle it yourself", never a tool name.
-- Text may name this extension's tools (`agent`, `get_subagent_result`, `steer_subagent`, `stop_subagent`) and registered agent types.
+- Text may name this extension's tools (`agent`, `agent_get_result`, `agent_steer`, `agent_stop`) and registered agent types.
 - The type list may name the tools a sub-agent type has, in its `(Tools: …)` suffix. That describes the sub-agent, not the host.
 - A capability note (`filteredNote`, `nestedFilteredNote`) may name the capabilities it removed from a sub-agent. That also describes the sub-agent.
 

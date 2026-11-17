@@ -19,5 +19,5 @@ Done check: `npx vitest run test/background-by-default.test.ts test/invocation-c
 
 ## Consequences
 
-- A model that does not know about background runs gets an id instead of a result, and must call `get_subagent_result` or wait for the notification.
+- A model that does not know about background runs gets an id instead of a result, and must call `agent_get_result` or wait for the notification.
 - Revisit if the notification path extends to nested agents.

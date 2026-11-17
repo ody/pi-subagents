@@ -119,7 +119,7 @@ describe("toolDescriptionMode", () => {
     for (const contract of [
       "run_in_background",
       "resume",
-      "steer_subagent",
+      "agent_steer",
       'isolation: "worktree"',
       ".pi/agents/",
       "self-contained",
@@ -134,7 +134,7 @@ describe("toolDescriptionMode", () => {
     for (const contract of [
       "run_in_background",
       "resume",
-      "steer_subagent",
+      "agent_steer",
       "worktree",
       ".pi/agents/",
       "self-contained",

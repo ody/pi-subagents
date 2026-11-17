@@ -63,7 +63,7 @@ export class CompletionNotifier {
 
           this.pi.sendMessage<NotificationDetails>({
             customType: "subagent-notification",
-            content: `Background agent group completed: ${label}\n\n${notifications}\n\nUse get_subagent_result for full output.`,
+            content: `Background agent group completed: ${label}\n\n${notifications}\n\nUse agent_get_result for full output.`,
             display: true,
             details,
           }, { deliverAs: "followUp", triggerTurn: true });

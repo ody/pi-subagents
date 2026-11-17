@@ -311,14 +311,14 @@ describe("reporting subagent usage back to the parent session", () => {
     });
   });
 
-  it("reports spend through get_subagent_result too", async () => {
+  it("reports spend through agent_get_result too", async () => {
     const { tools } = boot({ reportUsage: true });
     runSpending({ input: 100, output: 50, cacheWrite: 10, cost: 0.0123 });
 
     await spawn(tools, undefined);
     await flush();
 
-    const result = await tools.get("get_subagent_result").execute(
+    const result = await tools.get("agent_get_result").execute(
       "tc-2", { agent_id: "nope" }, undefined, undefined, ctx(),
     );
 

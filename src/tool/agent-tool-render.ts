@@ -63,7 +63,7 @@ function appendExpandedOutput(line: string, resultText: string, theme: PiTheme):
     line += "\n" + theme.fg("dim", `  ${l}`);
   }
   if (all.length > 50) {
-    line += "\n" + theme.fg("muted", "  ... (use get_subagent_result with verbose for full output)");
+    line += "\n" + theme.fg("muted", "  ... (use agent_get_result with verbose for full output)");
   }
   return line;
 }

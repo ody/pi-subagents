@@ -83,7 +83,7 @@ describe("agent tool status rendering", () => {
     const output = renderWith({ content: body(text), details: { ...base, status: "completed" } }, { expanded: true });
     expect(output).toContain("  line49");
     expect(output).not.toContain("line50");
-    expect(output).toContain("... (use get_subagent_result with verbose for full output)");
+    expect(output).toContain("... (use agent_get_result with verbose for full output)");
     expect(output).toContain("✓ haiku · t1");
     expect(output).toContain("1 tool use ·");
     expect(output).toContain("5k tokens");
@@ -93,7 +93,7 @@ describe("agent tool status rendering", () => {
     const text = Array.from({ length: 50 }, (_, i) => `line${i}`).join("\n");
     const output = renderWith({ content: body(text), details: { ...base, status: "completed" } }, { expanded: true });
     expect(output).toContain("line49");
-    expect(output).not.toContain("get_subagent_result");
+    expect(output).not.toContain("agent_get_result");
   });
 
   it("renders only the header when expanded with empty text", () => {

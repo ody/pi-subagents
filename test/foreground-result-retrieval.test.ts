@@ -104,14 +104,14 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     vi.restoreAllMocks();
   });
 
-  it("is NOT cleaned up — get_subagent_result with the real id still resolves it", async () => {
+  it("is NOT cleaned up — agent_get_result with the real id still resolves it", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
     const { res, id } = await runForegroundSteeredAgent(tools);
 
     expect(textOf(res)).toContain("wrapped up at the turn limit");
 
-    const read = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
+    const read = await tools.get("agent_get_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     const out = textOf(read);
     expect(out).not.toContain("Agent not found");
     expect(out).toContain("THE-RESULT-PAYLOAD");
@@ -127,7 +127,7 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     expect(textOf(res)).not.toContain(id);
     expect(textOf(res)).not.toMatch(/Agent ID:/);
 
-    const bogus = await tools.get("get_subagent_result").execute(
+    const bogus = await tools.get("agent_get_result").execute(
       "tc-bogus",
       { agent_id: "3f1320a7-74ec-422" },
       undefined,
@@ -150,7 +150,7 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     await child.lifecycle.get("session_start")?.({}, ctx());
     await child.lifecycle.get("session_shutdown")?.({}, ctx());
 
-    const read = await parent.tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
+    const read = await parent.tools.get("agent_get_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     const out = textOf(read);
     expect(out).not.toContain("Agent not found");
     expect(out).toContain("THE-RESULT-PAYLOAD");
@@ -165,7 +165,7 @@ describe("issue #174: foreground agent that hits max_turns", () => {
 
     await lifecycle.get("session_before_switch")?.();
 
-    const read = await tools.get("get_subagent_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
+    const read = await tools.get("agent_get_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
     expect(textOf(read)).toContain("Agent not found");
 
     await lifecycle.get("session_shutdown")?.({}, ctx());

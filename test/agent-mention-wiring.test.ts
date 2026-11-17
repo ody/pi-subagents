@@ -1152,10 +1152,10 @@ describe("resuming an evicted agent by name", () => {
     await evict(await spawnBackground(tools));
     await flush();
 
-    const steered = await tools.get("steer_subagent").execute(
+    const steered = await tools.get("agent_steer").execute(
       "tc", { agent_id: "explore", message: "hi" }, undefined, undefined, ctx(),
     );
-    const read = await tools.get("get_subagent_result").execute(
+    const read = await tools.get("agent_get_result").execute(
       "tc", { agent_id: "explore" }, undefined, undefined, ctx(),
     );
 
@@ -1217,7 +1217,7 @@ describe("handles as tool arguments", () => {
     await spawnBackground(tools);
     await flush();
 
-    const r = await tools.get("steer_subagent").execute(
+    const r = await tools.get("agent_steer").execute(
       "tc", { agent_id: "explore", message: "look at the RPC path" }, undefined, undefined, ctx(),
     );
 
@@ -1236,7 +1236,7 @@ describe("handles as tool arguments", () => {
     );
     await flush();
 
-    await tools.get("steer_subagent").execute(
+    await tools.get("agent_steer").execute(
       "tc", { agent_id: "auth-audit", message: "keep going" }, undefined, undefined, ctx(),
     );
 
@@ -1249,7 +1249,7 @@ describe("handles as tool arguments", () => {
     await spawnBackground(tools);
     await flush();
 
-    const r = await tools.get("get_subagent_result").execute(
+    const r = await tools.get("agent_get_result").execute(
       "tc", { agent_id: "explore" }, undefined, undefined, ctx(),
     );
 
@@ -1259,7 +1259,7 @@ describe("handles as tool arguments", () => {
   it("still reports an unknown reference as not found", async () => {
     const { tools } = boot();
 
-    const r = await tools.get("steer_subagent").execute(
+    const r = await tools.get("agent_steer").execute(
       "tc", { agent_id: "nosuchagent", message: "hi" }, undefined, undefined, ctx(),
     );
 

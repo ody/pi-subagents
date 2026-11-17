@@ -180,7 +180,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       if (record.status !== "running" && record.status !== "queued") {
         return textResult(
           `Agent ${record.id} is not running (status: ${record.status}${getStatusNote(record.status, record.stopCause)}). ` +
-          `Its result is still available — use get_subagent_result.`,
+          `Its result is still available — use agent_get_result.`,
         );
       }
 

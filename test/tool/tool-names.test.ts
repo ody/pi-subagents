@@ -42,6 +42,13 @@ describe("tool names", () => {
     expect(NESTED_TOOL_NAMES[0]).toBe("agent");
   });
 
+  it("prefixes every lifecycle tool with agent_ in both registrations", () => {
+    expect(SUBAGENT_TOOL_NAMES.GET_RESULT).toBe("agent_get_result");
+    expect(SUBAGENT_TOOL_NAMES.STEER).toBe("agent_steer");
+    expect(SUBAGENT_TOOL_NAMES.STOP).toBe("agent_stop");
+    expect(NESTED_TOOL_NAMES.slice(1)).toEqual(["agent_get_result", "agent_steer", "agent_stop"]);
+  });
+
   it("registers the top-level agent tool under SUBAGENT_TOOL_NAMES.AGENT", () => {
     expect(topLevelAgentTool().name).toBe(SUBAGENT_TOOL_NAMES.AGENT);
   });

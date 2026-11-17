@@ -19,8 +19,8 @@ function setup(record: AgentRecord) {
     resolveAgentRef: (ref: string) => (ref === record.id || ref === record.handle ? record : undefined),
     usageReporting: { settings: { reportUsage: false }, pendingUsage: new Map() } as any,
   });
-  const getResult = tools.find((tool) => tool.name === "get_subagent_result");
-  const steer = tools.find((tool) => tool.name === "steer_subagent");
+  const getResult = tools.find((tool) => tool.name === "agent_get_result");
+  const steer = tools.find((tool) => tool.name === "agent_steer");
   return { getResult, steer, cancelNudge };
 }
 
@@ -38,7 +38,7 @@ function completedRecord(): AgentRecord {
   } as AgentRecord;
 }
 
-describe("get_subagent_result nudge cancellation", () => {
+describe("agent_get_result nudge cancellation", () => {
   it("cancels the pending nudge by record id when called with the id", async () => {
     const record = completedRecord();
     const { getResult, cancelNudge } = setup(record);
@@ -81,7 +81,7 @@ function resultText(result: any): string {
   return result.content[0].text;
 }
 
-describe("get_subagent_result stats line", () => {
+describe("agent_get_result stats line", () => {
   it("reports context percent rounded, and compactions", async () => {
     const record = { ...completedRecord(), session: sessionWith(41.6), compactionCount: 2 } as AgentRecord;
     const { getResult } = setup(record);
@@ -137,7 +137,7 @@ describe("resultBody", () => {
   });
 });
 
-describe("get_subagent_result verbose and consume", () => {
+describe("agent_get_result verbose and consume", () => {
   const messages = [{ role: "user", content: "hello there" }];
 
   it("appends the conversation when verbose", async () => {
@@ -185,7 +185,7 @@ describe("formatSteerState", () => {
   });
 });
 
-describe("steer_subagent", () => {
+describe("agent_steer", () => {
   const running = () => ({ ...completedRecord(), status: "running", session: sessionWith(7) }) as AgentRecord;
 
   it("reports the current state after steering", async () => {

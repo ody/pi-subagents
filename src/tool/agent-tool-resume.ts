@@ -38,7 +38,7 @@ export async function resumeAgentCall(deps: ResumeAgentDeps, input: ResumeAgentI
     if (existing.status === "running" || existing.status === "queued") {
       return textResult(
         `Agent "${params.resume}" is still ${existing.status} — it can only be resumed once its current run finishes.\n` +
-        `Use steer_subagent to send it a message mid-run, or get_subagent_result to wait for it.`,
+        `Use agent_steer to send it a message mid-run, or agent_get_result to wait for it.`,
       );
     }
 

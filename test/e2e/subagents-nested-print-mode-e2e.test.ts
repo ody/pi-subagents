@@ -15,7 +15,7 @@ import {
 
 vi.setConfig({ testTimeout: 30_000 });
 
-const NESTED_TOOLS = ["agent", "get_subagent_result", "steer_subagent", "stop_subagent"];
+const NESTED_TOOLS = ["agent", "agent_get_result", "agent_steer", "agent_stop"];
 
 function userPrompt(ctx: Context): string {
   for (const message of ctx.messages) {
@@ -249,16 +249,16 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             run_in_background: true,
           });
         }
-        if (toolResults(ctx, "get_subagent_result").length === 0) {
+        if (toolResults(ctx, "agent_get_result").length === 0) {
           const id = agents[0].match(/Agent ID: ([^\s]+)/)?.[1];
           if (!id) throw new Error(`No background agent ID in: ${agents[0]}`);
           return toolCall(
-            "get_subagent_result",
+            "agent_get_result",
             { agent_id: id, wait: true },
             "get-background-result",
           );
         }
-        return lastToolResult(ctx, "get_subagent_result");
+        return lastToolResult(ctx, "agent_get_result");
       },
       { prompt: "root-background", maxModelCalls: 24 },
     ));
@@ -272,7 +272,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
           message.role === "assistant" &&
           message.content.some(
             (block) =>
-              block.type === "toolCall" && block.name === "get_subagent_result",
+              block.type === "toolCall" && block.name === "agent_get_result",
           ),
       ),
     ).toBe(true);
@@ -337,18 +337,18 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
             await waitForChildReady(ownerHoldingReady, 5_000);
             const id = nestedId;
             if (!id) throw new Error("Owner never published a nested agent id");
-            const gets = toolResults(ctx, "get_subagent_result");
-            const steers = toolResults(ctx, "steer_subagent");
+            const gets = toolResults(ctx, "agent_get_result");
+            const steers = toolResults(ctx, "agent_steer");
             if (gets.length === 0) {
               return toolCall(
-                "get_subagent_result",
+                "agent_get_result",
                 { agent_id: id },
                 "foreign-get",
               );
             }
             if (steers.length === 0) {
               return toolCall(
-                "steer_subagent",
+                "agent_steer",
                 { agent_id: id, message: "foreign guidance" },
                 "foreign-steer",
               );
@@ -374,18 +374,18 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
               run_in_background: true,
             });
           }
-          const results = toolResults(ctx, "get_subagent_result");
+          const results = toolResults(ctx, "agent_get_result");
           if (results.length === 0) {
             const probeSpawn = agents[1];
             const probeId = probeSpawn.match(/Agent ID: ([^\s]+)/)?.[1];
             if (!probeId) throw new Error(`No probe ID in: ${probeSpawn}`);
             return toolCall(
-              "get_subagent_result",
+              "agent_get_result",
               { agent_id: probeId, wait: true },
               "await-probe",
             );
           }
-          return lastToolResult(ctx, "get_subagent_result");
+          return lastToolResult(ctx, "agent_get_result");
         },
         { prompt: "root-ownership", maxModelCalls: 32, hold: false },
       ));

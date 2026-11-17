@@ -4,7 +4,7 @@
 
 A subagent runs in its own pi session. pi's footer, statusline, and `/cost` count only the main session's messages, so a session that delegated most of its work reads as nearly free.
 
-`reportUsage` (default `false`) adds subagent usage to the session's own totals. `PendingUsagePool` (`src/usage.ts`) accumulates usage, and `withUsageReporting` attaches the drained total to the next result of `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent`. The extension's own displays leave out `cacheRead`, but the reported total includes it.
+`reportUsage` (default `false`) adds subagent usage to the session's own totals. `PendingUsagePool` (`src/usage.ts`) accumulates usage, and `withUsageReporting` attaches the drained total to the next result of `agent`, `agent_get_result`, `agent_steer`, and `agent_stop`. The extension's own displays leave out `cacheRead`, but the reported total includes it.
 
 ## Decision
 

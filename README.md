@@ -4,7 +4,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 
 ## Features
 
-- **Native tools and UI** — the `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools follow pi's calling conventions and UI patterns
+- **Native tools and UI** — the `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools follow pi's calling conventions and UI patterns
 - **Parallel background agents** — spawn multiple agents that run concurrently with automatic queuing (configurable concurrency limit, default 10) and smart group join (consolidated notifications)
 - **Live widget UI** — persistent above-editor widget with animated spinners, live tool activity, token counts, and colored status icons. Configurable via `/agents → Settings → Widget`: `all` (every agent, the default), `background` (hides foreground runs, which already render inline as the `agent` tool result), or `off`
 - **FleetView** — navigable **tree** of `main` + every running subagent listed directly above the editor on demand, with [nested children](#nested-subagents) indented under their owner. `↓` at an empty prompt opens it. `↑`/`↓` move the selection and wrap. `←`/`→` collapse and expand a row that owns children. `Enter` opens the selected agent's live conversation. `Esc` closes the view. Toggle via `/agents → Settings → Fleet view`
@@ -13,11 +13,11 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
   - Stop a still-running agent by pressing `x` (then `x` again to confirm).
   - Assistant text renders as Markdown; `m` cycles that between off, assistant-only and everything for this session only (see [Viewer markdown](#persistent-settings)).
 - **Custom agent types** — define agents in `.pi/agents/<name>.md` or `.agents/agents/<name>.md` (project) or globally. YAML frontmatter sets custom system prompts, model selection, thinking levels, tool restrictions, and colored name badges
-- **Nested subagents** — opt-in, default-off delegation. A custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools. The extension caps depth from the main session (default 2). The agent can control only its own children. The extension stops them when the agent finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
+- **Nested subagents** — opt-in, default-off delegation. A custom agent that sets `allowed_subagents` gets its own ownership-scoped `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools. The extension caps depth from the main session (default 2). The agent can control only its own children. The extension stops them when the agent finishes, and their transcripts and token spend roll up to it. A child never exceeds its parent's tools, extensions, or skills
 - **Agent mentions** — subagents are first-class. Type `@reviewer also check the RPC path` at the prompt. The text goes to that agent instead of the main model, and none of it enters the chat. Toggle via `/agents → Settings → Agent mentions`.
   - One syntax covers the whole lifecycle. Message an agent while it runs. Resume it once it has finished. Reopen its session from disk long after that. Start it if it never ran.
   - Mentioning an agent that isn't running spawns it through an off-screen clone of the conversation. The agent gets a context-written prompt and a real `agent` tool call, and none of it reaches the chat. `direct` mode starts it here from your text instead, with no model call at all.
-  - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `steer_subagent`/`get_subagent_result` too.
+  - The orchestrator can `name` an agent so you address it as `@auth-audit`, and handles work in `agent_steer`/`agent_get_result` too.
   - `@` completes live agents, resumable ones, and startable types alongside pi's file completion. `@main` forces text back to the main model.
 - **Mid-run steering** — inject messages into running agents to redirect their work without restarting
 - **Session resume** — pick up where an agent left off, preserving full conversation context. The session keeps its model and thinking level; `run_in_background` and `max_turns` come from the resuming call, else from the run's original values. Pass `run_in_background: false` to block and get the result inline
@@ -76,7 +76,7 @@ agent({
 })
 ```
 
-Agents run in the background by default. The call returns an ID immediately and notifies you on completion with a preview of the result (use `get_subagent_result` for the full text). Pass `run_in_background: false` to block until the agent finishes and get its full output inline.
+Agents run in the background by default. The call returns an ID immediately and notifies you on completion with a preview of the result (use `agent_get_result` for the full text). Pass `run_in_background: false` to block until the agent finishes and get its full output inline.
 
 ## UI
 
@@ -132,7 +132,7 @@ The keys, at an **empty prompt**:
 - `↑`/`↓` move the selection and wrap: `↑` on `main` selects the last row, and `↓` on the last row selects `main`. Moving never closes the list.
 - `Esc`, or `Enter` on `main`, closes the list. Any other key closes it and passes through to the prompt.
 - `Enter` opens the selected agent's live conversation overlay, which auto-updates as the agent works.
-- Inside that overlay, `Enter` steers the running agent. Type a message and press `Enter` to send it (`Esc` or an empty submit returns). This redirects the agent the same way the `steer_subagent` tool does.
+- Inside that overlay, `Enter` steers the running agent. Type a message and press `Enter` to send it (`Esc` or an empty submit returns). This redirects the agent the same way the `agent_steer` tool does.
 
 The selected row renders in the theme's primary text color rather than the muted/dim treatment of the others. An agent with a configured `color` shows its badge there too, bolded.
 
@@ -156,7 +156,7 @@ The handle names the **agent**, not one process, so a single syntax covers its w
 
 | State | `@reviewer fix the flaky test` does |
 | --- | --- |
-| running or queued | sends the message into its conversation, exactly as `steer_subagent` would |
+| running or queued | sends the message into its conversation, exactly as `agent_steer` would |
 | finished | **resumes** it in the background from its existing session, continuing where it left off |
 | finished long ago, record gone | **reopens** its session from disk and continues there |
 | never started | **starts** it — by default, through a clone of this conversation ([below](#starting-a-new-agent)) |
@@ -210,7 +210,7 @@ Two things to weigh against `direct`: the clone re-sends the whole conversation,
 
 The `agent` tool takes an optional `name`, so the orchestrator can call one `auth-audit` instead of leaving you to tell `@reviewer-2` from `@reviewer-3`. A name is *additive*: the type-derived handle is still assigned, so `@reviewer` keeps reaching that agent rather than starting a second one beside it.
 
-Both names share one namespace, so an alias can never shadow a live handle or the reverse. The popup shows one row per agent, under its alias, with the type moved into the description. `steer_subagent`, `get_subagent_result`, and `stop_subagent` accept a handle too, so you and the model address agents the same way.
+Both names share one namespace, so an alias can never shadow a live handle or the reverse. The popup shows one row per agent, under its alias, with the type moved into the description. `agent_steer`, `agent_get_result`, and `agent_stop` accept a handle too, so you and the model address agents the same way.
 
 #### Resuming much later
 
@@ -359,7 +359,7 @@ All fields are optional — sensible defaults for everything.
 | `persist_session` | `subagents.json` `rememberAgents` (default `true`) | Persist this subagent as a normal pi session instead of keeping the session in memory only; overrides the `rememberAgents` project default in both directions. It records its spawning session as parent, so it nests under it in `/resume`. The subagent's `.output` transcript is still written either way unless `output_transcript: false` |
 | `output_transcript` | `true` (or `subagents.json` `outputTranscript`) | Write this subagent's `.output` transcript; when set, overrides the `subagents.json` `outputTranscript` default. Set `false` to write no transcript file or path. Governs only the transcript — independent of `persist_session` and `isolation: worktree` |
 | `session_dir` | pi default | Optional session directory when `persist_session: true`; omitted uses pi's normal session location, and relative paths resolve from the agent cwd. A session outside the parent's session directory (this override, or `isolation: worktree`) appears separately in the list, so it shows as a root instead of nesting |
-| `allowed_subagents` | none | Opt in to scoped nested `agent`, `get_subagent_result`, `steer_subagent`, and `stop_subagent` tools. Omitted / empty / `none` / `false` = no nesting. `all` (or `"*"` / `true`) = any enabled agent. Comma-separated list = only those agent types |
+| `allowed_subagents` | none | Opt in to scoped nested `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools. Omitted / empty / `none` / `false` = no nesting. `all` (or `"*"` / `true`) = any enabled agent. Comma-separated list = only those agent types |
 | `prompt_mode` | `replace` | `replace`: body is the full system prompt (no AGENTS.md / CLAUDE.md inheritance). `append`: body appended to parent's prompt (inherits parent's AGENTS.md / CLAUDE.md). The extension tags a `replace` agent `(bare)` in the widget, viewer, and tool result |
 | `inherit_context` | `false` | Fork parent conversation into agent |
 | `run_in_background` | — | Default this agent to background (`true`) or foreground (`false`); a caller value overrides it. Omit to follow `backgroundByDefault` |
@@ -445,7 +445,7 @@ The **human** surfaces are not part of that ownership boundary. A nested child a
 The hard cap is depth 2 by default: main session (0) → subagent (1) → nested child (2). Change it project-wide with `maxSubagentDepth` in `subagents.json` (or `/agents → Settings → Nested depth`).
 
 - `0` or `1` turns nesting off everywhere.
-- An agent already at the cap gets no nested tools at all — not even `get_subagent_result`, since it can never own a child.
+- An agent already at the cap gets no nested tools at all — not even `agent_get_result`, since it can never own a child.
 - A child must independently set `allowed_subagents` to delegate again.
 - Isolated agents never receive nested tools.
 
@@ -512,7 +512,7 @@ Launch a sub-agent.
 | --- | --- | --- | --- |
 | `prompt` | string | yes | The task for the agent |
 | `description` | string | yes | Short 3-5 word summary (shown in UI) |
-| `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `steer_subagent`/`get_subagent_result`/`stop_subagent`. Additive — the type-derived handle is still assigned |
+| `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `agent_steer`/`agent_get_result`/`agent_stop`. Additive — the type-derived handle is still assigned |
 | `subagent_type` | string | no | Agent type to run. Omit it to build a one-off [ephemeral agent](#ephemeral-agents) from the parameters below. Ignored with `resume` |
 | `tools` | `string[]` | no | Ephemeral only. `*`, built-in names, `none`, and `ext:` selectors, as in the agent file `tools` field. Default: all built-ins and all extension tools |
 | `disallowed_tools` | `string[]` | no | Ephemeral only. Tools to remove, built-in or from an extension |
@@ -545,7 +545,7 @@ A call with no `subagent_type` runs an agent built from its parameters, and the 
 - The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. The extension allows a nested ephemeral child only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn. The extension narrows ephemeral defaults.
 - In `agentMentions: "model"` mode, the extension refuses the conversation clone's `agent` call when it omits `subagent_type` or names a different type than the mention.
 
-### `get_subagent_result`
+### `agent_get_result`
 
 Check status and retrieve results from a background agent.
 
@@ -557,7 +557,7 @@ Check status and retrieve results from a background agent.
 
 Cancelling a `wait: true` call (for example, with `Esc`) stops only the wait. The background agent keeps running, and its completion notification still arrives normally.
 
-### `steer_subagent`
+### `agent_steer`
 
 Send a steering message to a running agent. The message interrupts after the current tool execution.
 
@@ -566,7 +566,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 | `agent_id` | string | yes | Agent ID to steer |
 | `message` | string | yes | Message to inject into agent conversation |
 
-### `stop_subagent`
+### `agent_stop`
 
 Stop a running or queued background agent. The run records `stopCause` `agent`. This is the model's own lever to end a run. A human takes the same action with `x` in FleetView, the conversation viewer, or `/agents`, and `subagents:rpc:stop` gives it to another extension.
 
@@ -578,7 +578,7 @@ An already-completed, errored, or otherwise terminal agent reports its status an
 
 The reply carries whatever assistant text the agent had streamed before the stop. An agent that stopped before it produced any text says so instead of showing an empty block.
 
-The result arrives later through the ordinary completion notification, but only if the agent finishes. A stopped agent's notification carries whatever partial output it had streamed, which is also what `get_subagent_result` returns afterwards. Stopping does **not** mark the result consumed, because at stop time `get_subagent_result`'s data (`record.result`) does not exist yet.
+The result arrives later through the ordinary completion notification, but only if the agent finishes. A stopped agent's notification carries whatever partial output it had streamed, which is also what `agent_get_result` returns afterwards. Stopping does **not** mark the result consumed, because at stop time `agent_get_result`'s data (`record.result`) does not exist yet.
 
 ## Commands
 
@@ -595,7 +595,7 @@ Settings                                    ← every persistent setting (see Pe
 ```
 
 - **Agents** — the whole hierarchy, indented, with nested children under their spawner. The list marks an agent whose owner is gone as `detached`. Select an agent to open its live conversation viewer, where:
-  - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `steer_subagent` tool. `Esc`, or an empty submit, returns.
+  - `Enter` opens the steering composer, and `Enter` again sends a message that redirects the agent. Same mechanism as the `agent_steer` tool. `Esc`, or an empty submit, returns.
   - `x` (then `x` again to confirm) stops or aborts it, **background** agents included. A global Esc can't unambiguously target those, and still stops a blocking foreground `agent` call instead. A stopped agent reports its partial output and flags it as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot. It also fires its completion notification within a few seconds, rather than holding both forever.
   - `m` cycles how much of the transcript renders as Markdown, for this session only — see [Viewer markdown](#persistent-settings).
 - **Agent types** — unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model. The full description of the highlighted agent appears below the list. The model column flags `(unavailable, fallback: inherit)` when the extension can't resolve a configured model (it would silently inherit the parent model). It shows `(→ provider/id)` when the model resolves to a different provider or version than configured. Select an agent to manage it:
@@ -626,7 +626,7 @@ Every `stopped` run has a `stopCause`. The status text the model reads names it.
 | `stopCause` | Set by |
 | --- | --- |
 | `user` | `/agents`, FleetView, the conversation viewer, or the session's interrupted tool call |
-| `agent` | `stop_subagent` or its nested mirror |
+| `agent` | `agent_stop` or its nested mirror |
 | `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
 | `shutdown` | Session shutdown |
@@ -812,7 +812,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 
 `backgroundByDefault`, default `true`: what an `agent` call that doesn't say means. Toggle via `/agents → Settings → Background by default`; applied live. A change registers the `agent` tool again, so the `run_in_background` parameter description states the new default.
 
-- On: the agent runs detached, the call returns its ID immediately, and a completion notification carries a preview of the result (`get_subagent_result` for the full text).
+- On: the agent runs detached, the call returns its ID immediately, and a completion notification carries a preview of the result (`agent_get_result` for the full text).
 - `false`: restores the previous behaviour, where an unqualified spawn blocked the turn and returned its output inline.
 - An explicit `run_in_background` on the call, or in an agent file's frontmatter, overrides this in both directions. The setting only decides what "unspecified" means.
 - **Top-level only.** A nested spawn (an agent spawning its own) always defaults to foreground. The extension stops a detached child when its parent settles, and the child has no notification path of its own.
@@ -851,7 +851,7 @@ The refusal applies immediately; the parameter and its prose appear or disappear
 
 `reportUsage`, default `false`: whether the extension adds subagent spend to *this* session's own totals.
 
-Subagents run in their own pi sessions, so by default pi's footer, statusline and `/cost` count only what the main model spent. A session that delegated most of its work reads as nearly free. Turn it on and each `agent` / `get_subagent_result` / `steer_subagent` / `stop_subagent` result carries the spend accumulated since the last one, and pi folds it into `getSessionStats()`. `/cost` attributes it to the **Tools/summaries** bucket. Toggle via `/agents → Settings → Report usage to session`. The change applies live.
+Subagents run in their own pi sessions, so by default pi's footer, statusline and `/cost` count only what the main model spent. A session that delegated most of its work reads as nearly free. Turn it on and each `agent` / `agent_get_result` / `agent_steer` / `agent_stop` result carries the spend accumulated since the last one, and pi folds it into `getSessionStats()`. `/cost` attributes it to the **Tools/summaries** bucket. Toggle via `/agents → Settings → Report usage to session`. The change applies live.
 
 Three things to know about the numbers:
 
@@ -863,7 +863,7 @@ Agents that finish in the background have no tool result of their own to ride on
 
 ### Show cost
 
-`showCost`, default `false`: whether the subagent surfaces print an estimated cost beside their token counts. The surfaces are the widget (running *and* finished lines), [FleetView](#fleetview), the conversation viewer, foreground results, `get_subagent_result`, and completion notifications:
+`showCost`, default `false`: whether the subagent surfaces print an estimated cost beside their token counts. The surfaces are the widget (running *and* finished lines), [FleetView](#fleetview), the conversation viewer, foreground results, `agent_get_result`, and completion notifications:
 
 ```text
 ├─ ⠹ reviewer  inspect code · ↻3 · 8.2k token · ~$0.0042 · 4.1s
@@ -1136,7 +1136,7 @@ Tell the extension that the model has seen an agent's result, so it does not del
 pi.events.emit("subagents:rpc:consume", { requestId: crypto.randomUUID(), agentId: "agent-id-here" });
 ```
 
-This is the bus-side half of what `get_subagent_result` does when it returns a result. A caller that joins an agent on `subagents:completed` and reports the result itself should consume it. Otherwise the notification lands after the parent has already answered, and it costs a turn to dismiss.
+This is the bus-side half of what `agent_get_result` does when it returns a result. A caller that joins an agent on `subagents:completed` and reports the result itself should consume it. Otherwise the notification lands after the parent has already answered, and it costs a turn to dismiss.
 
 Fire-and-forget is the intended use. The reply carries nothing to act on. The channel is outside the `subagents:rpc:ping` version handshake, so a caller can send it unconditionally. An older extension that has no handler simply keeps notifying.
 

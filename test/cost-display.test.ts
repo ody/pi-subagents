@@ -77,14 +77,14 @@ describe("cost display", () => {
     });
   });
 
-  describe("get_subagent_result", () => {
+  describe("agent_get_result", () => {
     it("reports the cost as its own labelled field", async () => {
       const { tools } = boot({ showCost: true });
       runSpending(COST);
       await spawn(tools);
       await flush();
 
-      const text = textOf(await tools.get("get_subagent_result").execute(
+      const text = textOf(await tools.get("agent_get_result").execute(
         "tc-2", { agent_id: "general-purpose" }, undefined, undefined, ctx(),
       ));
 
@@ -97,7 +97,7 @@ describe("cost display", () => {
       await spawn(tools);
       await flush();
 
-      const text = textOf(await tools.get("get_subagent_result").execute(
+      const text = textOf(await tools.get("agent_get_result").execute(
         "tc-2", { agent_id: "general-purpose" }, undefined, undefined, ctx(),
       ));
 

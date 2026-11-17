@@ -75,7 +75,7 @@ describe("formatTaskNotification", () => {
 
   it("appends the truncation note to an over-long result", () => {
     const xml = formatTaskNotification(rec({ result: "x".repeat(30) }), 10);
-    expect(xml).toContain(`<result>xxxxxxxxxx\n...(truncated, use get_subagent_result for full output)</result>`);
+    expect(xml).toContain(`<result>xxxxxxxxxx\n...(truncated, use agent_get_result for full output)</result>`);
     expect(xml).not.toContain("xxxxxxxxxx\nxxx");
   });
 

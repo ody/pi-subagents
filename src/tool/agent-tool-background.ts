@@ -34,7 +34,7 @@ export function backgroundRunFooter(record: AgentRecord | undefined, maxConcurre
   return (record?.outputFile ? `Output file: ${record.outputFile}\n` : "") +
     (record?.status === "queued" ? `Position: queued (max ${maxConcurrent} concurrent)\n` : "") +
     `\nYou will be notified when this agent completes.\n` +
-    `Use get_subagent_result to retrieve full results, or steer_subagent to send it messages.`;
+    `Use agent_get_result to retrieve full results, or agent_steer to send it messages.`;
 }
 
 export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: BackgroundAgentInput) {

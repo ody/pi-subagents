@@ -2,7 +2,7 @@
 
 ## Context
 
-A foreground caller gets a run's full result inline. A background caller's completion notification carries only a preview, and the model reads the full result with `get_subagent_result`. Most background results are never read in full.
+A foreground caller gets a run's full result inline. A background caller's completion notification carries only a preview, and the model reads the full result with `agent_get_result`. Most background results are never read in full.
 
 A record holds a live `AgentSession`, so every record kept costs memory. The notifier holds a notification briefly before it sends it. A held nudge still sends for a removed record whose result nothing consumed. A batch that looks records up by id drops removed ones.
 
@@ -13,7 +13,7 @@ A caller that reads a result in full consumes it, and the sweep bounds how long 
 Consumption:
 
 - Consumption applies to a settled run. A new run on the record clears it, and nothing else does.
-- Four things consume a result: a foreground settle (ADR 0033), `get_subagent_result` on a settled run, `subagents:rpc:consume`, and the sweep.
+- Four things consume a result: a foreground settle (ADR 0033), `agent_get_result` on a settled run, `subagents:rpc:consume`, and the sweep.
 - A completion notification never consumes a result.
 - The notifier never sends a notification for a consumed result.
 
@@ -40,6 +40,6 @@ Done check: `npx vitest run test/manager/agent-retention.test.ts test/manager/co
 ## Consequences
 
 - An `@handle` steer into a running run does not clear consumption, so the "Consumption is not terminal" paragraph in `docs/rpc.md` names only a new run.
-- After the sweep, `get_subagent_result` cannot read the full result. Revisit when tombstones become durable, since the `subagents:record` entry holds it.
+- After the sweep, `agent_get_result` cannot read the full result. Revisit when tombstones become durable, since the `subagents:record` entry holds it.
 - A record whose notification never leaves the pending state stays in memory. The notifier's own timeouts bound that.
 - Revisit the 10 minute cutoff if the model often reads results later than that.

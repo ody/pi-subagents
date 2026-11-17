@@ -11,9 +11,9 @@ import { BUILTIN_TOOL_NAMES } from "../agents/agent-types.js";
 
 export const SUBAGENT_TOOL_NAMES = {
   AGENT: "agent",
-  GET_RESULT: "get_subagent_result",
-  STEER: "steer_subagent",
-  STOP: "stop_subagent",
+  GET_RESULT: "agent_get_result",
+  STEER: "agent_steer",
+  STOP: "agent_stop",
 } as const;
 
 export const EXCLUDED_TOOL_NAMES: string[] = Object.values(SUBAGENT_TOOL_NAMES);

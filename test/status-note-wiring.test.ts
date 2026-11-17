@@ -84,7 +84,7 @@ describe("status note reaches the parent through the real handlers", () => {
     expect(out).toContain("everything the agent produced is above");
     expect(out).toContain("the task is unfinished");
     expect(out).not.toContain("re-spawn");
-    expect(out).not.toContain("get_subagent_result");
+    expect(out).not.toContain("agent_get_result");
   });
 
   it("foreground user-stop → tells the parent NOT to restart it unasked", async () => {
@@ -154,8 +154,8 @@ describe("status note reaches the parent through the real handlers", () => {
 
     expect(registry.getRecord(id)).toBeUndefined();
     for (const [name, params] of [
-      ["get_subagent_result", { agent_id: id }],
-      ["steer_subagent", { agent_id: id, message: "stop" }],
+      ["agent_get_result", { agent_id: id }],
+      ["agent_steer", { agent_id: id, message: "stop" }],
       ["agent", { resume: id, prompt: "continue", description: "resume", subagent_type: "general-purpose" }],
     ] as const) {
       const result = await tools.get(name).execute("tc-nested", params, undefined, undefined, ctx());
@@ -168,7 +168,7 @@ describe("status note reaches the parent through the real handlers", () => {
     expect(pi.sendMessage).not.toHaveBeenCalled();
   });
 
-  it("background rpc stop → get_subagent_result flags STOPPED BY ANOTHER EXTENSION (not completed)", async () => {
+  it("background rpc stop → agent_get_result flags STOPPED BY ANOTHER EXTENSION (not completed)", async () => {
     vi.mocked(runAgent).mockReturnValue(new Promise(() => {}) as any);
     const { pi, tools, eventHandlers, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -184,7 +184,7 @@ describe("status note reaches the parent through the real handlers", () => {
 
     eventHandlers.get("subagents:rpc:stop")?.({ requestId: "r1", agentId: id });
 
-    const res = await tools.get("get_subagent_result").execute(
+    const res = await tools.get("agent_get_result").execute(
       "tc3", { agent_id: id }, undefined, undefined, ctx(),
     );
 

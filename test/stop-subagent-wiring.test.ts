@@ -47,7 +47,7 @@ async function spawnBackground(
 }
 
 const stop = (tools: Map<string, any>, agent_id: string) =>
-  tools.get("stop_subagent").execute("tc-stop", { agent_id }, undefined, undefined, ctx());
+  tools.get("agent_stop").execute("tc-stop", { agent_id }, undefined, undefined, ctx());
 
 const managerRegistry = () => (globalThis as any)[Symbol.for("pi-subagents:manager")];
 
@@ -55,7 +55,7 @@ function rawManager(): any {
   return vi.mocked(runAgent).mock.calls[0][3].nestedRuntime.manager;
 }
 
-describe("stop_subagent", () => {
+describe("agent_stop", () => {
   it("stops a running background agent and leaves the record 'stopped'", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
@@ -107,7 +107,7 @@ describe("stop_subagent", () => {
     const result = await stop(tools, id);
     expect(result.isError).toBeFalsy();
     expect(textOf(result)).toContain("completed");
-    expect(textOf(result)).toContain("get_subagent_result");
+    expect(textOf(result)).toContain("agent_get_result");
     expect(managerRegistry().getRecord(id).status).toBe("completed");
 
     await lifecycle.get("session_shutdown")?.();
@@ -249,7 +249,7 @@ describe("stop_subagent", () => {
     }
   });
 
-  it("stopCause: 'agent' changes the note a following get_subagent_result reads back", async () => {
+  it("stopCause: 'agent' changes the note a following agent_get_result reads back", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
     heldRun();
@@ -258,7 +258,7 @@ describe("stop_subagent", () => {
     await flush();
     await stop(tools, id);
 
-    const readBack = await tools.get("get_subagent_result").execute(
+    const readBack = await tools.get("agent_get_result").execute(
       "tc-read", { agent_id: id }, undefined, undefined, ctx(),
     );
     expect(textOf(readBack)).toContain("STOPPED BY THE ORCHESTRATING AGENT");
@@ -276,7 +276,7 @@ describe("stop_subagent", () => {
     await flush();
     rawManager().abort(id, "user");
 
-    const readBack = await tools.get("get_subagent_result").execute(
+    const readBack = await tools.get("agent_get_result").execute(
       "tc-read", { agent_id: id }, undefined, undefined, ctx(),
     );
     expect(textOf(readBack)).toContain("STOPPED BY THE USER");
