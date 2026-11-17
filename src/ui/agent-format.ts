@@ -1,9 +1,37 @@
 import { getConfig } from "../agents/agent-types.js";
-import type { AgentInvocation, SubagentType } from "../types.js";
+import type { AgentInvocation, AgentRecord, SubagentType } from "../types.js";
 
 export const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-export const ERROR_STATUSES = new Set(["error", "aborted", "steered", "stopped"]);
+export type AgentStatus = AgentRecord["status"];
+export type StatusClass = "active" | "success" | "failure" | "neutral";
+
+export interface StatusPresentation {
+  statusClass: StatusClass;
+  icon: string;
+  color: string;
+  note?: string;
+}
+
+const STATUS_PRESENTATION: Record<AgentStatus, StatusPresentation> = {
+  running: { statusClass: "active", icon: "●", color: "accent" },
+  queued: { statusClass: "active", icon: "◦", color: "muted" },
+  completed: { statusClass: "success", icon: "✓", color: "success" },
+  steered: { statusClass: "success", icon: "✓", color: "warning", note: "turn limit" },
+  aborted: { statusClass: "failure", icon: "✗", color: "error" },
+  error: { statusClass: "failure", icon: "✗", color: "error" },
+  stopped: { statusClass: "neutral", icon: "■", color: "dim" },
+};
+
+export function statusPresentation(status: AgentStatus, spinnerFrame?: string): StatusPresentation {
+  const presentation = STATUS_PRESENTATION[status];
+  return status === "running" && spinnerFrame ? { ...presentation, icon: spinnerFrame } : presentation;
+}
+
+export function renderStatusIcon(theme: Theme, status: AgentStatus, spinnerFrame?: string): string {
+  const { icon, color } = statusPresentation(status, spinnerFrame);
+  return theme.fg(color, icon);
+}
 
 const TOOL_DISPLAY: Record<string, string> = {
   read: "reading",

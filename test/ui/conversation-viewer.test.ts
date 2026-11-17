@@ -162,9 +162,12 @@ describe("ConversationViewer header and footer", () => {
 
   it.each([
     ["running", "<accent>●</accent>"],
+    ["queued", "<muted>◦</muted>"],
     ["completed", "<success>✓</success>"],
+    ["steered", "<warning>✓</warning>"],
+    ["aborted", "<error>✗</error>"],
     ["error", "<error>✗</error>"],
-    ["stopped", "<dim>○</dim>"],
+    ["stopped", "<dim>■</dim>"],
   ])("shows the %s status icon in the header", (status, icon) => {
     const lines = render(mockRecord({ status: status as AgentRecord["status"] }));
     expect(lines[1]).toContain(`</border> ${icon} `);

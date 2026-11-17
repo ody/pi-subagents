@@ -35,11 +35,11 @@ describe("notification renderer", () => {
 
   it.each([
     ["completed", "success", "✓", "completed"],
-    ["steered", "success", "✓", "completed (steered)"],
+    ["steered", "warning", "✓", "completed (turn limit)"],
     ["error", "error", "✗", "error"],
-    ["stopped", "error", "✗", "stopped"],
+    ["stopped", "dim", "■", "stopped"],
     ["aborted", "error", "✗", "aborted"],
-  ])("status %s", (status, color, icon, text) => {
+  ] as const)("status %s", (status, color, icon, text) => {
     expect(setup().render(det({ status }))).toBe(
       `<${color}:${icon}> *audit* <dim:${text}>\n  <dim:⎿  done>`,
     );

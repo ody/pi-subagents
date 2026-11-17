@@ -7,7 +7,6 @@ import { renderAgentName } from "./agent-color.js";
 import {
   buildInvocationTags,
   describeActivity,
-  ERROR_STATUSES,
   formatCost,
   formatMs,
   formatSessionTokens,
@@ -15,8 +14,10 @@ import {
   getPromptModeLabel,
   renderModeTag,
   renderStats,
+  renderStatusIcon,
   SPINNER,
   type Stat,
+  statusPresentation,
   type Theme,
 } from "./agent-format.js";
 import { layoutWidgetBody } from "./widget-layout.js";
@@ -109,9 +110,9 @@ export class AgentWidget {
     }
   }
 
-  private shouldShowFinished(agentId: string, status: string): boolean {
+  private shouldShowFinished(agentId: string, status: AgentRecord["status"]): boolean {
     const age = this.finishedTurnAge.get(agentId) ?? 0;
-    const maxAge = ERROR_STATUSES.has(status) ? AgentWidget.ERROR_LINGER_TURNS : 1;
+    const maxAge = statusPresentation(status).statusClass === "failure" ? AgentWidget.ERROR_LINGER_TURNS : 1;
     return age < maxAge;
   }
 
@@ -125,29 +126,15 @@ export class AgentWidget {
     this.finishedTurnAge.delete(agentId);
   }
 
-  private renderFinishedLine(a: { id: string; type: SubagentType; displayName?: string; promptMode?: "replace" | "append"; status: string; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string; lifetimeUsage?: LifetimeUsage }, theme: Theme): string {
+  private renderFinishedLine(a: { id: string; type: SubagentType; displayName?: string; promptMode?: "replace" | "append"; status: AgentRecord["status"]; description: string; toolUses: number; startedAt: number; completedAt?: number; error?: string; lifetimeUsage?: LifetimeUsage }, theme: Theme): string {
     const modeLabel = getPromptModeLabel(a);
     const duration = formatMs((a.completedAt ?? Date.now()) - a.startedAt);
 
-    let icon: string;
-    let statusText: string;
-    if (a.status === "completed") {
-      icon = theme.fg("success", "✓");
-      statusText = "";
-    } else if (a.status === "steered") {
-      icon = theme.fg("warning", "✓");
-      statusText = theme.fg("warning", " (turn limit)");
-    } else if (a.status === "stopped") {
-      icon = theme.fg("dim", "■");
-      statusText = theme.fg("dim", " stopped");
-    } else if (a.status === "error") {
-      icon = theme.fg("error", "✗");
-      const errMsg = a.error ? `: ${a.error.slice(0, 60)}` : "";
-      statusText = theme.fg("error", ` error${errMsg}`);
-    } else {
-      icon = theme.fg("error", "✗");
-      statusText = theme.fg("warning", " aborted");
-    }
+    const { color, note } = statusPresentation(a.status);
+    const icon = renderStatusIcon(theme, a.status);
+    const statusText = a.status === "completed" ? ""
+      : a.status === "error" ? theme.fg(color, ` error${a.error ? `: ${a.error.slice(0, 60)}` : ""}`)
+      : theme.fg(color, note ? ` (${note})` : ` ${a.status}`);
 
     const parts: Stat[] = [];
     const activity = this.manager.getActivity(a.id);
@@ -188,7 +175,7 @@ export class AgentWidget {
     const runningLines = running.map(({ record, depth }) => this.runningRowLines(record, depth, theme, frame).map(truncate) as [string, string]);
 
     const queuedLine = queued.length > 0
-      ? truncate(theme.fg("dim", "├─") + ` ${theme.fg("muted", "◦")} ${theme.fg("dim", `${queued.length} queued`)}`)
+      ? truncate(theme.fg("dim", "├─") + ` ${renderStatusIcon(theme, "queued")} ${theme.fg("dim", `${queued.length} queued`)}`)
       : undefined;
 
     const fleetHint = this.showFleetHint() ? " " + theme.fg("dim", "↓ to manage") : "";
@@ -235,7 +222,7 @@ export class AgentWidget {
     const activity = bg ? describeActivity(bg.activeTools, bg.responseText) : "thinking…";
 
     return [
-      theme.fg("dim", `${indent}├─`) + ` ${theme.fg("accent", frame)} ${renderAgentName(a, theme, { bold: true })}${renderModeTag(theme, modeLabel)}  ${theme.fg("text", a.description)} ${theme.fg("dim", "·")} ${statsText}`,
+      theme.fg("dim", `${indent}├─`) + ` ${renderStatusIcon(theme, a.status, frame)} ${renderAgentName(a, theme, { bold: true })}${renderModeTag(theme, modeLabel)}  ${theme.fg("text", a.description)} ${theme.fg("dim", "·")} ${statsText}`,
       theme.fg("dim", `${indent}│  `) + theme.fg("dim", `  ⎿  ${activity}`),
     ];
   }

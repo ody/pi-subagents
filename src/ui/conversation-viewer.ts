@@ -6,7 +6,7 @@ import type { AgentActivity, AgentRecord, ViewerMarkdownMode } from "../types.js
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
 import { renderAgentName } from "./agent-color.js";
 import type { Theme } from "./agent-format.js";
-import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag } from "./agent-format.js";
+import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag, renderStatusIcon } from "./agent-format.js";
 import { createViewerKeys, type ViewerKeybindings, type ViewerKeys } from "./viewer-keys.js";
 
 const CHROME_LINES_BASE = 6;
@@ -231,13 +231,7 @@ export class ConversationViewer implements Component {
     const th = this.theme;
     const modeLabel = getPromptModeLabel(this.record);
     const modeTag = renderModeTag(th, modeLabel);
-    const statusIcon = this.record.status === "running"
-      ? th.fg("accent", "●")
-      : this.record.status === "completed"
-        ? th.fg("success", "✓")
-        : this.record.status === "error"
-          ? th.fg("error", "✗")
-          : th.fg("dim", "○");
+    const statusIcon = renderStatusIcon(th, this.record.status);
     const duration = formatDuration(this.record.startedAt, this.record.completedAt);
 
     const headerParts: string[] = [duration];

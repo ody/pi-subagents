@@ -617,3 +617,69 @@ describe("AgentWidget overflow accounting", () => {
     expect(render()).toContain("resumed description");
   });
 });
+
+describe("AgentWidget status presentation", () => {
+  const tagTheme = { fg: (c: string, s: string) => `<${c}>${s}</${c}>`, bold: (s: string) => s };
+
+  function widgetFor(status: string, error?: string) {
+    const agent = {
+      id: "s1",
+      type: "general-purpose",
+      description: "probe",
+      status,
+      error,
+      completedAt: status === "running" || status === "queued" ? undefined : Date.now(),
+      toolUses: 0,
+      startedAt: Date.now(),
+      lifetimeUsage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      compactionCount: 0,
+    };
+    const widget = new AgentWidget(withActivity({ listAgents: () => [agent] } as any, new Map()), () => "all");
+    let factory: any;
+    widget.setUICtx({ setStatus: () => {}, setWidget: (_k: any, c: any) => { factory = c; } } as any);
+    widget.markFinished(agent.id);
+    const render = (): string => {
+      widget.update();
+      return (factory?.({ terminal: { columns: 200 }, requestRender: () => {} }, tagTheme).render() ?? []).join("\n");
+    };
+    return { widget, render };
+  }
+
+  it.each([
+    ["completed", "<success>✓</success> "],
+    ["steered", "<warning>✓</warning> "],
+    ["aborted", "<error>✗</error> "],
+    ["error", "<error>✗</error> "],
+    ["stopped", "<dim>■</dim> "],
+    ["queued", "<muted>◦</muted> "],
+  ])("shows the %s icon", (status, icon) => {
+    expect(widgetFor(status).render()).toContain(icon);
+  });
+
+  it("shows a spinner frame in the accent color for running", () => {
+    expect(widgetFor("running").render()).toMatch(/<accent>[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]<\/accent> /);
+  });
+
+  it.each([
+    ["steered", "<warning> (turn limit)</warning>"],
+    ["aborted", "<error> aborted</error>"],
+    ["error", "<error> error: boom</error>"],
+    ["stopped", "<dim> stopped</dim>"],
+  ])("writes the %s status text in the mapped color", (status, text) => {
+    expect(widgetFor(status, "boom").render()).toContain(text);
+  });
+
+  it.each([
+    ["completed", 1],
+    ["steered", 1],
+    ["stopped", 1],
+    ["aborted", 2],
+    ["error", 2],
+  ])("keeps a %s row for %i turn start(s)", (status, turns) => {
+    const { widget, render } = widgetFor(status);
+    for (let i = 0; i < turns - 1; i++) widget.onTurnStart();
+    expect(render()).toContain("probe");
+    widget.onTurnStart();
+    expect(render()).not.toContain("probe");
+  });
+});

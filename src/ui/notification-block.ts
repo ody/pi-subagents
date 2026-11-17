@@ -1,5 +1,5 @@
 import type { NotificationDetails } from "../types.js";
-import { formatCost, formatMs, formatTokens, formatTurns, type Theme } from "./agent-format.js";
+import { formatCost, formatMs, formatTokens, formatTurns, renderStatusIcon, statusPresentation, type Theme } from "./agent-format.js";
 
 export function notificationStats(d: NotificationDetails, showCost: boolean, theme: Theme): string {
   const parts: string[] = [];
@@ -19,11 +19,9 @@ export function formatNotification(
   opts: { expanded: boolean; showCost: boolean },
   theme: Theme,
 ): string {
-  const isError = d.status === "error" || d.status === "stopped" || d.status === "aborted";
-  const icon = isError ? theme.fg("error", "✗") : theme.fg("success", "✓");
-  const statusText = isError ? d.status
-    : d.status === "steered" ? "completed (steered)"
-    : "completed";
+  const { statusClass, note } = statusPresentation(d.status);
+  const icon = renderStatusIcon(theme, d.status);
+  const statusText = statusClass === "success" ? `completed${note ? ` (${note})` : ""}` : d.status;
 
   let line = `${icon} ${theme.bold(d.description)} ${theme.fg("dim", statusText)}`;
 

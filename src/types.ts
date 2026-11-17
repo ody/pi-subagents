@@ -140,7 +140,7 @@ export interface AgentInvocation {
 export interface NotificationDetails {
   id: string;
   description: string;
-  status: string;
+  status: AgentRecord["status"];
   toolUses: number;
   turnCount: number;
   maxTurns?: number;

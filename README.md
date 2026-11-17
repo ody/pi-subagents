@@ -614,13 +614,17 @@ Instead of hard-aborting at the turn limit, agents get a graceful shutdown:
 2. Up to `graceTurns` (default 5) grace turns to finish cleanly
 3. Hard abort only after the grace period
 
-| Status | Meaning | Icon |
-| --- | --- | --- |
-| `completed` | Finished naturally | `✓` green |
-| `steered` | Hit limit, wrapped up in time | `✓` yellow |
-| `aborted` | Grace period exceeded | `✗` red |
-| `stopped` | Stopped on request. `stopCause` says by whom | `■` dim |
+| Status | Class | Meaning | Icon |
+| --- | --- | --- | --- |
+| `running` | active | Executing | spinner frame, or `●` where a surface does not animate, accent |
+| `queued` | active | Waiting for a concurrency slot | `◦` muted |
+| `completed` | success | Finished naturally | `✓` green |
+| `steered` | success | Hit limit, wrapped up in time. Shown with the note `turn limit` | `✓` yellow |
+| `aborted` | failure | Grace period exceeded | `✗` red |
+| `error` | failure | Failed with an error | `✗` red |
+| `stopped` | neutral | Stopped on request. `stopCause` says by whom | `■` dim |
 
+The widget, the conversation viewer, and completion notifications all take icon and color from this one mapping. The widget keeps a finished row for two turn starts only for the failure class, and for one turn start otherwise.
 Every `stopped` run has a `stopCause`. The status text the model reads names it. A run the user stopped is not restarted unless the user asks. A resume clears `stopCause`.
 
 | `stopCause` | Set by |

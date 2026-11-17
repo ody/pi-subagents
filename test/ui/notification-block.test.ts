@@ -53,9 +53,16 @@ describe("formatNotification", () => {
     );
   });
 
-  it("marks failures and steering", () => {
-    expect(formatNotification(det({ status: "aborted" }), opts, theme)).toContain("<error:✗> *audit* <dim:aborted>");
-    expect(formatNotification(det({ status: "steered" }), opts, theme)).toContain("<dim:completed (steered)>");
+  it.each([
+    ["running", "<accent:●> *audit* <dim:running>"],
+    ["queued", "<muted:◦> *audit* <dim:queued>"],
+    ["completed", "<success:✓> *audit* <dim:completed>"],
+    ["steered", "<warning:✓> *audit* <dim:completed (turn limit)>"],
+    ["aborted", "<error:✗> *audit* <dim:aborted>"],
+    ["error", "<error:✗> *audit* <dim:error>"],
+    ["stopped", "<dim:■> *audit* <dim:stopped>"],
+  ] as const)("shows the %s header", (status, header) => {
+    expect(formatNotification(det({ status }), opts, theme)).toContain(header);
   });
 
   it("puts the stats line under the header", () => {
