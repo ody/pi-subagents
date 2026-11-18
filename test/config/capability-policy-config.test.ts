@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { loadCapabilityPolicy, policyEventPayload } from "../../src/config/capability-policy-config.js";
 import { discoverKnown, unknownPolicyEntries } from "../../src/config/policy-unknown-entries.js";
-import { applyAndEmitLoaded, type SettingsAppliers, saveAndEmitChanged } from "../../src/config/settings.js";
+import { type SettingsAppliers, saveAndEmitChanged, settingsLoadedPayload } from "../../src/config/settings.js";
 import { runAgent } from "../../src/session/agent-runner.js";
 import { registerRpcHandlers } from "../../src/triggers/cross-extension-rpc.js";
 import type { AgentConfig } from "../../src/types.js";
@@ -174,7 +174,7 @@ describe("capability policy configuration", () => {
     writeProject({ policy: { ephemeralNesting: false } });
     const emit = vi.fn();
     const appliers = new Proxy({}, { get: () => () => {} }) as SettingsAppliers;
-    applyAndEmitLoaded(appliers, emit, projectDir);
+    emit("agent:settings_loaded", settingsLoadedPayload(projectDir));
     saveAndEmitChanged({ layer: "project", key: "maxConcurrent", value: 2 }, "ok", emit, appliers, projectDir);
     const expected = { global: { skills: { deny: ["x"] } }, project: {}, ephemeralNesting: false };
     expect(emit).toHaveBeenCalledWith("agent:settings_loaded", expect.objectContaining({ policy: expected }));

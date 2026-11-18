@@ -6,7 +6,7 @@ import { loadCustomAgents } from "./agents/custom-agents.js";
 import { setScopeModelsEnabled } from "./config/model-scope.js";
 import { setDefaultMaxTurns, setGraceTurns, setRememberAgents } from "./config/runner-defaults.js";
 import { createSettingsPersistence } from "./config/runtime-settings.js";
-import { applyAndEmitLoaded, effectiveSettings, type SettingsAppliers, type ToolDescriptionMode } from "./config/settings.js";
+import { applyLoadedSettings, effectiveSettings, type SettingsAppliers, settingsLoadedPayload, type ToolDescriptionMode } from "./config/settings.js";
 import { SETTING_SPECS } from "./config/settings-defaults.js";
 import { buildEventData } from "./lifecycle-events.js";
 import { AgentManager } from "./manager/agent-manager.js";
@@ -147,6 +147,7 @@ export default function (pi: ExtensionAPI) {
         },
       });
       pi.events.emit("agent:ready", {});
+      pi.events.emit("agent:settings_loaded", settingsLoadedPayload(ctx.cwd));
     }
     if (ctx.mode === "tui" && !mentionProviderRegistered) {
       mentionProviderRegistered = true;
@@ -274,7 +275,7 @@ export default function (pi: ExtensionAPI) {
     setShowModel,
   };
   const settingsPersist = createSettingsPersistence(appliers, (event, payload) => pi.events.emit(event, payload));
-  applyAndEmitLoaded(appliers, (event, payload) => pi.events.emit(event, payload));
+  applyLoadedSettings(appliers);
 
   const buildAgentTool = () => createAgentTool(pi, {
     manager,

@@ -230,7 +230,7 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 ## Settings events
 
-`agent:settings_loaded` fires once at init. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
+`agent:settings_loaded` fires on every `session_start` that registers the RPC handlers, right after `agent:ready`. It never fires from the extension factory, and a session that excludes pi-subagents never emits it. Settings are applied at factory time; the payload is read from the files again at `session_start`. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
 
 `agent:settings_changed` fires when the `/agents` menu changes or resets a setting, including `policy.ephemeralNesting`. Its payload is `{ settings, persisted, layer, policy }`:
 
@@ -251,7 +251,7 @@ So send `consume` unconditionally and ignore the outcome. An older build has no 
 
 ## Availability
 
-`agent:ready` is the discovery signal, and the `session_start` handler in `src/index.ts` wires both the RPC handlers and the event itself on the first bound `session_start`. It does not do this at factory time, on purpose. pi runs every extension factory *before* it applies an agent's `extensions:` filter. It only delivers lifecycle events to the survivors. A factory-time broadcast made a filtered-out session advertise a spawn service it could never provide: `ping` succeeded and every `spawn` answered `No active session`.
+`agent:ready` is the discovery signal, and the `session_start` handler in `src/index.ts` wires both the RPC handlers and the event itself on each `session_start` that finds them unregistered. `agent:settings_loaded` follows `agent:ready` in the same handler. It does not do this at factory time, on purpose. pi runs every extension factory *before* it applies an agent's `extensions:` filter. It only delivers lifecycle events to the survivors. A factory-time broadcast made a filtered-out session advertise a spawn service it could never provide: `ping` succeeded and every `spawn` answered `No active session`.
 
 The consequence is worth stating plainly: **a session that excludes pi-subagents is indistinguishable from a system that lacks pi-subagents.** It emits no `agent:ready` and answers nothing. Give discovery a timeout and treat expiry as "not available here" rather than waiting indefinitely. The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (the `session_shutdown` handler in `src/index.ts`), so a later `session_start` re-registers and re-emits.
 
@@ -264,6 +264,7 @@ This document has no test of its own, so it is worth knowing which claims are ac
 | Test | Level | Pins |
 | --- | --- | --- |
 | `test/cross-extension-rpc.test.ts` | Mocked `SpawnCapable` | Envelope shape, per-channel error strings, model resolution and scope enforcement |
+| `test/rpc-contract.test.ts` | Real extension factory | No bus emission before `session_start`; `agent:ready` before `agent:settings_loaded`; handlers register again after `session_shutdown` |
 | `test/rpc-lifecycle-gating.test.ts` | Real extension factory | Nothing wired at factory time, everything once at `session_start`, and live widget activity for RPC spawns |
 | `test/rpc-result-consumption.test.ts` | Real delivery path | The notification firing, and not firing, around `consume` |
 | `test/rpc-inline-agent.test.ts` | Real extension factory | An inline `agentConfig` skips type resolution, reaches `runAgent`, and stays out of the registry |

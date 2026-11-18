@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  applyAndEmitLoaded,
+  applyLoadedSettings,
   applySettings,
   effectiveSettings,
   loadSettings,
@@ -11,6 +11,7 @@ import {
   type SettingsAppliers,
   sanitize,
   saveAndEmitChanged,
+  settingsLoadedPayload,
 } from "../../src/config/settings.js";
 import { SETTING_KEYS, SETTING_SPECS, type SettingSpec } from "../../src/config/settings-defaults.js";
 import { setLayerKey } from "../../src/config/settings-store.js";
@@ -642,7 +643,7 @@ describe("settings persistence", () => {
     });
   });
 
-  describe("applyAndEmitLoaded", () => {
+  describe("applyLoadedSettings and settingsLoadedPayload", () => {
     let appliers: SettingsAppliers;
 
     beforeEach(() => {
@@ -668,32 +669,28 @@ describe("settings persistence", () => {
       };
     });
 
-    it("loads, applies, and emits agent:settings_loaded with merged settings", () => {
+    it("loads and applies merged settings, and builds the settings_loaded payload", () => {
       writeGlobal({ maxConcurrent: 16 });
       writeProject({ graceTurns: 7 });
-      const emit = vi.fn();
 
-      const result = applyAndEmitLoaded(appliers, emit, projectDir);
+      const result = applyLoadedSettings(appliers, projectDir);
 
       expect(appliers.setMaxConcurrent).toHaveBeenCalledWith(16);
       expect(appliers.setGraceTurns).toHaveBeenCalledWith(7);
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
       expect(appliers.setDefaultJoinMode).not.toHaveBeenCalled();
 
-      expect(emit).toHaveBeenCalledTimes(1);
-      expect(emit).toHaveBeenCalledWith("agent:settings_loaded", {
+      expect(settingsLoadedPayload(projectDir)).toEqual({
         settings: { maxConcurrent: 16, graceTurns: 7 },
         policy: NO_POLICY,
       });
       expect(result).toEqual({ maxConcurrent: 16, graceTurns: 7 });
     });
 
-    it("still emits the event when both files are missing (payload carries {})", () => {
-      const emit = vi.fn();
+    it("carries {} when both files are missing", () => {
+      const result = applyLoadedSettings(appliers, projectDir);
 
-      const result = applyAndEmitLoaded(appliers, emit, projectDir);
-
-      expect(emit).toHaveBeenCalledWith("agent:settings_loaded", { settings: {}, policy: NO_POLICY });
+      expect(settingsLoadedPayload(projectDir)).toEqual({ settings: {}, policy: NO_POLICY });
       expect(result).toEqual({});
       expect(appliers.setMaxConcurrent).not.toHaveBeenCalled();
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();

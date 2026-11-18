@@ -131,17 +131,15 @@ export function persistToastFor(
     : { message: `${successMsg} (session only; failed to persist)`, level: "warning" };
 }
 
-export function applyAndEmitLoaded(
-  appliers: SettingsAppliers,
-  emit: SettingsEmit,
-  cwd: string = process.cwd(),
-): SubagentsSettings {
+export function applyLoadedSettings(appliers: SettingsAppliers, cwd: string = process.cwd()): SubagentsSettings {
   const settings = loadSettings(cwd);
   applySettings(settings, appliers);
-  const policy = policyEventPayload(cwd);
-  for (const problem of policy.malformed ?? []) console.warn(`[pi-subagents] Capability policy: ${problem}. Every spawn is denied until it is fixed.`);
-  emit("agent:settings_loaded", { settings, policy });
+  for (const problem of policyEventPayload(cwd).malformed ?? []) console.warn(`[pi-subagents] Capability policy: ${problem}. Every spawn is denied until it is fixed.`);
   return settings;
+}
+
+export function settingsLoadedPayload(cwd: string = process.cwd()) {
+  return { settings: loadSettings(cwd), policy: policyEventPayload(cwd) };
 }
 
 export type SettingKey = keyof SubagentsSettings | "ephemeralNesting";
