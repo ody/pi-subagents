@@ -5,6 +5,7 @@ import { scopeModel } from "../config/model-scope.js";
 import { resolveEffectiveMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
+import { RpcError } from "../rpc-error.js";
 import { resolveIsolation } from "../tool/invocation-config.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
 
@@ -22,7 +23,7 @@ export interface SpawnFunnel {
 function resolvePin(registry: any, callerModel: any, configModel: string | undefined): { pinned: any; modelInput: string | undefined } {
   if (typeof callerModel === "string") {
     const resolved = registry ? resolveModel(callerModel, registry) : callerModel;
-    if (typeof resolved === "string") throw new Error(resolved);
+    if (typeof resolved === "string") throw new RpcError("model_not_found", resolved);
     return { pinned: resolved, modelInput: callerModel };
   }
   if (callerModel != null) return { pinned: callerModel, modelInput: `${callerModel.provider}/${callerModel.id}` };
@@ -59,7 +60,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       agentLabel: label,
       modelInput,
     });
-    if (!scoped.ok) throw new Error(scoped.message);
+    if (!scoped.ok) throw new RpcError("model_out_of_scope", scoped.message);
     if (scoped.replaced === undefined) return callerModel === pinned ? options : { ...options, model: pinned };
     ctxRef.ui?.notify?.(scoped.notice, "warning");
     return { ...options, model: scoped.model, modelReplaced: scoped.replaced };
@@ -78,7 +79,7 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     }
     reloadCustomAgents();
     const dispatch = resolveSpawnType(type);
-    if (!dispatch.ok) throw new Error(dispatch.message);
+    if (!dispatch.ok) throw new RpcError("unknown_type", dispatch.message);
     const config = getAgentConfig(dispatch.type);
     const options = scopedOptions(ctxRef, config?.displayName ?? dispatch.type, rawOptions, config?.model);
     return manager.spawn(piRef, ctxRef, dispatch.type, prompt, {

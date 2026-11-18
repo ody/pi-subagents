@@ -1,4 +1,5 @@
 import { BUILTIN_TOOL_NAMES, getAgentConfig } from "../agents/agent-types.js";
+import { RpcError } from "../rpc-error.js";
 import { parseExtensionsSpec, parseExtSelectors } from "../session/extension-scope.js";
 import type { AgentConfig } from "../types.js";
 import { type LoadedPolicy, loadCapabilityPolicy, type PolicyList, type PolicyScope } from "./capability-policy-config.js";
@@ -456,7 +457,7 @@ export function resolveCapability(args: ResolveCapabilityArgs): GrantedCapabilit
     extraBounds: args.extraBounds,
     parent: args.parent,
   });
-  if (verdict.kind === "error") throw new Error(verdict.message);
+  if (verdict.kind === "error") throw new RpcError("policy_denied", verdict.message);
   if (verdict.filtered.length > 0) {
     const source = args.extraBounds ? PARENT_SOURCE : POLICY_SOURCE;
     args.notify?.(`${source[0].toUpperCase()}${source.slice(1)} removed ${verdict.filtered.join(", ")} from ${args.type}.`, "warning");

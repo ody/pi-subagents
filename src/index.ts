@@ -15,6 +15,7 @@ import { createBackgroundResume } from "./manager/background-resume.js";
 import { CompletionNotifier } from "./manager/completion-notifier.js";
 import { setOutputTranscriptDefault } from "./platform/output-file.js";
 import { setWorktreeIsolationEnabled } from "./platform/worktree.js";
+import { RpcError } from "./rpc-error.js";
 import { inChildSessionContext } from "./session/child-context.js";
 import { registerAgentControlTools } from "./tool/agent-control-tools.js";
 import { createAgentTool } from "./tool/agent-tool.js";
@@ -138,11 +139,10 @@ export default function (pi: ExtensionAPI) {
           abort: (id, cause) => manager.abort(id, cause),
           consumeResult: (id) => {
             const record = resolveAgentRef(id);
-            if (!record || !isTopLevelAgent(record)) return false;
-            if (record.status === "running" || record.status === "queued") return false;
+            if (!record || !isTopLevelAgent(record)) throw new RpcError("not_found", "Agent not found");
+            if (record.status === "running" || record.status === "queued") throw new RpcError("still_running", "Agent is still running");
             record.resultConsumed = true;
             notifier.cancelNudge(record.id);
-            return true;
           },
         },
       });

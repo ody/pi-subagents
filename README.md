@@ -980,12 +980,12 @@ The extension emits the four agent-lifecycle events (`agent:started`, `:complete
 
 Other pi extensions can spawn and stop subagents programmatically via the `pi.events` event bus, without importing this package directly.
 
-All RPC replies use a standardized envelope: `{ success: true, data?: T }` on success, `{ success: false, error: string }` on failure.
+All RPC replies use a standardized envelope: `{ success: true, data?: T }` on success, `{ success: false, code: string, error: string }` on failure. Branch on `code`. The `error` text is for people and is not contract. A request without a non-empty string `requestId` gets no reply.
 
 **Full reference:** [`docs/rpc.md`](docs/rpc.md) covers:
 
 - the complete spawn-option surface (including the fields that the extension silently strips)
-- every error string
+- every error code
 - the completion-notification race
 - the `Symbol.for("pi-subagents:manager")` registry
 - what protocol version `2` does and does not promise
@@ -1109,7 +1109,7 @@ This is the bus-side half of what `agent_get_result` does when it returns a resu
 
 Fire-and-forget is the intended use. The reply carries nothing to act on. The channel is outside the `agent:rpc:ping` version handshake, so a caller can send it unconditionally. An older extension that has no handler simply keeps notifying.
 
-The extension refuses to consume a running or unknown agent (`success: false`) and changes nothing. A running agent has no result for anyone to read, and its notification is still the caller's only signal that it finished.
+The extension refuses to consume a running or unknown agent (`success: false`, code `not_found` or `still_running`) and changes nothing. A running agent has no result for anyone to read, and its notification is still the caller's only signal that it finished.
 
 Each `requestId` has its own reply channel, so concurrent requests don't interfere.
 

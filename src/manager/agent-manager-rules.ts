@@ -1,20 +1,21 @@
 import { statSync } from "node:fs";
 import { isAbsolute } from "node:path";
+import { RpcError } from "../rpc-error.js";
 import type { AgentRecord } from "../types.js";
 
 export function assertValidSpawnCwd(cwd: unknown): asserts cwd is string | undefined | null {
   if (cwd == null) return;
   if (typeof cwd !== "string" || !isAbsolute(cwd)) {
-    throw new Error(`SpawnOptions.cwd must be an absolute path: "${String(cwd)}"`);
+    throw new RpcError("invalid_cwd", `SpawnOptions.cwd must be an absolute path: "${String(cwd)}"`);
   }
   let isDirectory = false;
   try {
     isDirectory = statSync(cwd).isDirectory();
   } catch {
-    throw new Error(`SpawnOptions.cwd does not exist: "${cwd}"`);
+    throw new RpcError("invalid_cwd", `SpawnOptions.cwd does not exist: "${cwd}"`);
   }
   if (!isDirectory) {
-    throw new Error(`SpawnOptions.cwd is not a directory: "${cwd}"`);
+    throw new RpcError("invalid_cwd", `SpawnOptions.cwd is not a directory: "${cwd}"`);
   }
 }
 

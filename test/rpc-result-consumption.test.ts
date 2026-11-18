@@ -155,7 +155,7 @@ describe("agent:rpc:consume", () => {
     bus.emit("agent:rpc:consume", { requestId: "req-consume-running", agentId: id });
 
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-    expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found or still running" });
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ success: false, code: "still_running" }));
   });
 
   it("reports an unknown agent rather than silently succeeding", async () => {
@@ -165,6 +165,6 @@ describe("agent:rpc:consume", () => {
     bus.emit("agent:rpc:consume", { requestId: "req-consume-unknown", agentId: "no-such-agent" });
 
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-    expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found or still running" });
+    expect(reply).toHaveBeenCalledWith(expect.objectContaining({ success: false, code: "not_found" }));
   });
 });

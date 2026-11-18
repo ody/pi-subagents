@@ -2,6 +2,7 @@ import { policyEventPayload } from "../config/capability-policy-config.js";
 import { type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
+import { RpcError, type RpcErrorCode } from "../rpc-error.js";
 import type { AgentConfig, AgentRecord, StopCause } from "../types.js";
 
 export interface EventBus {
@@ -11,7 +12,7 @@ export interface EventBus {
 
 export type RpcReply<T = void> =
   | { success: true; data?: T }
-  | { success: false; error: string };
+  | { success: false; code: RpcErrorCode; error: string };
 
 export const PROTOCOL_VERSION = 2;
 
@@ -20,7 +21,7 @@ export interface SpawnCapable {
   awaitStartup(id: string): Promise<void>;
   abort(id: string, cause: StopCause): boolean;
   getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered" | "modelReplaced" | "stopCause"> | undefined;
-  consumeResult(id: string): boolean;
+  consumeResult(id: string): void;
 }
 
 export interface RpcDeps {
@@ -38,10 +39,10 @@ export interface RpcHandle {
 }
 
 export function normalizeInlineAgentConfig(type: unknown, raw: unknown, description?: string): AgentConfig {
-  if (typeof type !== "string" || !type.trim()) throw new Error("Inline agentConfig requires a type to name the run");
+  if (typeof type !== "string" || !type.trim()) throw new RpcError("invalid_agent_config", "Inline agentConfig requires a type to name the run");
   const given = (raw ?? {}) as Partial<AgentConfig>;
   if (typeof raw !== "object" || typeof given.systemPrompt !== "string") {
-    throw new Error("Inline agentConfig requires a systemPrompt string");
+    throw new RpcError("invalid_agent_config", "Inline agentConfig requires a systemPrompt string");
   }
   return {
     ...given,
@@ -62,6 +63,7 @@ function handleRpc<P extends { requestId: string }>(
 ): () => void {
   return events.on(channel, async (raw: unknown) => {
     const params = raw as P;
+    if (typeof params?.requestId !== "string" || params.requestId === "") return;
     try {
       const data = await fn(params);
       const reply: { success: true; data?: unknown } = { success: true };
@@ -69,7 +71,9 @@ function handleRpc<P extends { requestId: string }>(
       events.emit(`${channel}:reply:${params.requestId}`, reply);
     } catch (err: any) {
       events.emit(`${channel}:reply:${params.requestId}`, {
-        success: false, error: err?.message ?? String(err),
+        success: false,
+        code: err instanceof RpcError ? err.code : "internal",
+        error: err?.message ?? String(err),
       });
     }
   });
@@ -86,7 +90,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
   const unsubSpawn = handleRpc<{ requestId: string; type: string; prompt: string; options?: any }>(
     events, "agent:rpc:spawn", async ({ type, prompt, options }) => {
       const ctx = getCtx();
-      if (!ctx) throw new Error("No active session");
+      if (!ctx) throw new RpcError("no_session", "No active session");
 
       let normalizedOptions = options ?? {};
       const override = normalizedOptions.model;
@@ -94,13 +98,13 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
         const { modelRegistry, cwd } = ctx as { modelRegistry?: ModelRegistry; cwd?: string };
         const label = typeof override === "string" ? override : `${override.provider}/${override.id}`;
         if (!modelRegistry) {
-          throw new Error(`Model override "${label}" provided but ctx.modelRegistry is unavailable`);
+          throw new RpcError("model_registry_unavailable", `Model override "${label}" provided but ctx.modelRegistry is unavailable`);
         }
         let model = override;
         if (typeof override === "string") {
           const resolved = resolveModel(override, modelRegistry);
           if (typeof resolved === "string") {
-            throw new Error(resolved);
+            throw new RpcError("model_not_found", resolved);
           }
           model = resolved;
           normalizedOptions = { ...normalizedOptions, model: resolved };
@@ -114,7 +118,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
           agentLabel: type,
           modelInput: label,
         });
-        if (verdict.kind === "error") throw new Error(verdict.message);
+        if (verdict.kind === "error") throw new RpcError("model_out_of_scope", verdict.message);
       }
 
       const rawAgentConfig: Partial<AgentConfig> | undefined = normalizedOptions.agentConfig ?? undefined;
@@ -137,15 +141,15 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
   const unsubStop = handleRpc<{ requestId: string; agentId: string }>(
     events, "agent:rpc:stop", ({ agentId }) => {
       const record = manager.getRecord(agentId);
-      if (!record) throw new Error("Agent not found");
-      if (!isTopLevelAgent(record)) throw new Error("Agent is owned by another agent");
-      if (!manager.abort(agentId, "extension")) throw new Error("Agent is not running");
+      if (!record) throw new RpcError("not_found", "Agent not found");
+      if (!isTopLevelAgent(record)) throw new RpcError("not_owned", "Agent is owned by another agent");
+      if (!manager.abort(agentId, "extension")) throw new RpcError("not_running", "Agent is not running");
     },
   );
 
   const unsubConsume = handleRpc<{ requestId: string; agentId: string }>(
     events, "agent:rpc:consume", ({ agentId }) => {
-      if (!manager.consumeResult(agentId)) throw new Error("Agent not found or still running");
+      manager.consumeResult(agentId);
     },
   );
 

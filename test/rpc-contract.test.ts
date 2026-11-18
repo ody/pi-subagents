@@ -118,6 +118,41 @@ describe("RPC contract: availability events", () => {
     expect(emitted.filter((e) => e === "agent:settings_loaded")).toHaveLength(2);
   });
 
+  describe("error codes from shared spawn code", () => {
+    async function spawnReply(options: object, type = "general-purpose") {
+      mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
+      writeFileSync(
+        join(tmpDir, ".pi", "agents", "general-purpose.md"),
+        "---\ndescription: general-purpose\n---\n\nYou are general-purpose.",
+      );
+      const { pi, lifecycle, busHandlers } = makePi();
+      subagentsExtension(pi);
+      await lifecycle.get("session_start")({}, ctx());
+      const reply = vi.fn();
+      pi.events.on("agent:rpc:spawn:reply:req-1", reply);
+      await busHandlers.get("agent:rpc:spawn")!({ requestId: "req-1", type, prompt: "go", options });
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      return reply.mock.calls[0][0];
+    }
+
+    it("replies unknown_type for a type that resolves to no agent", async () => {
+      expect(await spawnReply({}, "no-such-agent")).toMatchObject({ success: false, code: "unknown_type" });
+    });
+
+    it("replies invalid_cwd for a relative cwd", async () => {
+      expect(await spawnReply({ cwd: "relative/dir" })).toMatchObject({ success: false, code: "invalid_cwd" });
+    });
+
+    it("replies policy_denied when the policy refuses a tool", async () => {
+      writeFileSync(
+        join(tmpDir, ".pi", "subagents.json"),
+        JSON.stringify({ policy: { tools: { deny: ["bash"] } } }),
+      );
+      const reply = await spawnReply({ agentConfig: { systemPrompt: "p", builtinToolNames: ["bash"] } });
+      expect(reply).toMatchObject({ success: false, code: "policy_denied" });
+    });
+  });
+
   it("does not register or emit again on a second session_start without a shutdown", async () => {
     const { pi, lifecycle, emitted } = makePi();
     subagentsExtension(pi);

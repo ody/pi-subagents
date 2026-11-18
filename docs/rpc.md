@@ -11,7 +11,7 @@ The thing worth understanding up front is that **the bus is in-process.** Every 
 For the channel list, the reply envelope, the per-channel snippets and the event table, see [`README.md`](../README.md#cross-extension-rpc). This document is the reference for what the README has no room for:
 
 - The complete spawn-option surface.
-- Every error string.
+- Every error code.
 - The notification race.
 - The registry.
 - What protocol version `2` does and does not promise.
@@ -121,41 +121,38 @@ One of these already shipped as a bug in this project's own README example. Read
 
 ## Errors
 
-Every failure reaches the caller as `{ success: false, error }`, where `error` is `err?.message ?? String(err)` (`handleRpc` in `src/triggers/cross-extension-rpc.ts`) — so these strings are what you will actually see.
+Every failure reaches the caller as `{ success: false, code, error }` (`handleRpc` in `src/triggers/cross-extension-rpc.ts`). Branch on `code`. The `error` text is for people and is not contract: it can change in any release.
 
-| Error | Source |
+`code` is one of the values below, from `RPC_ERROR_CODES` in `src/rpc-error.ts`. Anything thrown without a code maps to `internal`.
+
+| Code | Cause |
 | --- | --- |
-| `No active session` | `registerRpcHandlers` in `src/triggers/cross-extension-rpc.ts` — called before the first bound `session_start`, or in a session that excludes pi-subagents |
-| `Model override "<label>" provided but ctx.modelRegistry is unavailable` | `registerRpcHandlers` in `src/triggers/cross-extension-rpc.ts` |
-| `Inline agentConfig requires a systemPrompt string` | `normalizeInlineAgentConfig` in `src/triggers/cross-extension-rpc.ts` — `agentConfig` is not an object, or has no string `systemPrompt` |
-| `Inline agentConfig requires a type to name the run` | `normalizeInlineAgentConfig` in `src/triggers/cross-extension-rpc.ts` — `agentConfig` set with an empty or non-string `type` |
-| `Capability policy: <value and list>` | `src/config/capability-policy.ts` — a tool, extension, or skill in `agentConfig` is outside the [capability policy](../README.md#capability-policy), or the policy files have problems. Nothing spawns |
-| `Capability policy: a spawn needs a verdict from checkCapabilityPolicy.` | `src/manager/agent-spawn.ts` — a spawn reached the manager without a verdict. Not reachable from the bus or the registry |
-| `Model not found: "<input>".` + available models | `resolveModel` in `src/config/model-resolver.ts` |
-| `Model not in scope: "<input>".` + allowed models | `checkModelScope` in `src/config/model-scope.ts` — only with `scopeModels` on, and checked against the *resolved* model |
-| `Unknown or disabled agent type: "<raw>". Available: <list>.` | `src/agents/agent-types.ts` — `type` does not resolve to exactly one enabled agent, and the caller gave no `agentConfig` |
-| `No agent type given. Available: <list>.` | `src/agents/agent-types.ts` — `type` is empty and the caller gave no `agentConfig` |
-| `SpawnOptions.cwd must be an absolute path: "<value>"` | `assertValidSpawnCwd` in `src/manager/agent-manager-rules.ts` |
-| `SpawnOptions.cwd does not exist: "<cwd>"` | `assertValidSpawnCwd` in `src/manager/agent-manager-rules.ts` |
-| `SpawnOptions.cwd is not a directory: "<cwd>"` | `assertValidSpawnCwd` in `src/manager/agent-manager-rules.ts` |
-| `Cannot run with isolation: "worktree" — not a git repo, no commits yet, or 'git worktree add' failed.` | `startAgent` in `src/manager/agent-start.ts`, surfaced through `awaitStartup` |
-| git plumbing failures | `git` helper in `src/platform/worktree.ts` |
-| `Agent not found` | stop — `agent:rpc:stop` handler in `src/triggers/cross-extension-rpc.ts` |
-| `Agent is owned by another agent` | stop — same handler |
-| `Agent is not running` | stop — same handler. The record exists, so it has already settled |
-| `Agent not found or still running` | consume — `agent:rpc:consume` handler in the same file |
+| `no_session` | The request came before the first bound `session_start`, or the session has no context |
+| `model_registry_unavailable` | The caller sent a `model` override but `ctx.modelRegistry` is missing |
+| `invalid_agent_config` | Inline `agentConfig` is not an object, has no string `systemPrompt`, or has an empty or non-string `type` |
+| `unknown_type` | `type` does not resolve to exactly one enabled agent, or is empty, and the caller gave no `agentConfig` |
+| `model_not_found` | A string `model` matches no model in the registry |
+| `model_out_of_scope` | `scopeModels` is on and the caller's `model` is outside `enabledModels`. The check uses the *resolved* model |
+| `policy_denied` | A tool, extension, or skill is outside the [capability policy](../README.md#capability-policy), or the policy files have problems. Nothing spawns |
+| `invalid_cwd` | `options.cwd` is not an absolute path, does not exist, or is not a directory |
+| `worktree_failed` | The caller set `isolation: "worktree"`, and the repository has no commits, is not a git repository, or `git worktree add` failed |
+| `not_found` | `stop` or `consume` names no agent this caller may use |
+| `not_owned` | `stop` names a nested agent that another agent owns |
+| `not_running` | `stop` names an agent that has already settled |
+| `still_running` | `consume` names an agent that is running or queued |
+| `internal` | Any other failure, such as a spawn that reached the manager without a policy verdict |
 
-**The in-session `agent_stop` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel throws `Agent is not running`. The tool reports its terminal status as a normal (non-error) result.
+**The in-session `agent_stop` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel replies with code `not_running`. The tool reports its terminal status as a normal (non-error) result.
 
 The model's intent — "that agent should not be running" — is already true, and an `isError: true` result is the wrong signal for "nothing to do". An extension, by contrast, can and should branch on an error envelope.
 
-Don't mirror the tool's wording back into the RPC error string, or a caller that pattern-matches on `Agent is not running` silently stops seeing it.
+Don't mirror the tool's wording back into the RPC reply, or a caller that branches on `not_running` silently stops seeing it.
 
 Three things the table cannot show:
 
 - **The failure that is not an error.** With `worktreeIsolation` off project-wide, the spawn funnel and `src/manager/agent-start.ts` drop `isolation: "worktree"`. They raise no error and leave no note on the record. The wire carries a success envelope. Your agent runs in the main tree. If you asked for isolation because two agents were going to write the same files, they now collide and nothing told you.
 - **A handler that returns nothing omits `data`**, so a successful stop or consume reply is a bare `{ success: true }` and `reply.data.anything` throws.
-- **`requestId` is not validated.** Nothing checks it, and the value goes straight into the reply channel name. A caller that omits it gets its reply on the literal channel `agent:rpc:spawn:reply:undefined`. Every other caller that omitted it also listens there. Send one, and send a unique one.
+- **A request without a `requestId` gets no reply.** The id must be a non-empty string, because it names the reply channel. The extension silently drops a request that fails this check. Send a unique one.
 
 ## Ownership
 
@@ -230,7 +227,7 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 ## Settings events
 
-`agent:settings_loaded` fires on every `session_start` that registers the RPC handlers, right after `agent:ready`. It never fires from the extension factory, and a session that excludes pi-subagents never emits it. Settings are applied at factory time; the payload is read from the files again at `session_start`. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
+`agent:settings_loaded` fires on every `session_start` that registers the RPC handlers, right after `agent:ready`. It never fires from the extension factory, and a session that excludes pi-subagents never emits it. The extension applies settings at factory time and reads the files again at `session_start` for the payload. The payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
 
 `agent:settings_changed` fires when the `/agents` menu changes or resets a setting, including `policy.ephemeralNesting`. Its payload is `{ settings, persisted, layer, policy }`:
 
@@ -263,14 +260,14 @@ This document has no test of its own, so it is worth knowing which claims are ac
 
 | Test | Level | Pins |
 | --- | --- | --- |
-| `test/cross-extension-rpc.test.ts` | Mocked `SpawnCapable` | Envelope shape, per-channel error strings, model resolution and scope enforcement |
+| `test/cross-extension-rpc.test.ts` | Mocked `SpawnCapable` | Envelope shape, per-channel error codes, `requestId` validation, model resolution and scope enforcement |
 | `test/rpc-contract.test.ts` | Real extension factory | No bus emission before `session_start`; `agent:ready` before `agent:settings_loaded`; handlers register again after `session_shutdown` |
 | `test/rpc-lifecycle-gating.test.ts` | Real extension factory | Nothing wired at factory time, everything once at `session_start`, and live widget activity for RPC spawns |
 | `test/rpc-result-consumption.test.ts` | Real delivery path | The notification firing, and not firing, around `consume` |
 | `test/rpc-inline-agent.test.ts` | Real extension factory | An inline `agentConfig` skips type resolution, reaches `runAgent`, and stays out of the registry |
 | `test/queued-stop-events.test.ts` | Real extension factory | A `agent:rpc:stop` of a queued run fires `agent:failed` once and appends one `agent:record` entry |
 
-Not pinned anywhere, so treat them as descriptions rather than contracts: the `SpawnOptions.cwd` error strings, `agent:ready`'s `{}` payload, and consume's handle resolution.
+Not pinned anywhere, so treat them as descriptions rather than contracts: the `error` texts, `agent:ready`'s `{}` payload, and consume's handle resolution.
 
 ## Reference implementation
 

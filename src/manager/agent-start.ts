@@ -1,6 +1,7 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describeModel } from "../config/model-resolver.js";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled } from "../platform/worktree.js";
+import { RpcError } from "../rpc-error.js";
 import { runAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { NestedAgentManager } from "../tool/nested-tools.js";
 import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
@@ -188,7 +189,8 @@ async function enterWorktree(
 ): Promise<string> {
   const wt = await createWorktree(pi, baseCwd, record.id);
   if (!wt) {
-    throw new Error(
+    throw new RpcError(
+      "worktree_failed",
       'Cannot run with isolation: "worktree" — not a git repo, no commits yet, or `git worktree add` failed. ' +
       'Initialize git and commit at least once, or omit `isolation`.',
     );

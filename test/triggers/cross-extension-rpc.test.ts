@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../../src/config/model-scope.js";
+import { RPC_ERROR_CODES, RpcError } from "../../src/rpc-error.js";
 import { type EventBus, normalizeInlineAgentConfig, PROTOCOL_VERSION, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../../src/triggers/cross-extension-rpc.js";
 
 function createEventBus(): EventBus {
@@ -32,7 +33,7 @@ describe("cross-extension RPC", () => {
       awaitStartup: vi.fn().mockResolvedValue(undefined),
       abort: vi.fn().mockReturnValue(true),
       getRecord: vi.fn().mockReturnValue({}),
-      consumeResult: vi.fn().mockReturnValue(true),
+      consumeResult: vi.fn(),
     };
     ctx = { session: true };
     deps = { events, pi: { events }, getCtx: () => ctx, manager };
@@ -188,7 +189,7 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: false, error });
+      expect(reply).toHaveBeenCalledWith({ success: false, code: "invalid_agent_config", error });
       expect(manager.spawn).not.toHaveBeenCalled();
     });
 
@@ -202,13 +203,13 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: false, error: "No active session" });
+      expect(reply).toHaveBeenCalledWith({ success: false, code: "no_session", error: "No active session" });
       expect(manager.spawn).not.toHaveBeenCalled();
     });
 
-    it("returns error when manager.spawn throws", async () => {
+    it("returns the code of an RpcError that manager.spawn throws", async () => {
       (manager.spawn as ReturnType<typeof vi.fn>).mockImplementation(() => {
-        throw new Error("unknown agent type");
+        throw new RpcError("unknown_type", "unknown agent type");
       });
       registerRpcHandlers(deps);
       const reply = vi.fn();
@@ -218,12 +219,12 @@ describe("cross-extension RPC", () => {
       });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: false, error: "unknown agent type" });
+      expect(reply).toHaveBeenCalledWith({ success: false, code: "unknown_type", error: "unknown agent type" });
     });
 
     it("returns error when the agent fails to start after spawn returns", async () => {
       (manager.awaitStartup as ReturnType<typeof vi.fn>).mockRejectedValue(
-        new Error('Cannot run with isolation: "worktree"'),
+        new RpcError("worktree_failed", 'Cannot run with isolation: "worktree"'),
       );
       registerRpcHandlers(deps);
       const reply = vi.fn();
@@ -235,7 +236,7 @@ describe("cross-extension RPC", () => {
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({
-        success: false, error: 'Cannot run with isolation: "worktree"',
+        success: false, code: "worktree_failed", error: 'Cannot run with isolation: "worktree"',
       });
       expect(manager.awaitStartup).toHaveBeenCalledWith("agent-42");
     });
@@ -289,7 +290,7 @@ describe("cross-extension RPC", () => {
       events.emit("agent:rpc:stop", { requestId: "req-st2", agentId: "settled" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent is not running" });
+      expect(reply).toHaveBeenCalledWith({ success: false, code: "not_running", error: "Agent is not running" });
     });
 
     it("returns error when the agent is unknown to the manager", async () => {
@@ -300,7 +301,7 @@ describe("cross-extension RPC", () => {
       events.emit("agent:rpc:stop", { requestId: "req-st5", agentId: "nonexistent" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found" });
+      expect(reply).toHaveBeenCalledWith({ success: false, code: "not_found", error: "Agent not found" });
       expect(manager.abort).not.toHaveBeenCalled();
     });
 
@@ -314,6 +315,7 @@ describe("cross-extension RPC", () => {
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({
         success: false,
+        code: "not_owned",
         error: "Agent is owned by another agent",
       });
       expect(manager.abort).not.toHaveBeenCalled();
@@ -356,15 +358,20 @@ describe("cross-extension RPC", () => {
       expect(manager.consumeResult).toHaveBeenCalledWith("agent-42");
     });
 
-    it("returns an error when the agent is unknown or still running", async () => {
-      (manager.consumeResult as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    it.each([
+      ["not_found", "Agent not found"],
+      ["still_running", "Agent is still running"],
+    ] as const)("replies with code %s", async (code, message) => {
+      (manager.consumeResult as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        throw new RpcError(code, message);
+      });
       registerRpcHandlers(deps);
       const reply = vi.fn();
       events.on("agent:rpc:consume:reply:req-c2", reply);
       events.emit("agent:rpc:consume", { requestId: "req-c2", agentId: "agent-42" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found or still running" });
+      expect(reply).toHaveBeenCalledWith({ success: false, code, error: message });
     });
 
     it("unsub stops responding to consume requests", async () => {
@@ -378,6 +385,57 @@ describe("cross-extension RPC", () => {
       await new Promise((r) => setTimeout(r, 20));
       expect(reply).not.toHaveBeenCalled();
       expect(manager.consumeResult).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("error codes", () => {
+    async function failure(channel: string, payload: object) {
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on(`${channel}:reply:req-code`, reply);
+      events.emit(channel, { requestId: "req-code", ...payload });
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      return reply.mock.calls[0][0];
+    }
+
+    it("maps an error thrown without a code to internal on every channel", async () => {
+      (manager.spawn as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error("boom"); });
+      (manager.getRecord as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error("boom"); });
+      (manager.consumeResult as ReturnType<typeof vi.fn>).mockImplementation(() => { throw new Error("boom"); });
+      const spawn = await failure("agent:rpc:spawn", { type: "general-purpose", prompt: "x" });
+      expect(spawn).toEqual({ success: false, code: "internal", error: "boom" });
+      events = createEventBus();
+      deps = { ...deps, events };
+      const stop = await failure("agent:rpc:stop", { agentId: "a" });
+      expect(stop).toEqual({ success: false, code: "internal", error: "boom" });
+      events = createEventBus();
+      deps = { ...deps, events };
+      const consume = await failure("agent:rpc:consume", { agentId: "a" });
+      expect(consume).toEqual({ success: false, code: "internal", error: "boom" });
+    });
+
+    it.each([
+      ["agent:rpc:ping", {}],
+      ["agent:rpc:spawn", { type: "general-purpose", prompt: "x" }],
+      ["agent:rpc:stop", { agentId: "agent-42" }],
+      ["agent:rpc:consume", { agentId: "agent-42" }],
+    ])("ignores a %s request without a non-empty string requestId", async (channel, payload) => {
+      registerRpcHandlers(deps);
+      const seen = vi.fn();
+      for (const id of ["undefined", "", "1"]) events.on(`${channel}:reply:${id}`, seen);
+      for (const requestId of [undefined, "", 1, null]) events.emit(channel, { ...payload, requestId });
+      events.emit(channel, null);
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(seen).not.toHaveBeenCalled();
+      expect(manager.spawn).not.toHaveBeenCalled();
+      expect(manager.abort).not.toHaveBeenCalled();
+      expect(manager.consumeResult).not.toHaveBeenCalled();
+    });
+
+    it("lists every code in docs/rpc.md", () => {
+      const doc = readFileSync(join(__dirname, "../../docs/rpc.md"), "utf-8");
+      for (const code of RPC_ERROR_CODES) expect(doc, code).toContain(`| \`${code}\` |`);
     });
   });
 
@@ -464,6 +522,7 @@ describe("cross-extension RPC", () => {
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       const call = (reply as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(call.success).toBe(false);
+      expect(call.code).toBe("model_not_found");
       expect(call.error).toMatch(/Model not found/);
       expect(manager.spawn).not.toHaveBeenCalled();
     });
@@ -497,6 +556,7 @@ describe("cross-extension RPC", () => {
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       const call = (reply as ReturnType<typeof vi.fn>).mock.calls[0][0];
       expect(call.success).toBe(false);
+      expect(call.code).toBe("model_registry_unavailable");
       expect(call.error).toMatch(/modelRegistry is unavailable/);
       expect(manager.spawn).not.toHaveBeenCalled();
     });
@@ -556,6 +616,7 @@ describe("cross-extension RPC", () => {
     it("refuses an out-of-scope string override, listing what is allowed", async () => {
       const call = await spawn("req-sc1", "sonnet");
       expect(call.success).toBe(false);
+      expect(call.code).toBe("model_out_of_scope");
       expect(call.error).toMatch(/Model not in scope/);
       expect(call.error).toContain('"sonnet"');
       expect(call.error).toContain("  openai-codex/gpt-5.5");
@@ -565,6 +626,7 @@ describe("cross-extension RPC", () => {
     it("refuses an out-of-scope Model object override too", async () => {
       const call = await spawn("req-sc2", BLOCKED);
       expect(call.success).toBe(false);
+      expect(call.code).toBe("model_out_of_scope");
       expect(call.error).toMatch(/Model not in scope/);
       expect(call.error).toContain('"anthropic/claude-sonnet-4"');
       expect(manager.spawn).not.toHaveBeenCalled();
