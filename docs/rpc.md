@@ -186,7 +186,7 @@ Version 3 contains these breaks against version 2:
 - Every channel, event and session entry name uses the `agent:` prefix.
 - Every failure reply carries a `code` from the closed set in this document.
 - A spawn payload accepts only the options in the spawn-option allowlist.
-- The global agent registry is removed.
+- Version 3 has no global agent registry.
 - `agent:rpc:wait_idle` exists.
 - `stopCause` is part of the stop flow.
 - `agent:settings_loaded` fires on `session_start`, right after `agent:ready`, and not from the extension factory.
