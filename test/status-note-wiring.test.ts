@@ -138,10 +138,6 @@ describe("status note reaches the parent through the real handlers", () => {
       options: {
         description: "top-level owner",
         isBackground: false,
-        parentAgentId: "forged-parent",
-        depth: 99,
-        maxSubagentDepth: 99,
-        configCwd: "/untrusted/config",
       },
     });
     await vi.waitFor(() => expect(pi.events.emit).toHaveBeenCalledWith("agent:rpc:spawn:reply:top", expect.anything()));

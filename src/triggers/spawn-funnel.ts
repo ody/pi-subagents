@@ -92,17 +92,6 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
 
   const spawnTopLevel = (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => {
     const safeOptions = { ...(options ?? {}) };
-    delete safeOptions.parentAgentId;
-    delete safeOptions.depth;
-    delete safeOptions.maxSubagentDepth;
-    delete safeOptions.configCwd;
-    delete safeOptions.rootSessionId;
-    delete safeOptions.resumeSessionFile;
-    delete safeOptions.reclaim;
-    delete safeOptions.blocking;
-    delete safeOptions.capability;
-    delete safeOptions.ephemeral;
-    delete safeOptions.modelReplaced;
     delete safeOptions.signalCause;
     if (safeOptions.signal) safeOptions.signalCause = "extension";
     return spawnResolved(piRef, ctxRef, type, prompt, safeOptions, rawAgentConfig);

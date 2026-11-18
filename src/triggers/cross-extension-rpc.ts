@@ -2,6 +2,7 @@ import { policyEventPayload } from "../config/capability-policy-config.js";
 import { type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import { checkModelScope } from "../config/model-scope.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
+import type { SpawnOptions } from "../manager/agent-spawn.js";
 import { RpcError, type RpcErrorCode } from "../rpc-error.js";
 import type { AgentConfig, AgentRecord, StopCause } from "../types.js";
 
@@ -15,6 +16,30 @@ export type RpcReply<T = void> =
   | { success: false; code: RpcErrorCode; error: string };
 
 export const PROTOCOL_VERSION = 2;
+
+export const RPC_SPAWN_OPTIONS = [
+  "description",
+  "name",
+  "agentConfig",
+  "model",
+  "maxTurns",
+  "isolated",
+  "inheritContext",
+  "thinkingLevel",
+  "isBackground",
+  "isolation",
+  "cwd",
+  "signal",
+  "onSpawned",
+  "onQueued",
+  "onCompaction",
+  "onToolActivity",
+  "onTextDelta",
+  "onTurnEnd",
+  "onAssistantUsage",
+] as const satisfies readonly (keyof SpawnOptions)[];
+
+const rpcSpawnOptionSet: ReadonlySet<string> = new Set(RPC_SPAWN_OPTIONS);
 
 export interface SpawnCapable {
   spawn(pi: unknown, ctx: unknown, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>): string;
@@ -59,6 +84,12 @@ export function normalizeInlineAgentConfig(type: unknown, raw: unknown, descript
   };
 }
 
+function assertKnownOptions(options: object): void {
+  for (const key of Object.keys(options)) {
+    if (!rpcSpawnOptionSet.has(key)) throw new RpcError("unknown_option", `Unknown spawn option "${key}"`);
+  }
+}
+
 function handleRpc<P extends { requestId: string }>(
   events: EventBus,
   channel: string,
@@ -96,6 +127,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
       if (!ctx) throw new RpcError("no_session", "No active session");
 
       let normalizedOptions = options ?? {};
+      assertKnownOptions(normalizedOptions);
       const override = normalizedOptions.model;
       if (override != null) {
         const { modelRegistry, cwd } = ctx as { modelRegistry?: ModelRegistry; cwd?: string };

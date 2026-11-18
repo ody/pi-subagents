@@ -292,11 +292,6 @@ describe("spawn funnel scope", () => {
     expect(reply("c").success).toBe(false);
     expect(reply("c").error).toContain("Allowed models");
   });
-
-  it("drops a caller-forged modelReplaced from top-level options", () => {
-    funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d", modelReplaced: "forged" });
-    expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
-  });
 });
 
 const findingRegistry = {

@@ -17,43 +17,28 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 ## Spawn options
 
-`agent:rpc:spawn` forwards `options` to `AgentManager.spawn` — but not verbatim. The manager's `spawn` behind the RPC is `spawnTopLevel` in `src/triggers/spawn-funnel.ts`, which deletes internal-only fields first. Then `spawnResolved` in the same file resolves the type, model scope, capability verdict and isolation. The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`; what a bus caller actually gets is three different things.
+`agent:rpc:spawn` accepts only the keys in `RPC_SPAWN_OPTIONS` (`src/triggers/cross-extension-rpc.ts`). Any other key in `options` fails the spawn with `unknown_option`, and the error text names the key. The check runs before type, model and policy resolution, so nothing spawns. The spawn funnel in `src/triggers/spawn-funnel.ts` then resolves the type, model scope, capability verdict and isolation.
 
-**Honoured** — set these and they take effect:
+The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`. Internal keys are not in the list: `parentAgentId`, `depth`, `maxSubagentDepth`, `configCwd`, `rootSessionId`, `resumeSessionFile`, `reclaim`, `blocking`, `capability`, `ephemeral`, `modelReplaced`, `signalCause`, `bypassQueue`, `invocation` and `onSessionCreated`. Tool and frontmatter spellings fail too, such as `run_in_background`, `max_turns`, `thinking` and `inherit_context`. Use `isBackground`, `maxTurns`, `thinkingLevel` and `inheritContext`.
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `description` | string | What the agent is doing. Shown in the widget and the completion notification |
 | `agentConfig` | `Partial<AgentConfig>` with `systemPrompt` | Runs this definition instead of the registered `type`. See [Inline agent definitions](#inline-agent-definitions) |
 | `name` | string | A memorable second handle (`@auth-audit`). Slugged, never validated — anything unusable degrades rather than failing the spawn |
-| `model` | `Model` **or** `"provider/modelId"` | The RPC boundary resolves strings against `ctx.modelRegistry`. `null` means inherit, not override. Resolution is fuzzy — see [Model Scope](../README.md#model-scope) |
+| `model` | `Model` **or** `"provider/modelId"` | The spawn funnel resolves strings against `ctx.modelRegistry`. `null` means inherit, not override. Resolution is fuzzy — see [Model Scope](../README.md#model-scope) |
 | `maxTurns` | number | Turn ceiling for the run |
-| `isolated` | boolean | Strips extensions, skills and nested tools. **Not** a git worktree — see the trap table below |
+| `isolated` | boolean | Strips extensions, skills and nested tools. **Not** a git worktree; use `isolation` for that |
 | `inheritContext` | boolean | Fork the parent conversation into the child |
 | `thinkingLevel` | ThinkingLevel | Clamped to what the resolved model supports |
 | `isBackground` | boolean | Occupies a `maxConcurrent` slot and queues behind them. Every RPC spawn runs detached regardless; this is what decides whether the manager *pools* it |
-| `bypassQueue` | boolean | Starts immediately even when the concurrency limit would queue it. The slot is still counted once running |
 | `isolation` | `"worktree"` | Temp git worktree, committed to a `pi-agent-*` branch on completion |
 | `cwd` | absolute path | The agent's tools operate here; `.pi` config still loads from the parent session's project |
-| `invocation` | AgentInvocation | Resolved snapshot used for UI display |
 | `signal` | AbortSignal | Aborting it stops the subagent |
 | `onSpawned` / `onQueued` / `onCompaction` | functions | Fire as documented on `SpawnOptions` |
+| `onToolActivity` / `onTextDelta` / `onTurnEnd` / `onAssistantUsage` | functions | Run after the manager's own bookkeeping. They do not replace it (`startAgent` in `src/manager/agent-start.ts`) |
 
-**Silently stripped** — set these and nothing happens, with no error and no note. Each deletion is a deliberate guard, and the reasons are worth knowing because they say what the surface refuses to let a caller forge:
-
-| Field | Why the guard removes it |
-| --- | --- |
-| `parentAgentId` | Ownership. A forged parent hides your agent under someone else's nested tools |
-| `depth`, `maxSubagentDepth` | A child inherits the nesting cap; the caller does not declare it |
-| `configCwd` | Config-discovery root; only nested launches may set it |
-| `rootSessionId` | Names a transcript directory, so a forged value is a path-traversal primitive |
-| `resumeSessionFile` | Worse: it names a file to **open and replay** as a conversation. Dispatcher only, and only from a path this extension itself recorded |
-| `reclaim` | Bypasses handle allocation, so a forged value would duplicate a live agent's name and make `@handle` ambiguous |
-| `blocking` | Every spawn through here runs detached. A forged `blocking` would charge it to the foreground pool and defer it behind a queue whose gate nobody is holding |
-
-**Chained** — `onToolActivity`, `onTextDelta`, `onTurnEnd`, `onSessionCreated` and `onAssistantUsage` do not replace the manager's own callbacks. `startAgent` in `src/manager/agent-start.ts` runs its activity and usage bookkeeping first, then calls yours. Every programmatic spawn passes through one funnel, so the manager's bookkeeping always runs.
-
-**Capability policy.** `spawnTopLevel` also deletes a `capability` verdict a caller supplies, then runs `checkCapabilityPolicy` itself.
+**Capability policy.** The spawn funnel runs `checkCapabilityPolicy` itself. A caller cannot supply a `capability` verdict.
 
 The RPC handler passes the raw `agentConfig` next to the normalized one. The policy check refuses a field the caller wrote when the field is outside the policy. It filters a field the boundary defaulted (`extensions`, `skills`).
 
@@ -61,10 +46,9 @@ The spawn reply is `{ id, filtered?, modelReplaced? }`, where `filtered` lists w
 
 **Model scope.** `modelReplaced` is the out-of-scope model, such as `anthropic/claude-opus-4-6`, that the scope check replaced with the session model. It appears only after a replacement, and `PROTOCOL_VERSION` stays `2`. A caller-supplied out-of-scope `model` still fails the spawn with the allowed list.
 
-Three things that are not obvious from the tables:
+Two things that are not obvious from the table:
 
 - **The runtime requires nothing.** `description` is non-optional in TypeScript and never validated. A spawn with no `options` at all is legal and works because the RPC handler and `spawnTopLevel` both substitute `{}`.
-- **`bypassQueue` is not stripped.** A bus caller can set it and skip the `maxConcurrent` check.
 - **`signal` and the `on*` callbacks are function values.** They work only because the bus is in-process. A caller that genuinely serializes its payload cannot use them, and they arrive as `undefined` rather than failing.
 
 ### Inline agent definitions
@@ -104,20 +88,6 @@ Three things to know:
 - **UI surfaces show a generic name.** The widget and the conversation viewer look display names up by type, so an inline agent renders under a generic name next to its `description`.
 - **`@handle` cannot reopen an evicted inline agent.** Reopening resolves the type against the registry and refuses when no agent has that name. If a registered agent has the same name, `@handle` reopens that agent instead, so pick a type no agent file uses. A live record whose session still exists resumes normally, under the tools it started with.
 
-### Names that look right and are not
-
-One of these already shipped as a bug in this project's own README example. Read the table even if you are sure.
-
-| You might write | What it does | What you meant |
-| --- | --- | --- |
-| `run_in_background` | Forwarded verbatim and ignored — it is the [`agent`](../README.md#agent) *tool's* parameter name | `isBackground` |
-| `isolated: true` | Disables extensions, skills and nested tools | `isolation: "worktree"` for a git worktree |
-| `isolation: "worktree"` | Creates a git worktree | `isolated: true` to strip capabilities |
-| `configCwd` | Stripped | `cwd` |
-| `max_turns` / `thinking` / `inherit_context` | Ignored — tool and frontmatter spellings | `maxTurns` / `thinkingLevel` / `inheritContext` |
-
-**None of these produce an error.** This path does not validate option keys at all — it accepts and drops unknown ones.
-
 ## Errors
 
 Every failure reaches the caller as `{ success: false, code, error }` (`handleRpc` in `src/triggers/cross-extension-rpc.ts`). Branch on `code`. The `error` text is for people and is not contract: it can change in any release.
@@ -130,6 +100,7 @@ Every failure reaches the caller as `{ success: false, code, error }` (`handleRp
 | `model_registry_unavailable` | The caller sent a `model` override but `ctx.modelRegistry` is missing |
 | `invalid_agent_config` | Inline `agentConfig` is not an object, has no string `systemPrompt`, or has an empty or non-string `type` |
 | `unknown_type` | `type` does not resolve to exactly one enabled agent, or is empty, and the caller gave no `agentConfig` |
+| `unknown_option` | `options` has a key outside the allowed list. The error text names the key |
 | `model_not_found` | A string `model` matches no model in the registry |
 | `model_out_of_scope` | `scopeModels` is on and the caller's `model` is outside `enabledModels`. The check uses the *resolved* model |
 | `policy_denied` | A tool, extension, or skill is outside the [capability policy](../README.md#capability-policy), or the policy files have problems. Nothing spawns |

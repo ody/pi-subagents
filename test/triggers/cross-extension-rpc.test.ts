@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import { RPC_ERROR_CODES, RpcError } from "../../src/rpc-error.js";
-import { type EventBus, normalizeInlineAgentConfig, PROTOCOL_VERSION, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../../src/triggers/cross-extension-rpc.js";
+import { type EventBus, normalizeInlineAgentConfig, PROTOCOL_VERSION, RPC_SPAWN_OPTIONS, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../../src/triggers/cross-extension-rpc.js";
 
 function createEventBus(): EventBus {
   const listeners = new Map<string, Set<(data: unknown) => void>>();
@@ -19,6 +19,29 @@ function createEventBus(): EventBus {
     },
   };
 }
+
+const allowedModel = { id: "m1", provider: "p", name: "M1" };
+const allowedOptions: Record<(typeof RPC_SPAWN_OPTIONS)[number], unknown> = {
+  description: "d",
+  name: "auditor",
+  agentConfig: { systemPrompt: "sp" },
+  model: allowedModel,
+  maxTurns: 3,
+  isolated: true,
+  inheritContext: true,
+  thinkingLevel: "low",
+  isBackground: true,
+  isolation: "worktree",
+  cwd: "/tmp",
+  signal: new AbortController().signal,
+  onSpawned: () => {},
+  onQueued: () => {},
+  onCompaction: () => {},
+  onToolActivity: () => {},
+  onTextDelta: () => {},
+  onTurnEnd: () => {},
+  onAssistantUsage: () => {},
+};
 
 describe("cross-extension RPC", () => {
   let events: EventBus;
@@ -117,6 +140,47 @@ describe("cross-extension RPC", () => {
         deps.pi, ctx, "Explore", "find it",
         { description: "search", isBackground: true },
       );
+    });
+
+    it("lists exactly the nineteen allowed spawn options", () => {
+      expect([...RPC_SPAWN_OPTIONS].sort()).toEqual(Object.keys(allowedOptions).sort());
+      expect(RPC_SPAWN_OPTIONS).toHaveLength(19);
+    });
+
+    it.each(RPC_SPAWN_OPTIONS)("forwards the allowed option %s to manager.spawn", async (key) => {
+      ctx = { session: true, modelRegistry: { find: () => null, getAll: () => [allowedModel], getAvailable: () => [allowedModel] } };
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("agent:rpc:spawn:reply:req-allowed", reply);
+      events.emit("agent:rpc:spawn", {
+        requestId: "req-allowed", type: "general-purpose", prompt: "x",
+        options: { [key]: allowedOptions[key] },
+      });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
+      const forwarded = vi.mocked(manager.spawn).mock.calls[0][4];
+      if (key === "agentConfig") expect(forwarded.agentConfig).toMatchObject({ systemPrompt: "sp" });
+      else expect(forwarded[key]).toBe(allowedOptions[key]);
+    });
+
+    it.each([
+      "run_in_background", "max_turns", "configCwd", "depth", "maxSubagentDepth", "reclaim", "blocking", "ephemeral", "modelReplaced", "signalCause",
+      "parentAgentId", "rootSessionId", "resumeSessionFile", "capability", "bypassQueue", "invocation", "onSessionCreated",
+    ])("fails with unknown_option for %s before anything resolves", async (key) => {
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("agent:rpc:spawn:reply:req-unknown", reply);
+      events.emit("agent:rpc:spawn", {
+        requestId: "req-unknown", type: "general-purpose", prompt: "x",
+        options: { description: "d", model: "nope/missing", [key]: true },
+      });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      const call = reply.mock.calls[0][0];
+      expect(call).toMatchObject({ success: false, code: "unknown_option" });
+      expect(call.error).toContain(`"${key}"`);
+      expect(manager.spawn).not.toHaveBeenCalled();
     });
 
     it("forwards an inline agentConfig, completed with agent-file defaults", async () => {

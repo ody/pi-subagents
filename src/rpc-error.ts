@@ -3,6 +3,7 @@ export const RPC_ERROR_CODES = [
   "model_registry_unavailable",
   "invalid_agent_config",
   "unknown_type",
+  "unknown_option",
   "model_not_found",
   "model_out_of_scope",
   "policy_denied",
