@@ -961,7 +961,7 @@ The extension emits agent lifecycle events via `pi.events.emit()` so other exten
 | --- | --- | --- |
 | `agent:created` | `agent`-tool background spawn, or a detached resume — **not** cross-extension RPC or `@handle` spawns, which are first seen at `agent:started` | `id`, `type`, `description`, `isBackground` (always `true`) |
 | `agent:started` | Agent transitions to running (including queued→running) | `id`, `type`, `description` |
-| `agent:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`: token components including `cacheRead`, plus `cost.total` in USD; absent when nothing was spent), `toolUses`, `result`, `stopCause` (only when the run was stopped) |
+| `agent:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`, with `cacheRead` and `cost.total` in USD; absent when the run spent nothing), `toolUses`, `result`, `stopCause` (only on a stopped run) |
 | `agent:failed` | Agent errored, stopped, or aborted (background and foreground). A stop while queued and a failed start also emit it | identical payload to `agent:completed` — the same formatter builds both, so `error` and `status` are present on that row too, just empty. A stopped run carries `stopCause` (`user`, `agent`, `extension`, `owner` or `shutdown`) |
 | `agent:steered` | Steering message accepted — fires for a *queued* steer as well as a delivered one | `id`, `message` |
 | `agent:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
@@ -1113,7 +1113,7 @@ Each `requestId` has its own reply channel, so concurrent requests don't interfe
 
 ### Wait idle
 
-Wait until no top-level agent is queued or running:
+Wait until no top-level agent waits in the queue or runs:
 
 ```typescript
 const requestId = crypto.randomUUID();
