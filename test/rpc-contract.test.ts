@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -234,5 +234,19 @@ describe("RPC contract: availability events", () => {
 
     expect(emitted.filter((e) => e === "agent:ready")).toHaveLength(1);
     expect(emitted.filter((e) => e === "agent:settings_loaded")).toHaveLength(1);
+  });
+});
+
+describe("RPC contract: docs/rpc.md lists every agent: name", () => {
+  it("names each agent: string literal in src/", () => {
+    const src = join(__dirname, "..", "src");
+    const doc = readFileSync(join(__dirname, "..", "docs", "rpc.md"), "utf8");
+    const files = readdirSync(src, { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith(".ts"));
+    const names = new Set<string>();
+    for (const file of files) {
+      for (const match of readFileSync(join(src, file), "utf8").matchAll(/["'`](agent:[a-z_:]+)/g)) names.add(match[1]);
+    }
+    expect(names.size).toBeGreaterThan(0);
+    expect([...names].filter((name) => !doc.includes(`\`${name}\``))).toEqual([]);
   });
 });

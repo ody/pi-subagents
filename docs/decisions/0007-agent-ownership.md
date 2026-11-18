@@ -22,7 +22,7 @@ Ownership is a property of the record, set at spawn and never changed: `parentAg
 - Only top-level records get a handle and alias, and `@handle` resolution skips owned records.
 - Model-facing top-level tools report an owned record as not found.
 - `agent:rpc:stop` refuses an owned record with the error `Agent is owned by another agent`. No RPC hands out ids for owned records.
-- Callers cannot claim ownership. Spawns through the tool or RPC funnel drop any caller-supplied `parentAgentId`.
+- Callers cannot claim ownership. `agent:rpc:spawn` refuses a caller-supplied `parentAgentId` ([ADR 0045](0045-rpc-spawn-option-allowlist.md)), and the tool and mention paths never pass one.
 - Lifecycle events, the persisted `agent:record` entry, and completion notifications fire only for top-level records. An owned child reports through its owner.
 - Concurrency pools charge only top-level records, so a parent awaiting its own child cannot deadlock the pool.
 - Settling a parent aborts its owned children, transitively. A child that outlives its owner keeps spending after the only model-facing caller that could consume its result has settled.

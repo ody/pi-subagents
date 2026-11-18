@@ -35,9 +35,9 @@ Provenance decides refuse or filter:
 Enforcement:
 
 - One pure `checkCapabilityPolicy`, modeled on `checkModelScope`, runs at every resolution site: the `agent` tool, the nested tool, mentions, and `agent:rpc:spawn`.
-- `spawnTopLevel` serves RPC and direct mentions, so for those callers the check runs inside the funnel after it strips a supplied verdict. The RPC handler passes the raw `agentConfig` alongside the normalized one.
+- `spawnTopLevel` serves RPC and direct mentions, so for those callers the check runs inside the funnel, which replaces any supplied verdict. The RPC handler passes the raw `agentConfig` alongside the normalized one.
 - Its verdict carries the effective tools, extensions, and skills. `runAgent` builds the session from the verdict and never re-reads the agent file for those fields.
-- Only `checkCapabilityPolicy` mints a verdict. `spawnTopLevel` strips one a caller supplies, and `spawnAgent` throws when it is absent.
+- Only `checkCapabilityPolicy` mints a verdict. `agent:rpc:spawn` refuses a caller-supplied verdict ([ADR 0045](0045-rpc-spawn-option-allowlist.md)), `spawnResolved` replaces any verdict with its own, and `spawnAgent` throws when it is absent.
 - The check examines declared values at spawn. The existing extension scope guard filters extension tools that register later, and it never refuses. `DefaultResourceLoader`'s `skillsOverride` narrows `skills: true`, and the check filters named skills before `preloadSkills`.
 - Resuming a live record reuses its session, so the check does not run again. Reopening a tombstone starts a new session, and the check runs.
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.

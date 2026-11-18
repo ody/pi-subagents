@@ -667,7 +667,7 @@ When on, the extension validates each subagent spawn's effective model against p
 | Model source | Out-of-scope behavior |
 | --- | --- |
 | Caller-supplied via `agent({ model: "..." })` | Hard error returned to the orchestrator, listing allowed models |
-| Caller-supplied via cross-extension RPC (`agent:rpc:spawn`, e.g. pi-tasks `TaskExecute`) | Hard error returned to the calling extension, listing allowed models |
+| Caller-supplied via cross-extension RPC (`agent:rpc:spawn`) | Hard error returned to the calling extension, listing allowed models |
 | Pinned in agent frontmatter, with no caller `model` | Warning toast + the session model runs instead; the `agent` tool result carries a note |
 | Session model (nothing pinned, or the pin does not resolve) | Never checked; the session model runs |
 | `agent({ resume })` of a live agent | Never checked; the agent keeps its session and model |
@@ -983,10 +983,11 @@ All RPC replies use a standardized envelope: `{ success: true, data?: T }` on su
 
 **Full reference:** [`docs/rpc.md`](docs/rpc.md) covers:
 
-- the complete spawn-option surface (including the fields that the extension silently strips)
+- every event and payload field, and the session names
+- the complete spawn-option allowlist
 - every error code
 - the completion-notification race
-- what protocol version `2` does and does not promise
+- what protocol version `3` does and does not promise
 
 ### Discovery
 
@@ -1037,7 +1038,7 @@ pi.events.emit("agent:rpc:spawn", {
 
 The reply is `{ id, filtered?, modelReplaced? }`. `modelReplaced` names the out-of-scope model that [Model Scope](#model-scope) replaced with the session model. It appears only after a replacement. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy.
 
-`options` is the manager's spawn-option object, not the `agent` tool's parameter schema. The background flag is `isBackground`. The tool's snake_case `run_in_background` passes through verbatim and the manager ignores it.
+`options` is the manager's spawn-option object, not the `agent` tool's parameter schema. The background flag is `isBackground`. A key outside the allowlist, such as the tool's snake_case `run_in_background`, fails the spawn with `unknown_option`.
 
 Every RPC spawn returns its id immediately and runs detached either way. What `isBackground` does and does not change:
 

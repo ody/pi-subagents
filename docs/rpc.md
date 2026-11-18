@@ -8,12 +8,13 @@ The thing worth understanding up front is that **the bus is in-process.** Every 
 - Why a `consume` fired inside a `agent:completed` handler lands *before* the notifier decides whether to notify.
 - Why none of this survives a real process boundary.
 
-For the channel list, the reply envelope, the per-channel snippets and the event table, see [`README.md`](../README.md#cross-extension-rpc). This document is the reference for what the README has no room for:
+This document is the contract reference ([ADR 0044](decisions/0044-bus-only-integration-surface.md)). For the per-channel snippets, see [`README.md`](../README.md#cross-extension-rpc). This document covers:
 
+- Every event, its payload, and the session names.
 - The complete spawn-option surface.
 - Every error code.
 - The notification race.
-- What protocol version `2` does and does not promise.
+- What protocol version `3` does and does not promise.
 
 ## Spawn options
 
@@ -173,6 +174,27 @@ Consumption is not terminal. A resume, foreground or background, un-consumes the
 
 One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("agent:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
 
+## Events
+
+The extension emits these events on `pi.events`. The four agent-lifecycle events (`agent:started`, `agent:completed`, `agent:failed`, `agent:compacted`) fire for top-level agents only.
+
+| Event | When | Payload fields |
+| --- | --- | --- |
+| `agent:created` | `agent`-tool background spawn, or a detached resume. Not an RPC or `@handle` spawn | `id`, `type`, `description`, `isBackground` |
+| `agent:started` | The agent starts to run, also from the queue | `id`, `type`, `description` |
+| `agent:completed` | The agent finished | `id`, `type`, `description`, `status`, `result`, `error`, `durationMs`, `tokens`, `usage`, `toolUses`, `stopCause` (stopped runs only) |
+| `agent:failed` | The agent errored, stopped, or aborted, also from the queue or at start | Same fields as `agent:completed` |
+| `agent:steered` | The extension accepted a steer, delivered or queued | `id`, `message` |
+| `agent:compacted` | The agent's session compacted | `id`, `type`, `description`, `reason`, `tokensBefore`, `compactionCount` |
+| `agent:ready` | The RPC handlers registered on `session_start` | `{}` |
+| `agent:settings_loaded` | Right after `agent:ready` | `settings`, `policy` (see [Settings events](#settings-events)) |
+| `agent:settings_changed` | A `/agents` setting change or reset | `settings`, `persisted`, `layer`, `policy` |
+
+The extension also writes two session names. Neither goes on the bus:
+
+- `agent:record` is a custom session entry (see [The notification race](#the-notification-race)).
+- `agent:notification` is the custom message type of a completion notification.
+
 ## Wait idle
 
 `agent:rpc:wait_idle` takes only a `requestId`. It replies `{ success: true }` once no top-level agent (`isTopLevelAgent`) waits in the queue or runs. It covers every top-level agent, not only the caller's. A run that starts after the reply needs a new request. It has no timeout parameter: give the wait your own timer. When `session_shutdown` comes first, it replies `{ success: false, code: "shutdown", error }`.
@@ -224,8 +246,8 @@ This document has no test of its own, so it is worth knowing which claims are ac
 
 | Test | Level | Pins |
 | --- | --- | --- |
-| `test/cross-extension-rpc.test.ts` | Mocked `SpawnCapable` | Envelope shape, per-channel error codes, `requestId` validation, model resolution and scope enforcement |
-| `test/rpc-contract.test.ts` | Real extension factory | No bus emission before `session_start`; `agent:ready` before `agent:settings_loaded`; handlers register again after `session_shutdown` |
+| `test/triggers/cross-extension-rpc.test.ts` | Mocked `SpawnCapable` | Envelope shape, per-channel error codes, `requestId` validation, model resolution and scope enforcement |
+| `test/rpc-contract.test.ts` | Real extension factory | No bus emission before `session_start`; `agent:ready` before `agent:settings_loaded`; handlers register again after `session_shutdown`; both `wait_idle` replies; every `agent:` literal in `src/` appears in this document |
 | `test/rpc-lifecycle-gating.test.ts` | Real extension factory | Nothing wired at factory time, everything once at `session_start`, and live widget activity for RPC spawns |
 | `test/rpc-result-consumption.test.ts` | Real delivery path | The notification firing, and not firing, around `consume` |
 | `test/rpc-inline-agent.test.ts` | Real extension factory | An inline `agentConfig` skips type resolution, reaches `runAgent`, and stays out of the registry |
@@ -235,7 +257,7 @@ Not pinned anywhere, so treat them as descriptions rather than contracts: the `e
 
 ## Reference implementation
 
-[**`tintinweb/pi-tasks`**](https://github.com/tintinweb/pi-tasks) is the working integration, and it shaped this surface. Its `TaskExecute` drives `agent:rpc:spawn`, including the serialized `"provider/modelId"` string form that the boundary now resolves. Its `TaskOutput` drives `agent:rpc:consume`. That channel exists because pi-tasks joins an agent on `agent:completed` and reports the result itself ([pi-tasks#62](https://github.com/tintinweb/pi-tasks/issues/62)).
+[**`ody/pi-advisor`**](https://codeberg.org/ody/pi-advisor) is the working integration (`src/backend.ts`). It drives `agent:rpc:spawn` with an inline `agentConfig` and a `"provider/modelId"` string `model`. It waits on `agent:completed` and `agent:failed`, and it calls `agent:rpc:consume` to report the result itself.
 
 Read it for the shape of the whole loop:
 
