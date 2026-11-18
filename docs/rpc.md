@@ -1,6 +1,6 @@
 # Driving subagents from another extension
 
-Another pi extension can spawn a subagent, listen for subagent completion, read the result and stop the run. It does all of this over the `pi.events` bus, without importing this package directly. Four request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`), nine lifecycle events, and one in-process registry at `Symbol.for("pi-subagents:manager")`.
+Another pi extension can spawn a subagent, listen for subagent completion, read the result and stop the run. It does all of this over the `pi.events` bus, without importing this package directly. Five request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`, `agent:rpc:wait_idle`), nine lifecycle events, and one in-process registry at `Symbol.for("pi-subagents:manager")`.
 
 The thing worth understanding up front is that **the bus is in-process.** Every "RPC" call here is a synchronous `pi.events.emit` into the same event loop, and every reply comes back the same way. That single fact explains most of what follows:
 
@@ -140,6 +140,7 @@ Every failure reaches the caller as `{ success: false, code, error }` (`handleRp
 | `not_owned` | `stop` names a nested agent that another agent owns |
 | `not_running` | `stop` names an agent that has already settled |
 | `still_running` | `consume` names an agent that is running or queued |
+| `shutdown` | `wait_idle` was pending when `session_shutdown` came |
 | `internal` | Any other failure, such as a spawn that reached the manager without a policy verdict |
 
 **The in-session `agent_stop` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel replies with code `not_running`. The tool reports its terminal status as a normal (non-error) result.
@@ -172,6 +173,8 @@ Every run settles exactly once, through one tail. The tail detaches the parent a
 
 A run that resolves enters the tail itself. A wedged run enters the same tail when the timer fires, so a `agent:rpc:stop` call frees its slot and fires `agent:completed`/`:failed` within a few seconds. A later real settle returns at once and fires nothing.
 
+A stopped run's `agent:failed` payload carries `stopCause`. Other payloads omit the field.
+
 A stop while the run waits in the queue, or during worktree creation, enters the same tail. It fires `agent:failed` once, with status `stopped`.
 
 A start that fails enters the same tail with status `error`. It fires `agent:failed` once and appends one `agent:record` entry. A direct start also rethrows to its caller.
@@ -199,6 +202,10 @@ Fire-and-forget is the intended use. The reply carries nothing to act on. The ch
 Consumption is not terminal. A resume, foreground or background, un-consumes the record (`resume` in `src/manager/agent-resume.ts` sets `record.resultConsumed = false`) because the record is starting a new run. Only a new run clears consumption: an `@handle` steer of a running or queued agent leaves it unchanged.
 
 One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("agent:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
+
+## Wait idle
+
+`agent:rpc:wait_idle` takes only a `requestId`. It replies `{ success: true }` once no top-level agent (`isTopLevelAgent`) is queued or running. It covers every top-level agent, not only the caller's. A run that starts after the reply needs a new request. It has no timeout parameter: give the wait your own timer. When `session_shutdown` comes first, it replies `{ success: false, code: "shutdown", error }`.
 
 ## The manager registry
 

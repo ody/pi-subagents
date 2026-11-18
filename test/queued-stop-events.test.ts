@@ -109,7 +109,7 @@ describe("a stop while queued reaches the lifecycle events", () => {
 
     const failed = callsFor(pi.events.emit, "agent:failed");
     expect(failed).toHaveLength(1);
-    expect(failed[0][1]).toMatchObject({ id: queuedId, status: "stopped" });
+    expect(failed[0][1]).toMatchObject({ id: queuedId, status: "stopped", stopCause: "extension" });
     const records = callsFor(pi.appendEntry, "agent:record");
     expect(records).toHaveLength(1);
     expect(records[0][1]).toMatchObject({ id: queuedId, status: "stopped" });

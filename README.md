@@ -33,7 +33,7 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 - **Tool denylist** — block specific tools via `disallowed_tools` frontmatter
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
 - **Event bus** — lifecycle events (`agent:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
-- **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`). Standardized reply envelopes with protocol versioning. Emits `agent:ready` on session start. **[Full reference](docs/rpc.md)**
+- **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`, `agent:rpc:wait_idle`). Standardized reply envelopes with protocol versioning. Emits `agent:ready` on session start. **[Full reference](docs/rpc.md)**
 - **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (from `/scoped-models`, honoring both global and project-local pi settings). A caller-supplied out-of-scope model gives a hard error to the orchestrator. The session model replaces an out-of-scope model pinned in an agent file, with a warning toast and a note in the tool result. Toggle via `/agents → Settings → Scope models`
 
 ## Install
@@ -962,8 +962,8 @@ The extension emits agent lifecycle events via `pi.events.emit()` so other exten
 | --- | --- | --- |
 | `agent:created` | `agent`-tool background spawn, or a detached resume — **not** cross-extension RPC or `@handle` spawns, which are first seen at `agent:started` | `id`, `type`, `description`, `isBackground` (always `true`) |
 | `agent:started` | Agent transitions to running (including queued→running) | `id`, `type`, `description` |
-| `agent:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`: token components including `cacheRead`, plus `cost.total` in USD; absent when nothing was spent), `toolUses`, `result` |
-| `agent:failed` | Agent errored, stopped, or aborted (background and foreground). A stop while queued and a failed start also emit it | identical payload to `agent:completed` — the same formatter builds both, so `error` and `status` are present on that row too, just empty |
+| `agent:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`: token components including `cacheRead`, plus `cost.total` in USD; absent when nothing was spent), `toolUses`, `result`, `stopCause` (only when the run was stopped) |
+| `agent:failed` | Agent errored, stopped, or aborted (background and foreground). A stop while queued and a failed start also emit it | identical payload to `agent:completed` — the same formatter builds both, so `error` and `status` are present on that row too, just empty. A stopped run carries `stopCause` (`user`, `agent`, `extension`, `owner` or `shutdown`) |
 | `agent:steered` | Steering message accepted — fires for a *queued* steer as well as a delivered one | `id`, `message` |
 | `agent:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
 | `agent:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
@@ -1112,6 +1112,21 @@ Fire-and-forget is the intended use. The reply carries nothing to act on. The ch
 The extension refuses to consume a running or unknown agent (`success: false`, code `not_found` or `still_running`) and changes nothing. A running agent has no result for anyone to read, and its notification is still the caller's only signal that it finished.
 
 Each `requestId` has its own reply channel, so concurrent requests don't interfere.
+
+### Wait idle
+
+Wait until no top-level agent is queued or running:
+
+```typescript
+const requestId = crypto.randomUUID();
+const unsub = pi.events.on(`agent:rpc:wait_idle:reply:${requestId}`, (reply) => {
+  unsub();
+  if (!reply.success) console.error(reply.code);
+});
+pi.events.emit("agent:rpc:wait_idle", { requestId });
+```
+
+The reply is `{ success: true }` once every top-level agent has settled, including agents the caller did not spawn. A run that starts after the reply needs a new request. The channel has no timeout parameter. If the session shuts down first, the reply is `{ success: false, code: "shutdown", error }`.
 
 ## Worktree Isolation
 

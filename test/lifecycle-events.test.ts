@@ -25,6 +25,11 @@ describe("buildEventData", () => {
     expect(data.usage?.cost.total).toBe(0.01);
   });
 
+  it("carries stopCause only for a stopped run", () => {
+    expect(buildEventData(rec({ status: "stopped", stopCause: "user" })).stopCause).toBe("user");
+    expect(buildEventData(rec({ status: "error" }))).not.toHaveProperty("stopCause");
+  });
+
   it("omits usage when nothing was spent", () => {
     const data = buildEventData(rec());
     expect(data.usage).toBeUndefined();

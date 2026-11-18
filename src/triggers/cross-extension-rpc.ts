@@ -22,6 +22,7 @@ export interface SpawnCapable {
   abort(id: string, cause: StopCause): boolean;
   getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered" | "modelReplaced" | "stopCause"> | undefined;
   consumeResult(id: string): void;
+  waitIdle(): Promise<void>;
 }
 
 export interface RpcDeps {
@@ -36,6 +37,8 @@ export interface RpcHandle {
   unsubSpawn: () => void;
   unsubStop: () => void;
   unsubConsume: () => void;
+  unsubWaitIdle: () => void;
+  releaseWaiters: () => void;
 }
 
 export function normalizeInlineAgentConfig(type: unknown, raw: unknown, description?: string): AgentConfig {
@@ -153,5 +156,17 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
     },
   );
 
-  return { unsubPing, unsubSpawn, unsubStop, unsubConsume };
+  const idleWaiters = new Set<(err: RpcError) => void>();
+  const unsubWaitIdle = handleRpc(events, "agent:rpc:wait_idle", () =>
+    new Promise<void>((resolve, reject) => {
+      idleWaiters.add(reject);
+      manager.waitIdle().then(resolve, reject).finally(() => idleWaiters.delete(reject));
+    }),
+  );
+  const releaseWaiters = () => {
+    for (const reject of idleWaiters) reject(new RpcError("shutdown", "Session shut down before agents went idle"));
+    idleWaiters.clear();
+  };
+
+  return { unsubPing, unsubSpawn, unsubStop, unsubConsume, unsubWaitIdle, releaseWaiters };
 }

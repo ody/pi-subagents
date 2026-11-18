@@ -2,9 +2,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import subagentsExtension from "../src/index.js";
 
-const RPC_CHANNELS = ["agent:rpc:ping", "agent:rpc:spawn", "agent:rpc:stop", "agent:rpc:consume"] as const;
+vi.mock("../src/session/agent-runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
+  return { ...actual, runAgent: vi.fn() };
+});
+
+import subagentsExtension from "../src/index.js";
+import { runAgent } from "../src/session/agent-runner.js";
+
+const RPC_CHANNELS = ["agent:rpc:ping", "agent:rpc:spawn", "agent:rpc:stop", "agent:rpc:consume", "agent:rpc:wait_idle"] as const;
 
 function makePi() {
   const lifecycle = new Map<string, any>();
@@ -150,6 +157,71 @@ describe("RPC contract: availability events", () => {
       );
       const reply = await spawnReply({ agentConfig: { systemPrompt: "p", builtinToolNames: ["bash"] } });
       expect(reply).toMatchObject({ success: false, code: "policy_denied" });
+    });
+  });
+
+  describe("agent:rpc:wait_idle", () => {
+    async function startSession() {
+      mkdirSync(join(tmpDir, ".pi", "agents"), { recursive: true });
+      writeFileSync(
+        join(tmpDir, ".pi", "agents", "general-purpose.md"),
+        "---\ndescription: general-purpose\n---\n\nYou are general-purpose.",
+      );
+      const harness = makePi();
+      subagentsExtension(harness.pi);
+      await harness.lifecycle.get("session_start")({}, ctx());
+      return harness;
+    }
+
+    function request(h: ReturnType<typeof makePi>, channel: string, payload: object) {
+      const reply = vi.fn();
+      h.pi.events.on(`${channel}:reply:req`, reply);
+      h.busHandlers.get(channel)!({ requestId: "req", ...payload });
+      return reply;
+    }
+
+    it("replies at once when no agent is running", async () => {
+      const h = await startSession();
+      const reply = request(h, "agent:rpc:wait_idle", {});
+      await vi.waitFor(() => expect(reply).toHaveBeenCalledWith({ success: true }));
+    });
+
+    it("replies success only after every top-level agent settles", async () => {
+      const h = await startSession();
+      const finish: Array<(v: unknown) => void> = [];
+      vi.mocked(runAgent).mockImplementation(
+        () => new Promise((resolve) => { finish.push(resolve); }) as any,
+      );
+      for (const id of ["a", "b"]) {
+        const spawned = request(h, "agent:rpc:spawn", { type: "general-purpose", prompt: "go", options: { description: id, isBackground: true } });
+        await vi.waitFor(() => expect(spawned).toHaveBeenCalled());
+      }
+      await vi.waitFor(() => expect(finish).toHaveLength(2));
+
+      const reply = request(h, "agent:rpc:wait_idle", {});
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(reply).not.toHaveBeenCalled();
+
+      const result = (text: string) => ({ responseText: text, session: { dispose: vi.fn() }, aborted: false, steered: false });
+      finish[0](result("one"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(reply).not.toHaveBeenCalled();
+
+      finish[1](result("two"));
+      await vi.waitFor(() => expect(reply).toHaveBeenCalledWith({ success: true }));
+    });
+
+    it("replies code shutdown when session_shutdown comes first", async () => {
+      const h = await startSession();
+      vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
+      const spawned = request(h, "agent:rpc:spawn", { type: "general-purpose", prompt: "go", options: { description: "a", isBackground: true } });
+      await vi.waitFor(() => expect(spawned).toHaveBeenCalled());
+
+      const reply = request(h, "agent:rpc:wait_idle", {});
+      await h.lifecycle.get("session_shutdown")({}, ctx());
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(reply.mock.calls[0][0]).toMatchObject({ success: false, code: "shutdown" });
     });
   });
 

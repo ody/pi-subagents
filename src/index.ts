@@ -137,6 +137,13 @@ export default function (pi: ExtensionAPI) {
           awaitStartup: (id) => manager.awaitStartup(id),
           getRecord: (id) => manager.getRecord(id),
           abort: (id, cause) => manager.abort(id, cause),
+          waitIdle: async () => {
+            const active = () => manager.listAgents().some(r => isTopLevelAgent(r) && (r.status === "running" || r.status === "queued"));
+            while (active()) {
+              await manager.waitForAll();
+              if (active()) await new Promise(resolve => setTimeout(resolve, 10));
+            }
+          },
           consumeResult: (id) => {
             const record = resolveAgentRef(id);
             if (!record || !isTopLevelAgent(record)) throw new RpcError("not_found", "Agent not found");
@@ -169,6 +176,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    rpcHandle?.releaseWaiters();
+    rpcHandle?.unsubWaitIdle();
     rpcHandle?.unsubSpawn();
     rpcHandle?.unsubStop();
     rpcHandle?.unsubPing();

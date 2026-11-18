@@ -12,6 +12,7 @@ export const RPC_ERROR_CODES = [
   "not_owned",
   "not_running",
   "still_running",
+  "shutdown",
   "internal",
 ] as const;
 

@@ -20,5 +20,6 @@ export function buildEventData(record: AgentRecord) {
     durationMs,
     tokens,
     usage,
+    ...(record.status === "stopped" && record.stopCause && { stopCause: record.stopCause }),
   };
 }
