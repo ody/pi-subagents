@@ -125,10 +125,7 @@ export default function (pi: ExtensionAPI) {
           abort: (id, cause) => manager.abort(id, cause),
           waitIdle: async () => {
             const active = () => manager.listAgents().some(r => isTopLevelAgent(r) && (r.status === "running" || r.status === "queued"));
-            while (active()) {
-              await manager.waitForAll();
-              if (active()) await new Promise(resolve => setTimeout(resolve, 10));
-            }
+            while (active()) await manager.waitForAll();
           },
           consumeResult: (id) => {
             const record = resolveAgentRef(id);

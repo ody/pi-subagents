@@ -10,6 +10,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
+import { tapManager } from "./harness/manager-tap.js";
 
 const RPC_CHANNELS = ["agent:rpc:ping", "agent:rpc:spawn", "agent:rpc:stop", "agent:rpc:consume", "agent:rpc:wait_idle"] as const;
 
@@ -209,6 +210,35 @@ describe("RPC contract: availability events", () => {
 
       finish[1](result("two"));
       await vi.waitFor(() => expect(reply).toHaveBeenCalledWith({ success: true }));
+    });
+
+    it("waits for a nested agent that outlives its top-level parent", async () => {
+      const tap = tapManager();
+      try {
+        const h = await startSession();
+        const finish: Array<(v: unknown) => void> = [];
+        vi.mocked(runAgent).mockImplementation(
+          () => new Promise((resolve) => { finish.push(resolve); }) as any,
+        );
+        const spawned = request(h, "agent:rpc:spawn", { type: "general-purpose", prompt: "go", options: { description: "parent", isBackground: true } });
+        await vi.waitFor(() => expect(spawned).toHaveBeenCalled());
+        await vi.waitFor(() => expect(finish).toHaveLength(1));
+        const parentId = (spawned.mock.calls[0][0] as { data: { id: string } }).data.id;
+        const capability = (vi.mocked(runAgent).mock.calls[0][3] as any).capability;
+        tap.manager().spawn(h.pi, ctx(), "general-purpose", "child", { description: "child", isBackground: true, parentAgentId: parentId, capability });
+        await vi.waitFor(() => expect(finish).toHaveLength(2));
+
+        const result = (text: string) => ({ responseText: text, session: { dispose: vi.fn() }, aborted: false, steered: false });
+        finish[0](result("parent"));
+        const reply = request(h, "agent:rpc:wait_idle", {});
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        expect(reply).not.toHaveBeenCalled();
+
+        finish[1](result("child"));
+        await vi.waitFor(() => expect(reply).toHaveBeenCalledWith({ success: true }));
+      } finally {
+        tap.restore();
+      }
     });
 
     it("replies code shutdown when session_shutdown comes first", async () => {

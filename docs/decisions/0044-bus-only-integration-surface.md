@@ -31,6 +31,7 @@ Nothing reaches the bus from the extension factory. A session that filters the e
 Shutdown barrier:
 
 - `agent:rpc:wait_idle` replies `{ success: true }` when no top-level agent waits in the queue or runs.
+- It also waits for nested agents, including one that outlives its parent.
 - It waits for all top-level agents, not only those of the caller. A run that starts after the reply needs a new request.
 - If `session_shutdown` comes first, the reply fails with code `shutdown`.
 - It takes no timeout. The caller owns its timeout.

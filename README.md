@@ -1114,7 +1114,7 @@ Each `requestId` has its own reply channel, so concurrent requests don't interfe
 
 ### Wait idle
 
-Wait until no top-level agent waits in the queue or runs:
+Wait until no agent waits in the queue or runs, nested agents included:
 
 ```typescript
 const requestId = crypto.randomUUID();

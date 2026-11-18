@@ -80,7 +80,7 @@ Each entry: the rule an agent must not break, and its ADR.
 
 - Add or update tests for the behavior you change.
 - A test that loses its purpose because the code it guards is gone gets deleted, not bent to fit.
-- `vitest.config.ts` inlines `@earendil-works/pi-*` so the faux-provider e2e tests share one pi-ai instance. Do not remove that setting.
+- `vitest.config.mts` inlines `@earendil-works/pi-*` so the faux-provider e2e tests share one pi-ai instance. Do not remove that setting.
 
 ## Documentation
 

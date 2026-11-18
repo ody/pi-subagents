@@ -197,7 +197,9 @@ The extension also writes two session names. Neither goes on the bus:
 
 ## Wait idle
 
-`agent:rpc:wait_idle` takes only a `requestId`. It replies `{ success: true }` once no top-level agent (`isTopLevelAgent`) waits in the queue or runs. It covers every top-level agent, not only the caller's. A run that starts after the reply needs a new request. It has no timeout parameter: give the wait your own timer. When `session_shutdown` comes first, it replies `{ success: false, code: "shutdown", error }`.
+`agent:rpc:wait_idle` takes only a `requestId`. It replies `{ success: true }` once no top-level agent (`isTopLevelAgent`) waits in the queue or runs. It covers every top-level agent, not only the caller's. It also waits for nested agents, including one that outlives its parent.
+
+A run that starts after the reply needs a new request. It has no timeout parameter: give the wait your own timer. When `session_shutdown` comes first, it replies `{ success: false, code: "shutdown", error }`.
 
 ## Protocol versions
 
