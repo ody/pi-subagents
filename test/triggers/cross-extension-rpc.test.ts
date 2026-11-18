@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import { RPC_ERROR_CODES, RpcError } from "../../src/rpc-error.js";
-import { type EventBus, normalizeInlineAgentConfig, PROTOCOL_VERSION, RPC_SPAWN_OPTIONS, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../../src/triggers/cross-extension-rpc.js";
+import { type EventBus, normalizeInlineAgentConfig, RPC_SPAWN_OPTIONS, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../../src/triggers/spawn-funnel.js";
 import { testAgent } from "../harness/test-agents.js";
 
@@ -79,7 +79,7 @@ describe("cross-extension RPC", () => {
       events.emit("agent:rpc:ping", { requestId: "req-1" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: PROTOCOL_VERSION, policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
+      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: 3, features: [], policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
     });
 
     it("scopes replies — other requestIds do not receive it", async () => {

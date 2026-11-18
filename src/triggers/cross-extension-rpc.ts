@@ -13,7 +13,9 @@ export type RpcReply<T = void> =
   | { success: true; data?: T }
   | { success: false; code: RpcErrorCode; error: string };
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
+
+export const RPC_FEATURES: readonly string[] = [];
 
 export const RPC_SPAWN_OPTIONS = [
   "description",
@@ -116,7 +118,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
 
   const unsubPing = handleRpc(events, "agent:rpc:ping", () => {
     const cwd = (getCtx() as { cwd?: string } | undefined)?.cwd ?? process.cwd();
-    return { version: PROTOCOL_VERSION, policy: policyEventPayload(cwd) };
+    return { version: PROTOCOL_VERSION, features: RPC_FEATURES, policy: policyEventPayload(cwd) };
   });
 
   const unsubSpawn = handleRpc<{ requestId: string; type: string; prompt: string; options?: any }>(

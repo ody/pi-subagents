@@ -44,7 +44,7 @@ The RPC handler passes the raw `agentConfig` next to the normalized one. The pol
 
 The spawn reply is `{ id, filtered?, modelReplaced? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
 
-**Model scope.** `modelReplaced` is the out-of-scope model, such as `anthropic/claude-opus-4-6`, that the scope check replaced with the session model. It appears only after a replacement, and `PROTOCOL_VERSION` stays `2`. A caller-supplied out-of-scope `model` still fails the spawn with the allowed list.
+**Model scope.** `modelReplaced` is the out-of-scope model, such as `anthropic/claude-opus-4-6`, that the scope check replaced with the session model. It appears only after a replacement. A caller-supplied out-of-scope `model` still fails the spawn with the allowed list.
 
 Two things that are not obvious from the table:
 
@@ -179,11 +179,19 @@ One related thing that lives nowhere else: on every top-level settle, pi-subagen
 
 ## Protocol versions
 
-`agent:rpc:ping` replies `{ version: PROTOCOL_VERSION, policy }`, currently `2` (`PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`). 0.5.0 introduced the constant already equal to `2`. "v1" is a retroactive name for the pre-envelope contract:
+`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `3`. `features` is `RPC_FEATURES` in the same file, currently `[]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
 
-- Spawn replied with a bare `{ id }` or `{ error }`.
-- Stop replied `{ success: boolean }` with no message.
-- Each handler caught its own errors.
+Version 3 contains these breaks against version 2:
+
+- Every channel, event and session entry name uses the `agent:` prefix.
+- Every failure reply carries a `code` from the closed set in this document.
+- A spawn payload accepts only the options in the spawn-option allowlist.
+- The global agent registry is removed.
+- `agent:rpc:wait_idle` exists.
+- `stopCause` is part of the stop flow.
+- `agent:settings_loaded` fires on `session_start`, right after `agent:ready`, and not from the extension factory.
+
+The feature list resets to `[]` on each version bump. Version 3 has no additive feature yet.
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `agent:settings_loaded` and `agent:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 
@@ -200,13 +208,7 @@ One related thing that lives nowhere else: on every top-level settle, pi-subagen
 | `layer` | `"global"` or `"project"`, the layer the change wrote to. |
 | `policy` | `{ global, project, ephemeralNesting }`, as in the ping reply. |
 
-A global change that the project overrides still fires the event, with `layer: "global"` and an effective `settings` that did not change. `PROTOCOL_VERSION` stays `2`.
-
-Everything added since shipped **without a bump**, because all of it is additive: stop's ownership refusal, string-`model` resolution, `scopeModels` enforcement, and the whole `consume` channel.
-
-> A `ping` that answers `2` does not tell you whether `consume` exists, whether the manager enforces model scope, or whether stop checks ownership.
-
-So send `consume` unconditionally and ignore the outcome. An older build has no handler and simply keeps notifying. That is exactly why `consume` sits outside the handshake. Treat every error envelope as authoritative rather than trying to predict which checks are in force.
+A global change that the project overrides still fires the event, with `layer: "global"` and an effective `settings` that did not change.
 
 ## Availability
 

@@ -782,7 +782,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - The `Ephemeral nesting` row appears in both layers and writes `policy.ephemeralNesting` only. It leaves every other part of `policy` as it was, and `r` removes the key.
 - The row shows the effective value. On the project layer it refuses to turn on while the global file has it off, because a project can only narrow.
 - A change fires `agent:settings_changed` with the `policy` payload.
-- `agent:settings_loaded`, `agent:settings_changed`, and the `agent:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy fails to parse). The ping reply is the only copy that is always current.
+- `agent:settings_loaded`, `agent:settings_changed`, and the `agent:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy fails to parse). The ping reply, `{ version, features, policy }`, is the only copy that is always current. `version` is `3` and `features` is `[]`.
 
 ### Strict agent files
 
@@ -1002,13 +1002,13 @@ pi.events.on("agent:ready", () => {
 
 ### Ping
 
-Check whether pi loaded the subagents extension and get the protocol version:
+Check whether pi loaded the subagents extension and get the protocol version and feature list:
 
 ```typescript
 const requestId = crypto.randomUUID();
 const unsub = pi.events.on(`agent:rpc:ping:reply:${requestId}`, (reply) => {
   unsub();
-  if (reply.success) console.log("Protocol version:", reply.data.version, reply.data.policy);
+  if (reply.success) console.log("Protocol version:", reply.data.version, reply.data.features, reply.data.policy);
 });
 pi.events.emit("agent:rpc:ping", { requestId });
 ```
