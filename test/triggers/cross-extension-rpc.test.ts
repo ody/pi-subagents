@@ -2,9 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAgents } from "../../src/agents/agent-types.js";
 import { isScopeModelsEnabled, setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import { RPC_ERROR_CODES, RpcError } from "../../src/rpc-error.js";
 import { type EventBus, normalizeInlineAgentConfig, PROTOCOL_VERSION, RPC_SPAWN_OPTIONS, type RpcDeps, registerRpcHandlers, type SpawnCapable } from "../../src/triggers/cross-extension-rpc.js";
+import { createSpawnFunnel } from "../../src/triggers/spawn-funnel.js";
+import { testAgent } from "../harness/test-agents.js";
 
 function createEventBus(): EventBus {
   const listeners = new Map<string, Set<(data: unknown) => void>>();
@@ -49,7 +52,13 @@ describe("cross-extension RPC", () => {
   let ctx: object | undefined;
   let deps: RpcDeps;
 
+  function funnelDeps(): RpcDeps {
+    const funnel = createSpawnFunnel({ manager: { spawn: manager.spawn, getRecord: vi.fn(), resolveMention: vi.fn() } as never, reloadCustomAgents: () => {} });
+    return { events, pi: { events }, getCtx: () => ctx, manager: { ...manager, spawn: funnel.spawnTopLevel } };
+  }
+
   beforeEach(() => {
+    registerAgents(new Map([["general-purpose", testAgent("general-purpose")]]));
     events = createEventBus();
     manager = {
       spawn: vi.fn().mockReturnValue("agent-42"),
@@ -538,7 +547,7 @@ describe("cross-extension RPC", () => {
 
     beforeEach(() => {
       ctx = { session: true, modelRegistry: registry };
-      deps = { events, pi: { events }, getCtx: () => ctx, manager };
+      deps = funnelDeps();
     });
 
     it("resolves a string model to a Model instance before manager.spawn", async () => {
@@ -554,7 +563,7 @@ describe("cross-extension RPC", () => {
       expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
       expect(manager.spawn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "x",
-        { model: fakeModel },
+        expect.objectContaining({ model: fakeModel }),
       );
     });
 
@@ -570,7 +579,7 @@ describe("cross-extension RPC", () => {
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(manager.spawn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "x",
-        { model: fakeModel },
+        expect.objectContaining({ model: fakeModel }),
       );
     });
 
@@ -603,7 +612,7 @@ describe("cross-extension RPC", () => {
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
       expect(manager.spawn).toHaveBeenCalledWith(
-        deps.pi, ctx, "general-purpose", "x", { model: null },
+        deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: null }),
       );
     });
 
@@ -655,7 +664,7 @@ describe("cross-extension RPC", () => {
       );
       setScopeModelsEnabled(true);
       ctx = { session: true, cwd: projectDir, modelRegistry: registry };
-      deps = { events, pi: { events }, getCtx: () => ctx, manager };
+      deps = funnelDeps();
     });
 
     afterEach(() => {
@@ -700,7 +709,7 @@ describe("cross-extension RPC", () => {
       const call = await spawn("req-sc3", "openai-codex/gpt-5.5");
       expect(call).toEqual({ success: true, data: { id: "agent-42" } });
       expect(manager.spawn).toHaveBeenCalledWith(
-        deps.pi, ctx, "general-purpose", "x", { model: ALLOWED },
+        deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: ALLOWED }),
       );
     });
 
@@ -709,7 +718,7 @@ describe("cross-extension RPC", () => {
       const call = await spawn("req-sc4", "sonnet");
       expect(call).toEqual({ success: true, data: { id: "agent-42" } });
       expect(manager.spawn).toHaveBeenCalledWith(
-        deps.pi, ctx, "general-purpose", "x", { model: BLOCKED },
+        deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: BLOCKED }),
       );
     });
   });

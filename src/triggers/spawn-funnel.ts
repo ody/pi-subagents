@@ -21,12 +21,14 @@ export interface SpawnFunnel {
 }
 
 function resolvePin(registry: any, callerModel: any, configModel: string | undefined): { pinned: any; modelInput: string | undefined } {
-  if (typeof callerModel === "string") {
-    const resolved = registry ? resolveModel(callerModel, registry) : callerModel;
+  if (callerModel != null) {
+    const modelInput = typeof callerModel === "string" ? callerModel : `${callerModel.provider}/${callerModel.id}`;
+    if (!registry) throw new RpcError("model_registry_unavailable", `Model override "${modelInput}" provided but ctx.modelRegistry is unavailable`);
+    if (typeof callerModel !== "string") return { pinned: callerModel, modelInput };
+    const resolved = resolveModel(callerModel, registry);
     if (typeof resolved === "string") throw new RpcError("model_not_found", resolved);
-    return { pinned: resolved, modelInput: callerModel };
+    return { pinned: resolved, modelInput };
   }
-  if (callerModel != null) return { pinned: callerModel, modelInput: `${callerModel.provider}/${callerModel.id}` };
   if (!configModel || !registry) return { pinned: undefined, modelInput: configModel };
   const resolved = resolveModel(configModel, registry);
   return { pinned: typeof resolved === "string" ? undefined : resolved, modelInput: configModel };

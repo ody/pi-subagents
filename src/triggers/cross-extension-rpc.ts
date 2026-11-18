@@ -1,6 +1,4 @@
 import { policyEventPayload } from "../config/capability-policy-config.js";
-import { type ModelRegistry, resolveModel } from "../config/model-resolver.js";
-import { checkModelScope } from "../config/model-scope.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
 import type { SpawnOptions } from "../manager/agent-spawn.js";
 import { RpcError, type RpcErrorCode } from "../rpc-error.js";
@@ -128,34 +126,6 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
 
       let normalizedOptions = options ?? {};
       assertKnownOptions(normalizedOptions);
-      const override = normalizedOptions.model;
-      if (override != null) {
-        const { modelRegistry, cwd } = ctx as { modelRegistry?: ModelRegistry; cwd?: string };
-        const label = typeof override === "string" ? override : `${override.provider}/${override.id}`;
-        if (!modelRegistry) {
-          throw new RpcError("model_registry_unavailable", `Model override "${label}" provided but ctx.modelRegistry is unavailable`);
-        }
-        let model = override;
-        if (typeof override === "string") {
-          const resolved = resolveModel(override, modelRegistry);
-          if (typeof resolved === "string") {
-            throw new RpcError("model_not_found", resolved);
-          }
-          model = resolved;
-          normalizedOptions = { ...normalizedOptions, model: resolved };
-        }
-
-        const verdict = checkModelScope({
-          model,
-          cwd: cwd ?? process.cwd(),
-          modelRegistry,
-          callerSupplied: true,
-          agentLabel: type,
-          modelInput: label,
-        });
-        if (verdict.kind === "error") throw new RpcError("model_out_of_scope", verdict.message);
-      }
-
       const rawAgentConfig: Partial<AgentConfig> | undefined = normalizedOptions.agentConfig ?? undefined;
       if (normalizedOptions.agentConfig != null) {
         normalizedOptions = {
