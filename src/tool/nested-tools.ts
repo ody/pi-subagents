@@ -16,6 +16,7 @@ import {
 } from "../agents/agent-types.js";
 import { loadCustomAgents } from "../agents/custom-agents.js";
 import {
+  allowedSubagentsRefusal,
   type BuiltEphemeralAgent,
   buildEphemeralAgent,
   type EphemeralParams,
@@ -204,7 +205,7 @@ function resolveNestedTarget(
     if ("error" in typeResult) return typeResult;
     return { type: typeResult.type, config: getAgentConfigIn(registry, typeResult.type), built: undefined };
   }
-  const conflict = ephemeralIsolationConflict(params);
+  const conflict = ephemeralIsolationConflict(params) ?? allowedSubagentsRefusal(params.allowed_subagents);
   if (conflict) return { error: conflict };
   if (parentAllowed !== "all") {
     return { error: "A nested ephemeral agent is allowed only when this agent's allowed_subagents is all. Name one of the allowed types in subagent_type." };

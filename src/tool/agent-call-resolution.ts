@@ -2,6 +2,7 @@ import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import {
+  allowedSubagentsRefusal,
   type BuiltEphemeralAgent,
   buildEphemeralAgent,
   type EphemeralParams,
@@ -100,7 +101,7 @@ function omitsType(params: AgentCallParams): boolean {
 
 function typeParamConflict(params: AgentCallParams): string | undefined {
   if (omitsType(params)) {
-    return ephemeralIsolationConflict({ ...params, description: params.description });
+    return ephemeralIsolationConflict({ ...params, description: params.description }) ?? allowedSubagentsRefusal(params.allowed_subagents);
   }
   if (params.resume) return undefined;
   return namedAgentParamConflict(params);

@@ -3,7 +3,7 @@ import { basename, join } from "node:path";
 import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 import type { AgentConfig, IsolationMode, ThinkingLevel } from "../types.js";
 import { BUILTIN_TOOL_NAMES } from "./agent-types.js";
-import { EPHEMERAL_TYPE_PREFIX } from "./ephemeral-agent.js";
+import { allowedSubagentsRefusal, EPHEMERAL_TYPE_PREFIX } from "./ephemeral-agent.js";
 
 const RESERVED_IN_TYPE = ":";
 
@@ -105,6 +105,13 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       continue;
     }
 
+    const allowedSubagents = parseAllowedSubagents(fm.allowed_subagents);
+    const allowedRefusal = allowedSubagentsRefusal(allowedSubagents);
+    if (allowedRefusal) {
+      warnIfNew(`Agent file ${path}: ${allowedRefusal} Skipping.`);
+      continue;
+    }
+
     const { builtinToolNames, extSelectors } = parseToolsField(fm.tools);
 
     agents.set(name, {
@@ -124,7 +131,7 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       persistSession: fm.persist_session != null ? fm.persist_session === true : undefined,
       outputTranscript: fm.output_transcript != null ? fm.output_transcript !== false : undefined,
       sessionDir: str(fm.session_dir),
-      allowedSubagents: parseAllowedSubagents(fm.allowed_subagents),
+      allowedSubagents,
       systemPrompt: body.trim(),
       promptMode: fm.prompt_mode === "append" ? "append" : "replace",
       inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,

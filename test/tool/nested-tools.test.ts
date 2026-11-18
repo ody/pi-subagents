@@ -128,6 +128,16 @@ describe("child-safe nested agent tools", () => {
     );
   });
 
+  it.each([["\"all\""], ["some"], [["\"all\""]]])("refuses a malformed allowed_subagents %j on a nested ephemeral agent", async value => {
+    const [agent] = tools("all");
+    const result = await execute(agent, { description: "scan", prompt: "go", allowed_subagents: value });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain("allowed_subagents must be");
+    expect(spawnAndWait).not.toHaveBeenCalled();
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it("keeps agent discovery rooted in inherited config, not the working directory", async () => {
     const workCwd = mkdtempSync(join(tmpdir(), "nested-tools-work-"));
     const workAgentDir = join(workCwd, ".pi", "agents");

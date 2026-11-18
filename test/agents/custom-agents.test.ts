@@ -222,6 +222,26 @@ Restricted.`);
     expect(result.get("restricted")!.allowedSubagents).toEqual(["scout", "reviewer"]);
   });
 
+  it("skips an agent file whose allowed_subagents is a quoted \"all\" or lists a quoted name", () => {
+    writeAgent("quoted", `---
+allowed_subagents: '"all"'
+---
+Bad.`);
+    writeAgent("quoted-item", `---
+allowed_subagents: scout, '"reviewer"'
+---
+Bad.`);
+    writeAgent("fine", `---
+allowed_subagents: scout
+---
+Good.`);
+
+    const result = loadCustomAgents(tmpDir);
+    expect(result.has("quoted")).toBe(false);
+    expect(result.has("quoted-item")).toBe(false);
+    expect(result.get("fine")!.allowedSubagents).toEqual(["scout"]);
+  });
+
   it("accepts booleans like extensions:/skills: do, instead of a type named \"true\"", () => {
     writeAgent("bool-on", `---
 allowed_subagents: true

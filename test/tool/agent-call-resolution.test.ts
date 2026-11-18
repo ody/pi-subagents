@@ -58,6 +58,19 @@ describe("resolveAgentCall", () => {
     registerAgents(new Map());
   });
 
+  it.each([["\"all\""], ["some"], [["\"all\""]], [[""]], [["a,b"]], [7]])("refuses a malformed allowed_subagents %j on an ephemeral agent", value => {
+    const out = resolveAgentCall({ description: "scan", prompt: "go", allowed_subagents: value } as never, ctx, opts);
+    expect(out.ok).toBe(false);
+    if (out.ok) return;
+    expect(out.message).toContain("allowed_subagents");
+    expect(out.message).toContain('"all"');
+  });
+
+  it.each([["all"], [[]], [["scout", "reviewer"]]])("accepts allowed_subagents %j on an ephemeral agent", value => {
+    const out = resolveAgentCall({ description: "scan", prompt: "go", allowed_subagents: value } as never, ctx, opts);
+    expect(out.ok).toBe(true);
+  });
+
   it("resolves a known type with defaults applied", () => {
     const out = resolveAgentCall({ subagent_type: "Explore", description: "scan", prompt: "go" } as never, ctx, opts);
     expect(out.ok).toBe(true);

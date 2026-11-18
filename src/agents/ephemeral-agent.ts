@@ -51,6 +51,16 @@ export function namedAgentParamConflict(params: Partial<Record<(typeof EPHEMERAL
   return `The "${given}" parameter applies only to an ephemeral agent. Omit subagent_type to build an agent from the parameters, or drop "${given}" to run the named agent as defined.`;
 }
 
+const MALFORMED_TYPE_NAME = /["'`,]/;
+
+export function allowedSubagentsRefusal(value: unknown): string | undefined {
+  if (value === undefined || value === "all") return undefined;
+  const wellFormed = Array.isArray(value)
+    && value.every(entry => typeof entry === "string" && entry.trim() !== "" && !MALFORMED_TYPE_NAME.test(entry));
+  if (wellFormed) return undefined;
+  return `allowed_subagents must be "all" or a list of agent type names, got ${JSON.stringify(value)}. Use all, or [] for no nesting.`;
+}
+
 export function ephemeralIsolationConflict(params: EphemeralParams): string | undefined {
   if (params.isolated !== true) return undefined;
   if (params.extensions !== undefined) return 'Cannot combine isolated: true with "extensions" — an isolated agent loads no extensions.';
