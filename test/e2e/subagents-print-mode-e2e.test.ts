@@ -38,10 +38,12 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
     for (const d of tmpDirs.splice(0)) rmSync(d, { recursive: true, force: true });
   });
 
-  it("records the model and thinking level the child session actually resolved", async () => {
+  it("emits agent:completed with the child result once agent:rpc:wait_idle replies", async () => {
+    const completed: Array<Record<string, unknown>> = [];
     run = await runPrintMode({
       prompt: "Delegate the greeting to a subagent.",
       beforeRun: installGeneralPurpose,
+      onBus: (bus) => { bus.on("agent:completed", (data) => completed.push(data as Record<string, unknown>)); },
       respond: routeBySession({
         parentInitial: agentCall({
           subagent_type: "general-purpose",
@@ -53,17 +55,11 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
         subagent: "CHILD_GREETING_OK",
       }),
     });
-    await run.manager?.waitForAll();
+    await run.waitIdle();
 
     const id = /Agent ID: (\S+)/.exec(agentToolResults(run.parentSession).join("\n"))?.[1];
     expect(id).toBeTruthy();
-    const record = run.manager?.getRecord(id as string) as { invocation?: Record<string, unknown> };
-    const invocation = record?.invocation;
-
-    expect(invocation?.modelId).toBe("faux/faux-1");
-    expect(invocation?.modelName).toBe("faux-1");
-    expect(typeof invocation?.thinking).toBe("string");
-    expect(invocation?.thinking).not.toBe("");
+    expect(completed).toEqual([expect.objectContaining({ id, status: "completed", result: "CHILD_GREETING_OK" })]);
   });
 
   it("spawns a FOREGROUND subagent and routes its real output back to the parent", async () => {
@@ -116,7 +112,7 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
 
     const noHold = await runPrintMode({ prompt: "go", hold: false, respond, beforeRun: installGeneralPurpose });
     const abandonedCalls = noHold.modelCalls;
-    await noHold.manager?.waitForAll();
+    await noHold.waitIdle();
     await noHold.dispose();
 
     run = await runPrintMode({ prompt: "go", hold: true, respond, beforeRun: installGeneralPurpose });
@@ -233,7 +229,6 @@ describe.skipIf(LIVE)("subagents print-mode e2e (scripted faux, real pi-mono)", 
       runPrintMode({ prompt: "stall", respond: () => new Promise(() => {}), timeoutMs: 300 }),
     ).rejects.toThrow(/print-mode runner timed out after 300ms/);
     expect(process.cwd()).toBe(prevCwd);
-    expect((globalThis as Record<symbol, unknown>)[Symbol.for("pi-subagents:manager")]).toBeUndefined();
   });
 });
 

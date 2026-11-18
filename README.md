@@ -620,7 +620,7 @@ Every `stopped` run has a `stopCause`. The status text the model reads names it.
 | --- | --- |
 | `user` | `/agents`, the conversation viewer, or the session's interrupted tool call |
 | `agent` | `agent_stop` or its nested mirror |
-| `extension` | `agent:rpc:stop`, or an aborted spawn `signal` from `agent:rpc:spawn` or the manager registry |
+| `extension` | `agent:rpc:stop`, or an aborted spawn `signal` from `agent:rpc:spawn` |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
 | `shutdown` | Session shutdown |
 
@@ -677,7 +677,6 @@ When on, the extension validates each subagent spawn's effective model against p
 - The `agent` tool and the nested `agent` tool.
 - `@handle` mentions, including the clone fallback and tombstone reopens.
 - `agent:rpc:spawn`.
-- The registry `spawn`, which still returns only the agent id.
 
 **Design:** `scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin outside the scope gives way to the session model, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one. Winning the precedence contest against a pin does not buy it a replacement instead of an error.
 
@@ -773,7 +772,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - Extensions match by canonical name and skills by the name pi assigns, both case-insensitively. A deny entry beats an allow entry.
 - A value outside the policy that the caller supplied refuses the spawn with an error that starts `Capability policy:`. The extension filters a value from an agent file instead. Filtering an explicit tool list to empty refuses.
 - `ephemeralNesting: false` forces `allowed_subagents: []` on an ephemeral agent and refuses any other caller value.
-- The check runs at the `agent` tool, the nested tool, `@handle` starts and tombstone reopens, `agent:rpc:spawn`, and the registry `spawn`. Resuming a live agent is not re-checked.
+- The check runs at the `agent` tool, the nested tool, `@handle` starts and tombstone reopens, and `agent:rpc:spawn`. Resuming a live agent is not re-checked.
 - A filtered value notifies the user and adds a note to the `agent` tool result. The extension stores it on the agent's record and shows it in the conversation viewer.
 - The extension narrows `skills: true` through the skill loader, and filters named skills before it preloads them. The same scope filters extension tools that register after spawn.
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
@@ -827,7 +826,7 @@ With it off, handles expire with their record (roughly ten minutes past completi
 
 ### Worktree isolation setting
 
-`worktreeIsolation`, default `true`: whether `isolation: "worktree"` may create a worktree at all. With it on, an agent file's `isolation` applies on every spawn path (tool, nested tool, `@handle` mention, RPC, and registry). A file's `isolation: off` overrides a caller's worktree request. With it off, no path creates a worktree and none refuses. Toggle via `/agents → Settings → Worktree isolation`, or set `false` in `subagents.json` on a repo where a copy costs too much time or disk.
+`worktreeIsolation`, default `true`: whether `isolation: "worktree"` may create a worktree at all. With it on, an agent file's `isolation` applies on every spawn path (tool, nested tool, `@handle` mention, and RPC). A file's `isolation: off` overrides a caller's worktree request. With it off, no path creates a worktree and none refuses. Toggle via `/agents → Settings → Worktree isolation`, or set `false` in `subagents.json` on a repo where a copy costs too much time or disk.
 
 When off:
 
@@ -987,7 +986,6 @@ All RPC replies use a standardized envelope: `{ success: true, data?: T }` on su
 - the complete spawn-option surface (including the fields that the extension silently strips)
 - every error code
 - the completion-notification race
-- the `Symbol.for("pi-subagents:manager")` registry
 - what protocol version `2` does and does not promise
 
 ### Discovery
@@ -1037,7 +1035,7 @@ pi.events.emit("agent:rpc:spawn", {
 });
 ```
 
-The reply is `{ id, filtered?, modelReplaced? }`. `modelReplaced` names the out-of-scope model that [Model Scope](#model-scope) replaced with the session model. It appears only after a replacement. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy. The registry `spawn` still returns the id and throws the same errors.
+The reply is `{ id, filtered?, modelReplaced? }`. `modelReplaced` names the out-of-scope model that [Model Scope](#model-scope) replaced with the session model. It appears only after a replacement. `filtered` lists what the [capability policy](#capability-policy) removed from an agent file's values. A caller-supplied tool, extension, or skill outside the policy fails the spawn with an error that starts `Capability policy:`, and so does a malformed policy.
 
 `options` is the manager's spawn-option object, not the `agent` tool's parameter schema. The background flag is `isBackground`. The tool's snake_case `run_in_background` passes through verbatim and the manager ignores it.
 

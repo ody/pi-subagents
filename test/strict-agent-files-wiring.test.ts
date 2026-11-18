@@ -58,7 +58,6 @@ describe("strictAgentFiles gates extension activation", () => {
 
   afterEach(() => {
     warn.mockRestore();
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
     process.chdir(originalCwd);
     if (originalAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = originalAgentDir;

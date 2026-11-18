@@ -17,7 +17,9 @@ import {
   type AgentSession,
   type AgentSessionEvent,
   createAgentSession,
+  createEventBus,
   DefaultResourceLoader,
+  type EventBus,
   getAgentDir,
   SessionManager,
   SettingsManager,
@@ -27,12 +29,17 @@ import { getModel, registerFauxProvider } from "./pi-ai.js";
 
 const EXTENSION_PATH = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
 
-const MANAGER_KEY = Symbol.for("pi-subagents:manager");
-
-export interface ManagerHandle {
-  waitForAll(): Promise<void>;
-  hasRunning(): boolean;
-  getRecord(id: string): unknown;
+function requestWaitIdle(bus: EventBus): Promise<void> {
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const unsub = bus.on(`agent:rpc:wait_idle:reply:${requestId}`, (reply) => {
+      unsub();
+      const { success, error } = reply as { success: boolean; error?: string };
+      if (success) resolve();
+      else reject(new Error(error ?? "wait_idle failed"));
+    });
+    bus.emit("agent:rpc:wait_idle", { requestId });
+  });
 }
 
 export type FauxReply = string | FauxContentBlock | FauxContentBlock[] | AssistantMessage;
@@ -51,6 +58,7 @@ export interface RunPrintModeOptions {
   maxModelCalls?: number;
   hold?: boolean;
   beforeRun?: () => void | Promise<void>;
+  onBus?: (bus: EventBus) => void;
   isolateGlobals?: boolean;
   timeoutMs?: number;
   signal?: AbortSignal;
@@ -60,8 +68,8 @@ export interface RunPrintModeOptions {
 export interface PrintModeRun {
   responseText: string;
   parentSession: AgentSession;
-  manager: ManagerHandle | undefined;
-  subagents: Array<Record<string, unknown>>;
+  bus: EventBus;
+  waitIdle(): Promise<void>;
   modelCalls: number;
   dispose: () => Promise<void>;
 }
@@ -203,9 +211,23 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
   }
 
   const agentDir = getAgentDir();
+  const bus = createEventBus();
+  const running = new Set<string>();
+  let settled = 0;
+  bus.on("agent:started", (data) => { running.add((data as { id: string }).id); });
+  const onSettle = (data: unknown) => {
+    running.delete((data as { id: string }).id);
+    settled++;
+  };
+  bus.on("agent:completed", onSettle);
+  bus.on("agent:failed", onSettle);
+
+  options.onBus?.(bus);
+
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir,
+    eventBus: bus,
     additionalExtensionPaths: [EXTENSION_PATH],
     systemPromptOverride: () => options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     appendSystemPromptOverride: () => [],
@@ -232,20 +254,18 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
 
   await session.bindExtensions({});
 
-  const manager = (globalThis as Record<symbol, unknown>)[MANAGER_KEY] as
-    | ManagerHandle
-    | undefined;
+  const waitIdle = () => requestWaitIdle(bus);
 
   const hold = options.hold ?? true;
-  if (hold && manager) {
+  if (hold) {
     const agent = (session as any).agent;
     if (agent?.dequeueFollowUpMessages) {
       const original = agent.dequeueFollowUpMessages.bind(agent);
       agent.dequeueFollowUpMessages = function patched() {
         const messages = original();
         if (messages.length > 0) return messages;
-        if (manager.hasRunning()) {
-          return manager.waitForAll().then(() => original());
+        if (running.size > 0) {
+          return waitIdle().then(() => original());
         }
         return messages;
       };
@@ -276,7 +296,6 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
     } catch {
     }
     faux?.unregister();
-    delete (globalThis as Record<symbol, unknown>)[MANAGER_KEY];
     try {
       process.chdir(prevCwd);
     } catch {
@@ -295,7 +314,7 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
   let failed = false;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
-      const stillRunning = manager?.hasRunning() ? " (background subagents still running)" : "";
+      const stillRunning = running.size > 0 ? " (background subagents still running)" : "";
       reject(new Error(`print-mode runner timed out after ${timeoutMs}ms${stillRunning}`));
     }, timeoutMs);
   });
@@ -304,8 +323,8 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
       (async () => {
         await session.prompt(options.prompt);
         if (hold) {
-          while (!failed && manager?.hasRunning()) {
-            await manager.waitForAll();
+          while (!failed && running.size > 0) {
+            await waitIdle();
             if (failed) break;
             await session.prompt("Background agents have completed. Process their results.");
           }
@@ -334,13 +353,11 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
     responseText = lastAssistantText(session);
   }
 
-  const subagents = snapshotSubagents(manager);
-
   return {
     responseText: responseText.trim(),
     parentSession: session,
-    manager,
-    subagents,
+    bus,
+    waitIdle,
     modelCalls: faux?.state.callCount ?? 0,
     dispose,
   };
@@ -418,14 +435,4 @@ function lastAssistantText(session: AgentSession): string {
     if (text) return text;
   }
   return "";
-}
-
-function snapshotSubagents(manager: ManagerHandle | undefined): Array<Record<string, unknown>> {
-  if (!manager) return [];
-  const m = manager as unknown as { listAgents?: () => Array<Record<string, unknown>> };
-  try {
-    return m.listAgents ? m.listAgents() : [];
-  } catch {
-    return [];
-  }
 }

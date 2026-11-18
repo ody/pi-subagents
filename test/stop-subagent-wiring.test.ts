@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
   const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
@@ -9,12 +9,20 @@ import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { ctx, flush, makePi, textOf } from "./harness/boot-extension.js";
 import { grant } from "./harness/capability.js";
+import { type ManagerTap, tapManager } from "./harness/manager-tap.js";
 
 const FORCED_SETTLE_GRACE_MS = 5_000;
 const NUDGE_HOLD_MS = 200;
 
+let tap: ManagerTap;
+
 beforeEach(() => {
   vi.mocked(runAgent).mockReset();
+  tap = tapManager();
+});
+
+afterEach(() => {
+  tap.restore();
 });
 
 function heldRun() {
@@ -49,7 +57,7 @@ async function spawnBackground(
 const stop = (tools: Map<string, any>, agent_id: string) =>
   tools.get("agent_stop").execute("tc-stop", { agent_id }, undefined, undefined, ctx());
 
-const managerRegistry = () => (globalThis as any)[Symbol.for("pi-subagents:manager")];
+const managerRegistry = () => ({ getRecord: (id: string) => tap.manager().getRecord(id)! });
 
 function rawManager(): any {
   return vi.mocked(runAgent).mock.calls[0][3].nestedRuntime.manager;

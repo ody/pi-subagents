@@ -18,7 +18,6 @@ beforeEach(() => {
 
 afterEach(async () => {
   await booted?.get("session_shutdown")?.();
-  delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
   booted = undefined;
   hermetic?.restore();
   hermetic = undefined;

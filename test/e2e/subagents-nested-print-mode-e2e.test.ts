@@ -392,11 +392,7 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
 
       await waitForChildReady(ownedChildReady, 5_000);
       expect(ownedChildBlocked).toBe(true);
-      expect(run.manager).toBeDefined();
-      const manager = run.manager;
-      if (!manager) throw new Error("Print-mode manager was not published");
-      expect(manager.hasRunning()).toBe(true);
-      waitForAll = manager.waitForAll();
+      waitForAll = run.waitIdle();
       let waitTimer: ReturnType<typeof setTimeout> | undefined;
       const waitState = await Promise.race([
         waitForAll.then(() => "settled" as const),
@@ -422,7 +418,6 @@ describe("PR #164 nested agents through the real print-mode boundary", () => {
       releaseOwnedChild();
       releaseOwner();
       await expect(waitForAll).resolves.toBeUndefined();
-      expect(manager.hasRunning()).toBe(false);
     } finally {
       releaseOwnedChild();
       releaseOwner();

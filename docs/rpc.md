@@ -1,6 +1,6 @@
 # Driving subagents from another extension
 
-Another pi extension can spawn a subagent, listen for subagent completion, read the result and stop the run. It does all of this over the `pi.events` bus, without importing this package directly. Five request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`, `agent:rpc:wait_idle`), nine lifecycle events, and one in-process registry at `Symbol.for("pi-subagents:manager")`.
+Another pi extension can spawn a subagent, listen for subagent completion, read the result and stop the run. It does all of this over the `pi.events` bus, without importing this package directly. Five request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`, `agent:rpc:wait_idle`), and nine lifecycle events.
 
 The thing worth understanding up front is that **the bus is in-process.** Every "RPC" call here is a synchronous `pi.events.emit` into the same event loop, and every reply comes back the same way. That single fact explains most of what follows:
 
@@ -13,7 +13,6 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 - The complete spawn-option surface.
 - Every error code.
 - The notification race.
-- The registry.
 - What protocol version `2` does and does not promise.
 
 ## Spawn options
@@ -56,7 +55,7 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 **Capability policy.** `spawnTopLevel` also deletes a `capability` verdict a caller supplies, then runs `checkCapabilityPolicy` itself.
 
-The RPC handler passes the raw `agentConfig` next to the normalized one. The policy check refuses a field the caller wrote when the field is outside the policy. It filters a field the boundary defaulted (`extensions`, `skills`). The registry `spawn` never normalizes, so every field of its `agentConfig` counts as supplied.
+The RPC handler passes the raw `agentConfig` next to the normalized one. The policy check refuses a field the caller wrote when the field is outside the policy. It filters a field the boundary defaulted (`extensions`, `skills`).
 
 The spawn reply is `{ id, filtered?, modelReplaced? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
 
@@ -206,21 +205,6 @@ One related thing that lives nowhere else: on every top-level settle, pi-subagen
 ## Wait idle
 
 `agent:rpc:wait_idle` takes only a `requestId`. It replies `{ success: true }` once no top-level agent (`isTopLevelAgent`) is queued or running. It covers every top-level agent, not only the caller's. A run that starts after the reply needs a new request. It has no timeout parameter: give the wait your own timer. When `session_shutdown` comes first, it replies `{ success: false, code: "shutdown", error }`.
-
-## The manager registry
-
-`globalThis[Symbol.for("pi-subagents:manager")]` (`MANAGER_KEY` and `registryEntry` in `src/index.ts`) is a second integration surface — the standard Node cross-package singleton pattern, no bus involved:
-
-| Member | Signature | Notes |
-| --- | --- | --- |
-| `waitForAll()` | `() => Promise<void>` | Resolves when nothing is running. **All** agents, including ones you did not spawn — a shutdown barrier, not a join |
-| `hasRunning()` | `() => boolean` | |
-| `spawn(pi, ctx, type, prompt, options)` | `=> string` | **Is** `spawnTopLevel`, so the strip list above applies identically |
-| `getRecord(id)` | `=> AgentRecord \| undefined` | Filtered through `isTopLevelAgent`, so someone else's child comes back `undefined` rather than leaking. A `stopped` record carries `stopCause`: `user`, `agent`, `extension`, `owner` or `shutdown`. An aborted spawn `signal` from the registry gives `extension` |
-
-Only the first activation claims the slot. Subagent sessions re-activate this extension in the same process. An unconditional overwrite would point the registry at a short-lived child manager, and that manager's shutdown would delete the root session's entry. Child activations leave the slot alone. Shutdown releases it only if this activation claimed it (`ownsManagerRegistry` and the `session_shutdown` handler in `src/index.ts`).
-
-Prefer the bus. The registry has no reply envelope, no version, and no availability event. The only probe you get is `globalThis[Symbol.for("pi-subagents:manager")] === undefined`. It is also `undefined` in a session that filtered pi-subagents out. Use the registry for two things the bus has no verb for: *is anything still running*, and *give me a settled record back*. A headless host can also use it to block on `waitForAll()` before exiting.
 
 ## Protocol versions
 

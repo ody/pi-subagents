@@ -64,7 +64,6 @@ describe("Agent startup failures fail the tool call (#179)", () => {
   });
 
   afterEach(() => {
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
     process.chdir(originalCwd);
     if (originalAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = originalAgentDir;

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/session/agent-runner.js", async () => {
   const actual = await vi.importActual<typeof import("../src/session/agent-runner.js")>("../src/session/agent-runner.js");
@@ -8,6 +8,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
 import { grant } from "./harness/capability.js";
+import { type ManagerTap, tapManager } from "./harness/manager-tap.js";
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -55,8 +56,14 @@ function ctx() {
 const textOf = (r: any): string => r.content[0].text;
 
 describe("status note reaches the parent through the real handlers", () => {
+  let tap: ManagerTap;
+
+  beforeEach(() => {
+    tap = tapManager();
+  });
+
   afterEach(() => {
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    tap.restore();
     vi.restoreAllMocks();
   });
 
@@ -120,20 +127,26 @@ describe("status note reaches the parent through the real handlers", () => {
       aborted: false,
       steered: false,
     });
-    const { pi, tools } = makePi();
+    const { pi, tools, eventHandlers, lifecycle } = makePi();
     subagentsExtension(pi);
-    const registry = (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    await bind(lifecycle);
 
-    const topId = registry.spawn(pi, ctx(), "general-purpose", "top", {
-      description: "top-level owner",
-      isBackground: false,
-      parentAgentId: "forged-parent",
-      depth: 99,
-      maxSubagentDepth: 99,
-      configCwd: "/untrusted/config",
+    eventHandlers.get("agent:rpc:spawn")?.({
+      requestId: "top",
+      type: "general-purpose",
+      prompt: "top",
+      options: {
+        description: "top-level owner",
+        isBackground: false,
+        parentAgentId: "forged-parent",
+        depth: 99,
+        maxSubagentDepth: 99,
+        configCwd: "/untrusted/config",
+      },
     });
-    await new Promise(resolve => setTimeout(resolve, 0));
-    expect(registry.getRecord(topId)).toEqual(expect.objectContaining({
+    await vi.waitFor(() => expect(pi.events.emit).toHaveBeenCalledWith("agent:rpc:spawn:reply:top", expect.anything()));
+    const topId = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "agent:rpc:spawn:reply:top")![1].data.id;
+    expect(tap.manager().getRecord(topId)).toEqual(expect.objectContaining({
       parentAgentId: undefined,
       depth: 1,
     }));
@@ -152,7 +165,7 @@ describe("status note reaches the parent through the real handlers", () => {
     });
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(registry.getRecord(id)).toBeUndefined();
+    expect(rawManager.getRecord(id)?.parentAgentId).toBe(topId);
     for (const [name, params] of [
       ["agent_get_result", { agent_id: id }],
       ["agent_steer", { agent_id: id, message: "stop" }],

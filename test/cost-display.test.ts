@@ -44,7 +44,6 @@ describe("cost display", () => {
   });
 
   afterEach(() => {
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
     registerAgents(new Map());
     hermetic?.restore();
   });

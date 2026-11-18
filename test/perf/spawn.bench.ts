@@ -41,7 +41,6 @@ afterAll(() => {
   for (const h of hermetics.reverse()) h.restore();
   for (const d of tempDirs) rmSync(d, { recursive: true, force: true });
   registerAgents(new Map());
-  delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
 });
 
 const globalRedirect = hermeticDir();

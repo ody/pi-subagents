@@ -14,11 +14,14 @@ import subagentsExtension from "../src/index.js";
 import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 import { runMentionClone } from "../src/triggers/mention-clone.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf, waitForNudgeHold } from "./harness/boot-extension.js";
+import { type ManagerTap, tapManager } from "./harness/manager-tap.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;
+let tap: ManagerTap;
 
 beforeEach(() => {
+  tap = tapManager();
   vi.mocked(runAgent).mockReset();
   vi.mocked(resumeAgent).mockReset();
   vi.mocked(runMentionClone).mockReset();
@@ -27,7 +30,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await booted?.get("session_shutdown")?.();
-  delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
+  tap.restore();
   booted = undefined;
   hermetic?.restore();
   hermetic = undefined;
@@ -123,7 +126,7 @@ describe("messaging a running agent", () => {
 
     const id = await spawnBackground(tools);
     await flush();
-    const record = (globalThis as any)[Symbol.for("pi-subagents:manager")].getRecord(id);
+    const record = tap.manager().getRecord(id)!;
     record.resultConsumed = true;
 
     await send(lifecycle, "@explore keep going");
@@ -213,8 +216,7 @@ describe("messaging a finished agent", () => {
 
     const id = await spawnBackground(b.tools, "quiet");
     await flush();
-    const record = b.pi.__manager?.getRecord?.(id)
-      ?? (globalThis as any)[Symbol.for("pi-subagents:manager")].getRecord(id);
+    const record = tap.manager().getRecord(id)!;
     expect(record.outputFile).toBeUndefined();
 
     await send(b.lifecycle, "@quiet anything else?");
@@ -317,7 +319,7 @@ describe("stacking the suggestion provider on pi's", () => {
 });
 
 describe("resolving which agent a handle means", () => {
-  const managerRegistry = () => (globalThis as any)[Symbol.for("pi-subagents:manager")];
+  const managerRegistry = () => tap.manager();
 
   it("matches the handle case-insensitively", async () => {
     const { tools, lifecycle } = boot();
@@ -353,7 +355,7 @@ describe("resolving which agent a handle means", () => {
     const queuedId = await spawnBackground(tools);
     await flush();
 
-    const queued = managerRegistry().getRecord(queuedId);
+    const queued = managerRegistry().getRecord(queuedId)!;
     expect(queued.status).toBe("queued");
 
     expect(await send(lifecycle, "@explore-2 wait for me")).toEqual({ action: "handled" });
@@ -368,7 +370,7 @@ describe("resolving which agent a handle means", () => {
 
     const id = await spawnBackground(tools);
     await flush();
-    managerRegistry().getRecord(id).parentAgentId = "some-parent";
+    managerRegistry().getRecord(id)!.parentAgentId = "some-parent";
     vi.mocked(runAgent).mockClear();
 
     expect(await send(lifecycle, "@explore reach into a child")).toEqual({ action: "handled" });
@@ -384,7 +386,7 @@ describe("resolving which agent a handle means", () => {
 
     const id = await spawnBackground(tools);
     await flush();
-    managerRegistry().getRecord(id).resultConsumed = true;
+    managerRegistry().getRecord(id)!.resultConsumed = true;
     await lifecycle.get("session_before_switch")();
     expect(managerRegistry().getRecord(id)).toBeUndefined();
 
@@ -479,8 +481,7 @@ describe("mentioning an agent that has never run", () => {
     heldRun(fakeSession());
 
     await send(lifecycle, "@explore go");
-    const record = (globalThis as any)[Symbol.for("pi-subagents:manager")]
-      .getRecord(vi.mocked(runAgent).mock.calls[0][3].agentId);
+    const record = tap.manager().getRecord((vi.mocked(runAgent).mock.calls[0][3] as any).agentId)!;
 
     expect(record.isBackground).toBe(true);
     expect(record.description).toBe("go");
@@ -946,8 +947,8 @@ describe("resuming an evicted agent by name", () => {
   afterEach(() => vi.useRealTimers());
 
   async function evict(id: string) {
-    const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
-    const record = manager.getRecord(id);
+    const manager = tap.manager();
+    const record = manager.getRecord(id)!;
     record.sessionFile = sessionPath();
     writeFileSync(record.sessionFile, "");
     record.completedAt = Date.now() - 11 * 60_000;
@@ -995,9 +996,9 @@ describe("resuming an evicted agent by name", () => {
     await send(lifecycle, "@explore anything else?");
     await flush();
 
-    const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    const manager = tap.manager();
     const resumedId = (vi.mocked(runAgent).mock.calls[0][3] as any).agentId;
-    expect(manager.getRecord(resumedId).handle).toBe("explore");
+    expect(manager.getRecord(resumedId)?.handle).toBe("explore");
   });
 
   it("stops resolving to the tombstone once the resume has taken the name", async () => {
@@ -1039,7 +1040,7 @@ describe("resuming an evicted agent by name", () => {
     await send(lifecycle, "@auth-audit anything else?");
     await flush();
 
-    const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    const manager = tap.manager();
     const resumedId = (vi.mocked(runAgent).mock.calls[0][3] as any).agentId;
     expect(manager.getRecord(resumedId)).toMatchObject({ handle: "explore", alias: "auth-audit" });
   });
@@ -1142,8 +1143,8 @@ describe("resuming an evicted agent by name", () => {
     await flush();
 
     const resumedId = (vi.mocked(runAgent).mock.calls[0][3] as any).agentId;
-    const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
-    expect(manager.getRecord(resumedId).description).toBe("find flaky tests");
+    const manager = tap.manager();
+    expect(manager.getRecord(resumedId)?.description).toBe("find flaky tests");
   });
 
   it("does not let the tools steer or read an agent that is gone", async () => {

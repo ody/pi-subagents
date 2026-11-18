@@ -11,14 +11,16 @@ vi.mock("../../src/session/agent-runner.js", async () => {
 import { BUILTIN_TOOL_NAMES, getAllTypes, getAvailableTypes } from "../../src/agents/agent-types.js";
 import { loadCustomAgents } from "../../src/agents/custom-agents.js";
 import subagentsExtension from "../../src/index.js";
-import { AgentManager } from "../../src/manager/agent-manager.js";
 import { runAgent } from "../../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../../src/tool/nested-tools.js";
+import type { AgentRecord } from "../../src/types.js";
 import { getDisplayName, getPromptModeLabel } from "../../src/ui/agent-format.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf, waitForNudgeHold } from "../harness/boot-extension.js";
+import { type ManagerTap, tapManager } from "../harness/manager-tap.js";
 
 let hermetic: Hermetic | undefined;
 let booted: Map<string, any> | undefined;
+let tap: ManagerTap | undefined;
 
 function boot(settings: Record<string, unknown> = {}, agentFiles: Record<string, string> = {}) {
   hermetic = hermeticDir({ settings: { outputTranscript: false, ...settings }, agentFiles });
@@ -26,7 +28,11 @@ function boot(settings: Record<string, unknown> = {}, agentFiles: Record<string,
   subagentsExtension(b.pi);
   booted = b.lifecycle;
   const tool = b.tools.get("agent");
-  const registry = () => (globalThis as any)[Symbol.for("pi-subagents:manager")];
+  tap = tapManager();
+  const registry = () => ({
+    getRecord: (id: string) => tap!.manager().getRecord(id) as AgentRecord,
+    resolveMention: (name: string) => tap!.manager().resolveMention(name),
+  });
   return { ...b, tool, registry };
 }
 
@@ -43,7 +49,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await booted?.get("session_shutdown")?.();
-  delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
+  tap?.restore();
+  tap = undefined;
   booted = undefined;
   hermetic?.restore();
   hermetic = undefined;
@@ -255,12 +262,6 @@ describe("identity", () => {
 
   async function evictAfterRun(sessionFile: string | undefined, params: Record<string, unknown> = {}) {
     const { tool, registry, lifecycle } = boot({ agentMentions: "direct" });
-    let manager: AgentManager | undefined;
-    const spawn = AgentManager.prototype.spawn;
-    vi.spyOn(AgentManager.prototype, "spawn").mockImplementation(function (this: AgentManager, ...args: Parameters<AgentManager["spawn"]>) {
-      manager = this;
-      return spawn.apply(this, args);
-    });
     const session = {
       dispose: vi.fn(),
       messages: [],
@@ -280,7 +281,7 @@ describe("identity", () => {
     await waitForNudgeHold();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(registry().getRecord(id)).toBeUndefined();
-    return { config, lifecycle, registry, mention: manager?.resolveMention("auth-audit") };
+    return { config, lifecycle, registry, mention: registry().resolveMention("auth-audit") };
   }
 
   const reopen = async (lifecycle: Map<string, any>, uiCtx = ctx()) => {

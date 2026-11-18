@@ -98,22 +98,8 @@ export default function (pi: ExtensionAPI) {
     if (settings.reportUsage) pendingUsage.add(usage);
   }, (id: string): boolean => notifier.isNotificationPending(id));
 
-  const MANAGER_KEY = Symbol.for("pi-subagents:manager");
   const { spawnResolved, spawnTopLevel, resolveAgentRef } = createSpawnFunnel({ manager, reloadCustomAgents });
 
-  const registryEntry = {
-    waitForAll: () => manager.waitForAll(),
-    hasRunning: () => manager.hasRunning(),
-    spawn: (piRef: any, ctxRef: any, type: string, prompt: string, options: any) => spawnTopLevel(piRef, ctxRef, type, prompt, options),
-    getRecord: (id: string) => {
-      const record = manager.getRecord(id);
-      return record !== undefined && isTopLevelAgent(record) ? record : undefined;
-    },
-  };
-  const ownsManagerRegistry = (globalThis as any)[MANAGER_KEY] === undefined;
-  if (ownsManagerRegistry) {
-    (globalThis as any)[MANAGER_KEY] = registryEntry;
-  }
 
   let currentCtx: ExtensionContext | undefined;
   let rpcHandle: RpcHandle | undefined;
@@ -184,9 +170,6 @@ export default function (pi: ExtensionAPI) {
     rpcHandle?.unsubConsume();
     rpcHandle = undefined;
     currentCtx = undefined;
-    if (ownsManagerRegistry && (globalThis as any)[MANAGER_KEY] === registryEntry) {
-      delete (globalThis as any)[MANAGER_KEY];
-    }
     manager.abortAll();
     notifier.dispose();
     viewer.close();

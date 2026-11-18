@@ -24,6 +24,7 @@ import { registerRpcHandlers } from "../../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../../src/triggers/spawn-funnel.js";
 import { ctx, flush, type Hermetic, hermeticDir, makePi, textOf, waitForNudgeHold } from "../harness/boot-extension.js";
 import { grant } from "../harness/capability.js";
+import { type ManagerTap, tapManager } from "../harness/manager-tap.js";
 
 const OPEN: CapabilityDeclaration = { extensions: true, skills: true };
 
@@ -270,6 +271,7 @@ describe("capability policy at every spawn path", () => {
 
   const writePolicy = (policy: unknown) =>
     writeFileSync(join(hermetic.dir, ".pi", "subagents.json"), JSON.stringify({ outputTranscript: false, policy }));
+  let tap: ManagerTap;
 
   beforeEach(() => {
     hermetic = hermeticDir({
@@ -278,11 +280,12 @@ describe("capability policy at every spawn path", () => {
     });
     vi.mocked(runAgent).mockReset();
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
+    tap = tapManager();
   });
 
   afterEach(async () => {
     await booted?.get("session_shutdown")?.();
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
+    tap.restore();
     booted = undefined;
     registerAgents(new Map());
     hermetic.restore();
@@ -309,6 +312,7 @@ describe("capability policy at every spawn path", () => {
         getRecord: id => manager.getRecord(id),
         abort: (id, cause) => manager.abort(id, cause),
         consumeResult: () => false,
+        waitIdle: () => manager.waitForAll(),
       },
     });
     return { handlers, replies };
@@ -387,8 +391,8 @@ describe("capability policy at every spawn path", () => {
       const first = vi.mocked(runAgent).mock.calls[0][3] as any;
       expect(first.capability.capabilities.builtinToolNames).toEqual(["read", "bash"]);
 
-      const manager = (globalThis as any)[Symbol.for("pi-subagents:manager")];
-      const record = manager.getRecord(first.agentId);
+      const manager = tap.manager();
+      const record = manager.getRecord(first.agentId)!;
       record.sessionFile = join(hermetic.dir, "scout-session.jsonl");
       writeFileSync(record.sessionFile, "");
       record.completedAt = Date.now() - 11 * 60_000;
@@ -423,9 +427,8 @@ describe("capability policy at every spawn path", () => {
     );
     expect(textOf(result)).toContain("the capability policy removed tool bash");
     const id = /Agent ID: (\S+)/.exec(textOf(result))?.[1] ?? "";
-    const registry = (globalThis as any)[Symbol.for("pi-subagents:manager")];
     await flush();
-    expect(registry.getRecord(id).filtered).toEqual(["tool bash"]);
+    expect(tap.manager().getRecord(id)?.filtered).toEqual(["tool bash"]);
   });
 
   it("refuses a malformed policy through the agent tool", async () => {

@@ -89,7 +89,6 @@ describe("agent:rpc:consume", () => {
   afterEach(async () => {
     await shutdown?.();
     shutdown = undefined;
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
     process.chdir(prevCwd);
     if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
     else process.env.PI_CODING_AGENT_DIR = prevAgentDir;

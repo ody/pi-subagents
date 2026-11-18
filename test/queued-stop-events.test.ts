@@ -80,7 +80,6 @@ describe("a stop while queued reaches the lifecycle events", () => {
     else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
     if (prevHome == null) delete process.env.HOME;
     else process.env.HOME = prevHome;
-    delete (globalThis as any)[Symbol.for("pi-subagents:manager")];
     rmSync(tmpDir, { recursive: true, force: true });
     rmSync(agentDir, { recursive: true, force: true });
     vi.restoreAllMocks();
