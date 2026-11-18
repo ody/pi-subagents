@@ -6,7 +6,7 @@ Replaces: 0012-capability-policy-configuration, last present in 503bd9e
 
 Settings load from the global `~/.pi/agent/subagents.json` and the project `.pi/subagents.json`. A project file comes from the repo, so an untrusted repo could widen a policy if the two merged per field.
 
-The loader reads a file that fails to parse as `{}`, which would drop a project's restrictions. `checkModelScope` re-reads `enabledModels` on every call. The settings events fire at init and when the menu saves.
+The loader reads a file that fails to parse as `{}`, which would drop a project's restrictions. `checkModelScope` re-reads `enabledModels` on every call. The settings events fire on each `session_start` and when the menu saves ([ADR 0044](0044-bus-only-integration-surface.md)).
 
 The settings menu edits either layer (see ADR 0021). The model can write the config files directly, so keeping `policy` out of the menu protects nothing.
 
@@ -22,8 +22,8 @@ The settings menu edits either layer (see ADR 0021). The model can write the con
 - `policy` is not a `SubagentsSettings` field. The menu edits one of its keys, `ephemeralNesting`, as a row named "Ephemeral nesting" in each layer. It writes that key in the layer the user is editing and leaves every other part of `policy` as it was.
 - On the project layer the row can only narrow. The menu refuses to turn it on while the global file has it off, with a message that says so. The row shows the effective value.
 - Users edit the `allow` and `deny` lists by hand in the file.
-- The `subagents:settings_loaded` and `subagents:settings_changed` payloads and the `subagents:rpc:ping` reply carry the policy under a `policy` key. Its shape is `{ global, project, ephemeralNesting }`. `global` and `project` hold each file's lists, and `ephemeralNesting` is the merged value.
-- `settings_changed` fires when the menu changes `ephemeralNesting`. A hand edit fires neither event, so the ping reply is the only copy that is always current. `PROTOCOL_VERSION` stays `2`.
+- The `agent:settings_loaded` and `agent:settings_changed` payloads and the `agent:rpc:ping` reply carry the policy under a `policy` key. Its shape is `{ global, project, ephemeralNesting }`. `global` and `project` hold each file's lists, and `ephemeralNesting` is the merged value.
+- `settings_changed` fires when the menu changes `ephemeralNesting`. A hand edit fires neither event, so the ping reply is the only copy that is always current. The `policy` key is additive ([ADR 0046](0046-rpc-versioning-and-error-codes.md)).
 
 Done check: `npx vitest run test/capability-policy-config.test.ts test/settings-menu.test.ts` passes. It covers:
 
@@ -37,5 +37,5 @@ Done check: `npx vitest run test/capability-policy-config.test.ts test/settings-
 
 - A project cannot grant what the global policy omits. The user edits the global file, or switches the menu to the global layer.
 - A broken policy fails closed, so one typo stops all spawns until the user fixes it.
-- A later extension misses `settings_loaded`, so it reads the policy from the ping reply.
+- An extension that loads after `session_start` misses `settings_loaded`, so it reads the policy from the ping reply.
 - Revisit if projects need to widen the global policy for trusted repos, or if the menu needs to edit the lists.

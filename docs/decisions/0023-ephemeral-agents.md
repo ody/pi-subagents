@@ -4,7 +4,7 @@ Replaces: 0015-ephemeral-agents, last present in 503bd9e
 
 ## Context
 
-`subagent_type` is optional on the `agent` tool and the nested `agent` tool. No registered agent can express a one-off specialist, because a call cannot choose tools, extensions, skills, or prompt mode. `subagents:rpc:spawn` already runs an inline definition that never enters the registry.
+`subagent_type` is optional on the `agent` tool and the nested `agent` tool. No registered agent can express a one-off specialist, because a call cannot choose tools, extensions, skills, or prompt mode. `agent:rpc:spawn` already runs an inline definition that never enters the registry.
 
 An ephemeral agent has a handle and a conversation worth keeping, like a registered agent. `@handle` cannot reopen it after the manager evicts its record. The tombstone holds only a type, and the registry cannot resolve a minted `ephemeral-<8 hex>` type.
 
@@ -41,7 +41,7 @@ Identity:
 - The handle base is `name` if the call has one, else a slug of `description`, else `agent`, capped at the handle length limit. Handles normally read like `@find-auth-files`. The agent gets no alias.
 - The spawn stores `promptMode` and the `displayName` on the `AgentRecord`, and every surface that looks up `getConfig(record.type)` reads the record first.
 - The name badge is `name`, else the first three words of `description`, title-cased, else `Agent`. The description shows beside it as for registered agents.
-- Lifecycle events and `subagents:record` carry the minted type.
+- Lifecycle events and `agent:record` carry the minted type.
 
 Persistence and reopening:
 

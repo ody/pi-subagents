@@ -10,15 +10,15 @@ Scripted workflow orchestration (`SubagentWorkflow`) is a second product inside 
 
 Orchestration is a separate concern from spawning and managing sub-agents and belongs in its own extension.
 
-Other extensions depend on the `subagents:rpc:*` channels and lifecycle events. `pi-advisor` (`codeberg.org/ody/pi-advisor`, `src/backend.ts`) uses `ping`, `spawn` with an inline `agentConfig`, `consume`, and `subagents:completed` and `subagents:failed`. None of these depend on workflow code.
+Other extensions depend on the `agent:rpc:*` channels and lifecycle events. `pi-advisor` (`codeberg.org/ody/pi-advisor`, `src/backend.ts`) uses `ping`, `spawn` with an inline `agentConfig`, `consume`, and `agent:completed` and `agent:failed`. None of these depend on workflow code.
 
 ## Decision
 
-pi-subagents provides sub-agents only: the `agent` tool, `/agents`, and the `subagents:rpc:*` channels and lifecycle events. It does not provide workflow orchestration.
+pi-subagents provides sub-agents only: the `agent` tool, `/agents`, and the `agent:rpc:*` channels and lifecycle events. It does not provide workflow orchestration.
 
-- Never add workflow orchestration to this repo. A workflow extension, ported or new, is a separate package that drives sub-agents through `subagents:rpc:*`.
+- Never add workflow orchestration to this repo. A workflow extension, ported or new, is a separate package that drives sub-agents through `agent:rpc:*`.
 - Code whose only caller was the workflow host is removed, not kept as a hook for a future workflow extension.
-- Removing workflow code must not change the behavior of any `subagents:rpc:*` channel or lifecycle event for top-level agents. `PROTOCOL_VERSION` stays `2`.
+- Removing workflow code must not change the behavior of any `agent:rpc:*` channel or lifecycle event for top-level agents.
 - `docs/rpc.md` stays as the RPC integration guide, without workflow references.
 - RPC tests (`test/cross-extension-rpc.test.ts`, `test/rpc-*.test.ts`) keep covering every channel without depending on workflow code. A test that only covered workflow ownership is deleted.
 

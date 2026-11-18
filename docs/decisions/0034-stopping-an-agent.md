@@ -12,17 +12,17 @@ The model needs a way to stop its own agents. `agent_steer` cannot reach a wedge
 
 Every stop goes through `AgentManager.abort()`, which takes the stop cause. `abortAll` at shutdown is the one exception. The settle that follows a stop is ADR 0033.
 
-`AgentRecord.stopCause` replaces `stoppedBy`. The manager registry's `getRecord` returns it, and `docs/rpc.md` documents it. Every `stopped` run has a `stopCause`, and model-facing status text names it:
+`AgentRecord.stopCause` replaces `stoppedBy`. `agent:completed` and `agent:failed` payloads carry it, and `docs/rpc.md` documents it. Every `stopped` run has a `stopCause`, and model-facing status text names it:
 
 | `stopCause` | Set by |
 | --- | --- |
 | `user` | `/agents`, the viewer, or the session's interrupted tool call |
 | `agent` | `agent_stop` or its nested mirror |
-| `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
+| `extension` | `agent:rpc:stop`, or an aborted spawn `signal` from `agent:rpc:spawn` |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
 | `shutdown` | `abortAll` |
 
-A signal that is already aborted at spawn gives the cause of that signal's owner. A spawn or resume that carries a signal names that cause in `signalCause`, and the call throws without it. The spawn funnel for `subagents:rpc:spawn` and the manager registry always sets `extension`, whatever the caller passes.
+A signal that is already aborted at spawn gives the cause of that signal's owner. A spawn or resume that carries a signal names that cause in `signalCause`, and the call throws without it. The spawn funnel for `agent:rpc:spawn` always sets `extension`, whatever the caller passes.
 
 The `agent_stop` tool in `src/tool/agent-control-tools.ts`, and its nested mirror in `src/tool/nested-tools.ts`:
 

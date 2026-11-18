@@ -10,7 +10,7 @@ ADR 0035 says a notification never consumes a result and the notifier skips a co
 
 ## Decision
 
-A completion notification is one pi custom message of type `subagent-notification`, built in `src/manager/completion-notifier.ts`.
+A completion notification is one pi custom message of type `agent:notification`, built in `src/manager/completion-notifier.ts`.
 
 ### Delivery
 

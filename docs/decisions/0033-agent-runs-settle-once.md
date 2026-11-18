@@ -6,7 +6,7 @@ Replaces: 0008-stopped-agents-always-settle, last present in f56bafc
 
 A record (`AgentRecord`) runs more than once: a spawn starts it, and each resume or `@handle` message starts it again. A run ends by finishing, failing, hitting the turn limit, failing to start, or a stop while queued, during worktree creation, or while running.
 
-The concurrency pools, lifecycle events, the `subagents:record` entry, group joins, and completion notifications each need exactly one ending per run. A slot released twice admits too many agents, and a slot never released blocks the queue.
+The concurrency pools, lifecycle events, the `agent:record` entry, group joins, and completion notifications each need exactly one ending per run. A slot released twice admits too many agents, and a slot never released blocks the queue.
 
 A run wedged inside a tool call never resolves its `runAgent` promise. A tool process of that run can still write into its worktree.
 
@@ -42,8 +42,8 @@ Done check: `npx vitest run test/manager/agent-lifecycle.test.ts test/settle-tai
 ## Consequences
 
 - A second settle path leaks or double-releases pool slots and duplicates or drops completion events.
-- `subagents:failed` fires for a stop while queued and for a failed start. Foreground resumes emit `subagents:completed` or `subagents:failed` and append `subagents:record`. RPC consumers see one event per run.
+- `agent:failed` fires for a stop while queued and for a failed start. Foreground resumes emit `agent:completed` or `agent:failed` and append `agent:record`. RPC consumers see one event per run.
 - With `maxConcurrentForeground` set, a foreground resume can queue.
-- A foreground resume emits `subagents:started` before its `subagents:completed` or `subagents:failed`, as a background resume does.
+- A foreground resume emits `agent:started` before its `agent:completed` or `agent:failed`, as a background resume does.
 - The grace period trades a 5 s delay against cutting off a responsive run mid-flush.
 - A forced stop leaves the worktree on disk until the run resolves. Revisit if pi can kill a run's tool processes.

@@ -2,11 +2,11 @@
 
 ## Context
 
-Nothing bounds which tools, extensions, or skills a new agent gets. Users write agent files and skills ship them, so the extension does not trust a file. An RPC or registry inline definition can already choose any of them.
+Nothing bounds which tools, extensions, or skills a new agent gets. Users write agent files and skills ship them, so the extension does not trust a file. An RPC inline definition can already choose any of them.
 
 `scopeModels` bounds models only, and ADR 0024 sets where its check runs.
 
-No single funnel exists. The `agent` tool, the nested tool, and the creation wizard call `AgentManager.spawn` or `spawnAndWait` directly. RPC, the registry entry, and mentions go through `spawnResolved`. Every new session ends in `spawnAgent`, and `runAgent` re-reads the agent's config by type when it launches.
+No single funnel exists. The `agent` tool, the nested tool, and the creation wizard call `AgentManager.spawn` or `spawnAndWait` directly. RPC and mentions go through `spawnResolved`. Every new session ends in `spawnAgent`, and `runAgent` re-reads the agent's config by type when it launches.
 
 The `agent` tools take tools, extensions, and skills parameters only for an ephemeral agent (ADR 0023), so only those calls carry caller-supplied capability values. ADR 0013 (delegation ceiling) builds on this, and ADR 0017 (no shipped default agents) removes the wizard spawn site.
 
@@ -28,21 +28,21 @@ Ephemeral nesting:
 
 Provenance decides refuse or filter:
 
-- Caller-supplied means a field explicitly present in `agent` or nested `agent` parameters, or in the raw `agentConfig` of an RPC or registry spawn before `normalizeInlineAgentConfig` fills defaults. A caller-supplied value outside the policy refuses the spawn with an error that starts `Capability policy:` and names the value and the list.
-- The check filters every other value, for example an agent file's. The user gets a notification. The `agent` tools add a note to the tool result. The `subagents:rpc:spawn` reply is `{ id, filtered? }`. The `AgentRecord` stores the filtered list for the viewer and for `getRecord(id)`. The registry `spawn` still returns the id.
+- Caller-supplied means a field explicitly present in `agent` or nested `agent` parameters, or in the raw `agentConfig` of an RPC spawn before `normalizeInlineAgentConfig` fills defaults. A caller-supplied value outside the policy refuses the spawn with an error that starts `Capability policy:` and names the value and the list.
+- The check filters every other value, for example an agent file's. The user gets a notification. The `agent` tools add a note to the tool result. The `agent:rpc:spawn` reply is `{ id, filtered? }`. The `AgentRecord` stores the filtered list for the viewer.
 - If filtering empties an explicit tool list, the check refuses the spawn.
 
 Enforcement:
 
-- One pure `checkCapabilityPolicy`, modeled on `checkModelScope`, runs at every resolution site: the `agent` tool, the nested tool, mentions, `subagents:rpc:spawn`, and the `spawn` of the `Symbol.for("pi-subagents:manager")` registry entry.
-- `spawnTopLevel` serves RPC, the registry entry, and direct mentions, so for those callers the check runs inside the funnel after it strips a supplied verdict. The RPC handler passes the raw `agentConfig` alongside the normalized one. The registry path never normalizes.
+- One pure `checkCapabilityPolicy`, modeled on `checkModelScope`, runs at every resolution site: the `agent` tool, the nested tool, mentions, and `agent:rpc:spawn`.
+- `spawnTopLevel` serves RPC and direct mentions, so for those callers the check runs inside the funnel after it strips a supplied verdict. The RPC handler passes the raw `agentConfig` alongside the normalized one.
 - Its verdict carries the effective tools, extensions, and skills. `runAgent` builds the session from the verdict and never re-reads the agent file for those fields.
 - Only `checkCapabilityPolicy` mints a verdict. `spawnTopLevel` strips one a caller supplies, and `spawnAgent` throws when it is absent.
 - The check examines declared values at spawn. The existing extension scope guard filters extension tools that register later, and it never refuses. `DefaultResourceLoader`'s `skillsOverride` narrows `skills: true`, and the check filters named skills before `preloadSkills`.
 - Resuming a live record reuses its session, so the check does not run again. Reopening a tombstone starts a new session, and the check runs.
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
 
-Done check: `npx vitest run test/capability-policy.test.ts` passes. It asserts refusal of a caller-supplied denied tool through an ephemeral `agent` call, the nested tool, RPC, and the registry `spawn`. It asserts filtering for an agent file's value through a job when fired, a direct mention, and a tombstone reopen. It covers extension and skill denial, `ephemeralNesting: false`, `skills: true` narrowing, and `spawnAgent` throwing without a verdict.
+Done check: `npx vitest run test/capability-policy.test.ts` passes. It asserts refusal of a caller-supplied denied tool through an ephemeral `agent` call, the nested tool, and RPC. It asserts filtering for an agent file's value through a job when fired, a direct mention, and a tombstone reopen. It covers extension and skill denial, `ephemeralNesting: false`, `skills: true` narrowing, and `spawnAgent` throwing without a verdict.
 
 ## Consequences
 

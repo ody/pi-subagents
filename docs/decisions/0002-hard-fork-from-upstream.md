@@ -10,7 +10,7 @@ This repo is a hard fork. It never merges, rebases onto, or cherry-picks from `t
 
 Identity in `package.json`:
 
-- `name` is `@ody/pi-subagents`. The short name `pi-subagents` stays, so the `pi-subagents:` event and RPC prefixes and `Symbol.for("pi-subagents:manager")` are unchanged.
+- `name` is `@ody/pi-subagents`.
 - `version` resets to `0.1.0`.
 - `author` is `ody`. `repository`, `homepage`, and `bugs` point at `github.com/ody/pi-subagents`.
 - `"private": true`. `publishConfig` and the `prepublishOnly` script are removed. Install is from git or a local path only.

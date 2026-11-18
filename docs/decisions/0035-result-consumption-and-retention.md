@@ -13,7 +13,7 @@ A caller that reads a result in full consumes it, and the sweep bounds how long 
 Consumption:
 
 - Consumption applies to a settled run. A new run on the record clears it, and nothing else does.
-- Four things consume a result: a foreground settle (ADR 0033), `agent_get_result` on a settled run, `subagents:rpc:consume`, and the sweep.
+- Four things consume a result: a foreground settle (ADR 0033), `agent_get_result` on a settled run, `agent:rpc:consume`, and the sweep.
 - A completion notification never consumes a result.
 - The notifier never sends a notification for a consumed result.
 
@@ -40,6 +40,6 @@ Done check: `npx vitest run test/manager/agent-retention.test.ts test/manager/co
 ## Consequences
 
 - An `@handle` steer into a running run does not clear consumption, so the "Consumption is not terminal" paragraph in `docs/rpc.md` names only a new run.
-- After the sweep, `agent_get_result` cannot read the full result. Revisit when tombstones become durable, since the `subagents:record` entry holds it.
+- After the sweep, `agent_get_result` cannot read the full result. Revisit when tombstones become durable, since the `agent:record` entry holds it.
 - A record whose notification never leaves the pending state stays in memory. The notifier's own timeouts bound that.
 - Revisit the 10 minute cutoff if the model often reads results later than that.

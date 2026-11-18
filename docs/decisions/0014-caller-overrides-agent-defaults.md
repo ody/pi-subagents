@@ -28,7 +28,7 @@ Mentions:
 - A model-mode `@handle` run goes through the mention clone, a model call that reads the user's words. `@handle with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run. The clone's `agent` tool refuses `max_turns`, `run_in_background`, and `resume`. `inherit_context`, `isolated`, and `isolation` fill as on the main tool. Its forced `run_in_background: true` is not disclosed as an override.
 - A clone call that is refused is reported to the user with the refusal message and does not fall back to a direct start.
 - A message that does not start with the mention goes to the main model, which may use all four overrides.
-- `subagents:rpc:spawn` option semantics are unchanged.
+- `agent:rpc:spawn` option semantics stay as they are.
 
 Done check: `npx vitest run test/invocation-config.test.ts test/agent-model-display.test.ts test/nested-tools.test.ts test/mention-clone.test.ts` passes. It covers each of the four fields, the disclosure text, the nested path, the clone subset and refusal report, and the zero `max_turns` case.
 

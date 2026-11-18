@@ -10,7 +10,7 @@ With the switch off, `isolationParam` drops the parameter from the `agent` and n
 
 `worktreeIsolation` (default `true`) controls whether any path may create a worktree.
 
-- Off: no path creates a worktree. That covers the tool parameter, an agent file's `isolation`, and `subagents:rpc:spawn`.
+- Off: no path creates a worktree. That covers the tool parameter, an agent file's `isolation`, and `agent:rpc:spawn`.
 - Off: the extension downgrades a requested worktree to a normal run instead of refusing it, and the result carries no note.
 - Off: the extension removes the `isolation` parameter and the guideline in the tool description, so a model has nothing to read about it.
 - With `toolDescriptionMode: "custom"`, the guideline appears only through `{{isolationGuideline}}`, which is empty when the switch is off.

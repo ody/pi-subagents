@@ -33,7 +33,7 @@ Writes:
 
 Other rules:
 
-- `subagents:settings_changed` carries the effective settings and a `layer` field, `"global"` or `"project"`, for the layer that changed. `docs/rpc.md` documents it.
+- `agent:settings_changed` carries the effective settings and a `layer` field, `"global"` or `"project"`, for the layer that changed. `docs/rpc.md` documents it.
 - A malformed file or key never fails a spawn, except a malformed `policy`, which ADR 0022 covers.
 - The extension ignores a removed key and reads no old value shape.
 - `ephemeralNesting` is a row in both layers, with the rules ADR 0022 gives it.
