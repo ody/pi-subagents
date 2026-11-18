@@ -55,7 +55,7 @@ function ctx() {
   } as any;
 }
 
-describe("subagents:rpc:spawn with an inline agentConfig", () => {
+describe("agent:rpc:spawn with an inline agentConfig", () => {
   let tmpDir: string;
   let agentDir: string;
   let prevCwd: string;
@@ -96,7 +96,7 @@ describe("subagents:rpc:spawn with an inline agentConfig", () => {
 
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
     const requestId = "req-inline";
-    await busHandlers.get("subagents:rpc:spawn")!({
+    await busHandlers.get("agent:rpc:spawn")!({
       requestId,
       type: "advisor",
       prompt: "review",
@@ -107,7 +107,7 @@ describe("subagents:rpc:spawn with an inline agentConfig", () => {
     });
 
     const reply = pi.events.emit.mock.calls.find(
-      (c: any[]) => c[0] === `subagents:rpc:spawn:reply:${requestId}`,
+      (c: any[]) => c[0] === `agent:rpc:spawn:reply:${requestId}`,
     );
     expect(reply![1].success, `spawn succeeded, got: ${JSON.stringify(reply![1])}`).toBe(true);
 

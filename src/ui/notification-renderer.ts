@@ -10,7 +10,7 @@ export function registerNotificationRenderer(
 ): void {
   const { settings } = deps;
   pi.registerMessageRenderer<NotificationDetails>(
-    "subagent-notification",
+    "agent:notification",
     (message, { expanded }, theme) => {
       const d = message.details;
       if (!d) return undefined;

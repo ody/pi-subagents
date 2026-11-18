@@ -254,7 +254,7 @@ describe("messaging a finished agent", () => {
     await new Promise(r => setTimeout(r, 400));
 
     expect(pi.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ customType: "subagent-notification", content: expect.stringContaining("second answer") }),
+      expect.objectContaining({ customType: "agent:notification", content: expect.stringContaining("second answer") }),
       expect.objectContaining({ triggerTurn: true }),
     );
 

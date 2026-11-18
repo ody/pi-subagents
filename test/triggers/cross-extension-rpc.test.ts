@@ -42,8 +42,8 @@ describe("cross-extension RPC", () => {
     it("replies with protocol version", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:ping:reply:req-1", reply);
-      events.emit("subagents:rpc:ping", { requestId: "req-1" });
+      events.on("agent:rpc:ping:reply:req-1", reply);
+      events.emit("agent:rpc:ping", { requestId: "req-1" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true, data: { version: PROTOCOL_VERSION, policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
@@ -52,8 +52,8 @@ describe("cross-extension RPC", () => {
     it("scopes replies — other requestIds do not receive it", async () => {
       registerRpcHandlers(deps);
       const wrongReply = vi.fn();
-      events.on("subagents:rpc:ping:reply:req-other", wrongReply);
-      events.emit("subagents:rpc:ping", { requestId: "req-1" });
+      events.on("agent:rpc:ping:reply:req-other", wrongReply);
+      events.emit("agent:rpc:ping", { requestId: "req-1" });
 
       await new Promise((r) => setTimeout(r, 20));
       expect(wrongReply).not.toHaveBeenCalled();
@@ -64,8 +64,8 @@ describe("cross-extension RPC", () => {
       unsubPing();
 
       const reply = vi.fn();
-      events.on("subagents:rpc:ping:reply:req-1", reply);
-      events.emit("subagents:rpc:ping", { requestId: "req-1" });
+      events.on("agent:rpc:ping:reply:req-1", reply);
+      events.emit("agent:rpc:ping", { requestId: "req-1" });
 
       await new Promise((r) => setTimeout(r, 20));
       expect(reply).not.toHaveBeenCalled();
@@ -76,8 +76,8 @@ describe("cross-extension RPC", () => {
     it("returns agent id on success", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-s1", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-s1", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s1", type: "general-purpose", prompt: "do stuff",
       });
 
@@ -92,8 +92,8 @@ describe("cross-extension RPC", () => {
       registerRpcHandlers(deps);
       vi.mocked(manager.getRecord).mockReturnValue({ modelReplaced: "anthropic/blocked", filtered: ["tool bash"] });
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-mr", reply);
-      events.emit("subagents:rpc:spawn", { requestId: "req-mr", type: "general-purpose", prompt: "x" });
+      events.on("agent:rpc:spawn:reply:req-mr", reply);
+      events.emit("agent:rpc:spawn", { requestId: "req-mr", type: "general-purpose", prompt: "x" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({
@@ -105,8 +105,8 @@ describe("cross-extension RPC", () => {
     it("passes options through to manager.spawn", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-s2", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-s2", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s2", type: "Explore", prompt: "find it",
         options: { description: "search", isBackground: true },
       });
@@ -121,8 +121,8 @@ describe("cross-extension RPC", () => {
     it("forwards an inline agentConfig, completed with agent-file defaults", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-inline", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-inline", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-inline", type: "advisor", prompt: "review",
         options: {
           description: "Advisor review",
@@ -166,8 +166,8 @@ describe("cross-extension RPC", () => {
     it("ignores a null agentConfig, as a JSON-forwarding caller sends for unset", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-inline-null", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-inline-null", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-inline-null", type: "Explore", prompt: "x", options: { agentConfig: null },
       });
 
@@ -182,8 +182,8 @@ describe("cross-extension RPC", () => {
     ])("rejects an inline agentConfig with %s", async (_label, type, agentConfig, error) => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-inline-bad", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-inline-bad", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-inline-bad", type, prompt: "x", options: { agentConfig },
       });
 
@@ -196,8 +196,8 @@ describe("cross-extension RPC", () => {
       ctx = undefined;
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-s3", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-s3", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s3", type: "general-purpose", prompt: "x",
       });
 
@@ -212,8 +212,8 @@ describe("cross-extension RPC", () => {
       });
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-s4", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-s4", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s4", type: "bad-type", prompt: "x",
       });
 
@@ -227,8 +227,8 @@ describe("cross-extension RPC", () => {
       );
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-s4b", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-s4b", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s4b", type: "general-purpose", prompt: "x",
         options: { isolation: "worktree" },
       });
@@ -244,9 +244,9 @@ describe("cross-extension RPC", () => {
       registerRpcHandlers(deps);
       const wrongReply = vi.fn();
       const rightReply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-other", wrongReply);
-      events.on("subagents:rpc:spawn:reply:req-s5", rightReply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-other", wrongReply);
+      events.on("agent:rpc:spawn:reply:req-s5", rightReply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s5", type: "general-purpose", prompt: "x",
       });
 
@@ -259,8 +259,8 @@ describe("cross-extension RPC", () => {
       unsubSpawn();
 
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-s6", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-s6", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-s6", type: "general-purpose", prompt: "x",
       });
 
@@ -273,8 +273,8 @@ describe("cross-extension RPC", () => {
     it("returns success when agent is aborted", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:stop:reply:req-st1", reply);
-      events.emit("subagents:rpc:stop", { requestId: "req-st1", agentId: "agent-42" });
+      events.on("agent:rpc:stop:reply:req-st1", reply);
+      events.emit("agent:rpc:stop", { requestId: "req-st1", agentId: "agent-42" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true });
@@ -285,8 +285,8 @@ describe("cross-extension RPC", () => {
       (manager.abort as ReturnType<typeof vi.fn>).mockReturnValue(false);
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:stop:reply:req-st2", reply);
-      events.emit("subagents:rpc:stop", { requestId: "req-st2", agentId: "settled" });
+      events.on("agent:rpc:stop:reply:req-st2", reply);
+      events.emit("agent:rpc:stop", { requestId: "req-st2", agentId: "settled" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent is not running" });
@@ -296,8 +296,8 @@ describe("cross-extension RPC", () => {
       (manager.getRecord as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:stop:reply:req-st5", reply);
-      events.emit("subagents:rpc:stop", { requestId: "req-st5", agentId: "nonexistent" });
+      events.on("agent:rpc:stop:reply:req-st5", reply);
+      events.emit("agent:rpc:stop", { requestId: "req-st5", agentId: "nonexistent" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found" });
@@ -308,8 +308,8 @@ describe("cross-extension RPC", () => {
       (manager.getRecord as ReturnType<typeof vi.fn>).mockReturnValue({ parentAgentId: "agent-1" });
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:stop:reply:req-st6", reply);
-      events.emit("subagents:rpc:stop", { requestId: "req-st6", agentId: "agent-child" });
+      events.on("agent:rpc:stop:reply:req-st6", reply);
+      events.emit("agent:rpc:stop", { requestId: "req-st6", agentId: "agent-child" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({
@@ -323,9 +323,9 @@ describe("cross-extension RPC", () => {
       registerRpcHandlers(deps);
       const wrongReply = vi.fn();
       const rightReply = vi.fn();
-      events.on("subagents:rpc:stop:reply:req-other", wrongReply);
-      events.on("subagents:rpc:stop:reply:req-st3", rightReply);
-      events.emit("subagents:rpc:stop", { requestId: "req-st3", agentId: "agent-42" });
+      events.on("agent:rpc:stop:reply:req-other", wrongReply);
+      events.on("agent:rpc:stop:reply:req-st3", rightReply);
+      events.emit("agent:rpc:stop", { requestId: "req-st3", agentId: "agent-42" });
 
       await vi.waitFor(() => expect(rightReply).toHaveBeenCalled());
       expect(wrongReply).not.toHaveBeenCalled();
@@ -336,8 +336,8 @@ describe("cross-extension RPC", () => {
       unsubStop();
 
       const reply = vi.fn();
-      events.on("subagents:rpc:stop:reply:req-st4", reply);
-      events.emit("subagents:rpc:stop", { requestId: "req-st4", agentId: "agent-42" });
+      events.on("agent:rpc:stop:reply:req-st4", reply);
+      events.emit("agent:rpc:stop", { requestId: "req-st4", agentId: "agent-42" });
 
       await new Promise((r) => setTimeout(r, 20));
       expect(reply).not.toHaveBeenCalled();
@@ -348,8 +348,8 @@ describe("cross-extension RPC", () => {
     it("returns success when the result is consumed", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:consume:reply:req-c1", reply);
-      events.emit("subagents:rpc:consume", { requestId: "req-c1", agentId: "agent-42" });
+      events.on("agent:rpc:consume:reply:req-c1", reply);
+      events.emit("agent:rpc:consume", { requestId: "req-c1", agentId: "agent-42" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true });
@@ -360,8 +360,8 @@ describe("cross-extension RPC", () => {
       (manager.consumeResult as ReturnType<typeof vi.fn>).mockReturnValue(false);
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:consume:reply:req-c2", reply);
-      events.emit("subagents:rpc:consume", { requestId: "req-c2", agentId: "agent-42" });
+      events.on("agent:rpc:consume:reply:req-c2", reply);
+      events.emit("agent:rpc:consume", { requestId: "req-c2", agentId: "agent-42" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found or still running" });
@@ -372,8 +372,8 @@ describe("cross-extension RPC", () => {
       unsubConsume();
 
       const reply = vi.fn();
-      events.on("subagents:rpc:consume:reply:req-c3", reply);
-      events.emit("subagents:rpc:consume", { requestId: "req-c3", agentId: "agent-42" });
+      events.on("agent:rpc:consume:reply:req-c3", reply);
+      events.emit("agent:rpc:consume", { requestId: "req-c3", agentId: "agent-42" });
 
       await new Promise((r) => setTimeout(r, 20));
       expect(reply).not.toHaveBeenCalled();
@@ -389,11 +389,11 @@ describe("cross-extension RPC", () => {
 
       const reply1 = vi.fn();
       const reply2 = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-a", reply1);
-      events.on("subagents:rpc:spawn:reply:req-b", reply2);
+      events.on("agent:rpc:spawn:reply:req-a", reply1);
+      events.on("agent:rpc:spawn:reply:req-b", reply2);
 
-      events.emit("subagents:rpc:spawn", { requestId: "req-a", type: "Explore", prompt: "first" });
-      events.emit("subagents:rpc:spawn", { requestId: "req-b", type: "Plan", prompt: "second" });
+      events.emit("agent:rpc:spawn", { requestId: "req-a", type: "Explore", prompt: "first" });
+      events.emit("agent:rpc:spawn", { requestId: "req-b", type: "Plan", prompt: "second" });
 
       await vi.waitFor(() => {
         expect(reply1).toHaveBeenCalled();
@@ -422,8 +422,8 @@ describe("cross-extension RPC", () => {
     it("resolves a string model to a Model instance before manager.spawn", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-m1", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-m1", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-m1", type: "general-purpose", prompt: "x",
         options: { model: "openai-codex/gpt-5.5" },
       });
@@ -439,8 +439,8 @@ describe("cross-extension RPC", () => {
     it("passes a Model object through unchanged", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-m2", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-m2", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-m2", type: "general-purpose", prompt: "x",
         options: { model: fakeModel },
       });
@@ -455,8 +455,8 @@ describe("cross-extension RPC", () => {
     it("surfaces a clear error when the model string can't be resolved", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-m3", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-m3", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-m3", type: "general-purpose", prompt: "x",
         options: { model: "nope/does-not-exist" },
       });
@@ -471,8 +471,8 @@ describe("cross-extension RPC", () => {
     it("treats an explicit null model as no override at all", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-m5", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-m5", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-m5", type: "general-purpose", prompt: "x",
         options: { model: null },
       });
@@ -488,8 +488,8 @@ describe("cross-extension RPC", () => {
       ctx = { session: true };
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on("subagents:rpc:spawn:reply:req-m4", reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on("agent:rpc:spawn:reply:req-m4", reply);
+      events.emit("agent:rpc:spawn", {
         requestId: "req-m4", type: "general-purpose", prompt: "x",
         options: { model: "openai-codex/gpt-5.5" },
       });
@@ -545,8 +545,8 @@ describe("cross-extension RPC", () => {
     async function spawn(requestId: string, model: unknown) {
       registerRpcHandlers(deps);
       const reply = vi.fn();
-      events.on(`subagents:rpc:spawn:reply:${requestId}`, reply);
-      events.emit("subagents:rpc:spawn", {
+      events.on(`agent:rpc:spawn:reply:${requestId}`, reply);
+      events.emit("agent:rpc:spawn", {
         requestId, type: "general-purpose", prompt: "x", options: { model },
       });
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());

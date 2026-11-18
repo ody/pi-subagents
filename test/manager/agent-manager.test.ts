@@ -1278,7 +1278,7 @@ describe("AgentManager — resolved runs with a failed final turn map to error (
     expect(record.result).toBe("partial progress from an earlier turn");
   });
 
-  it("onComplete sees the error status (routes to subagents:failed in the host)", async () => {
+  it("onComplete sees the error status (routes to agent:failed in the host)", async () => {
     let completed: AgentRecord | undefined;
     manager = new AgentManager((r) => { completed = r; });
     failedRun("boom");

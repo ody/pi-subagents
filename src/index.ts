@@ -60,12 +60,12 @@ export default function (pi: ExtensionAPI) {
     const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
     const eventData = buildEventData(record);
     if (isError) {
-      pi.events.emit("subagents:failed", eventData);
+      pi.events.emit("agent:failed", eventData);
     } else {
-      pi.events.emit("subagents:completed", eventData);
+      pi.events.emit("agent:completed", eventData);
     }
 
-    pi.appendEntry("subagents:record", {
+    pi.appendEntry("agent:record", {
       id: record.id, type: record.type, description: record.description,
       status: record.status, result: record.result, error: record.error,
       startedAt: record.startedAt, completedAt: record.completedAt,
@@ -78,14 +78,14 @@ export default function (pi: ExtensionAPI) {
       widget.ensureTimer();
       widget.update();
     }
-    pi.events.emit("subagents:started", {
+    pi.events.emit("agent:started", {
       id: record.id,
       type: record.type,
       description: record.description,
     });
   }, (record, info) => {
     if (!isTopLevelAgent(record)) return;
-    pi.events.emit("subagents:compacted", {
+    pi.events.emit("agent:compacted", {
       id: record.id,
       type: record.type,
       description: record.description,
@@ -146,7 +146,7 @@ export default function (pi: ExtensionAPI) {
           },
         },
       });
-      pi.events.emit("subagents:ready", {});
+      pi.events.emit("agent:ready", {});
     }
     if (ctx.mode === "tui" && !mentionProviderRegistered) {
       mentionProviderRegistered = true;

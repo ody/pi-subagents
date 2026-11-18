@@ -68,7 +68,7 @@ describe("an agent started by a mention", () => {
 
     expect(pi.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        customType: "subagent-notification",
+        customType: "agent:notification",
         content: expect.stringContaining("found four planted bugs"),
       }),
       expect.objectContaining({ triggerTurn: true }),
@@ -91,7 +91,7 @@ describe("an agent started by a mention", () => {
 
     expect(pi.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({
-        customType: "subagent-notification",
+        customType: "agent:notification",
         content: expect.stringContaining("cyan, obviously"),
       }),
       expect.objectContaining({ triggerTurn: true }),

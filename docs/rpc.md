@@ -1,11 +1,11 @@
 # Driving subagents from another extension
 
-Another pi extension can spawn a subagent, listen for subagent completion, read the result and stop the run. It does all of this over the `pi.events` bus, without importing this package directly. Four request/reply channels (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`, `subagents:rpc:consume`), eleven lifecycle events, and one in-process registry at `Symbol.for("pi-subagents:manager")`.
+Another pi extension can spawn a subagent, listen for subagent completion, read the result and stop the run. It does all of this over the `pi.events` bus, without importing this package directly. Four request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`), nine lifecycle events, and one in-process registry at `Symbol.for("pi-subagents:manager")`.
 
 The thing worth understanding up front is that **the bus is in-process.** Every "RPC" call here is a synchronous `pi.events.emit` into the same event loop, and every reply comes back the same way. That single fact explains most of what follows:
 
 - Why `signal` and the `on*` callbacks work on a spawn payload at all.
-- Why a `consume` fired inside a `subagents:completed` handler lands *before* the notifier decides whether to notify.
+- Why a `consume` fired inside a `agent:completed` handler lands *before* the notifier decides whether to notify.
 - Why none of this survives a real process boundary.
 
 For the channel list, the reply envelope, the per-channel snippets and the event table, see [`README.md`](../README.md#cross-extension-rpc). This document is the reference for what the README has no room for:
@@ -18,7 +18,7 @@ For the channel list, the reply envelope, the per-channel snippets and the event
 
 ## Spawn options
 
-`subagents:rpc:spawn` forwards `options` to `AgentManager.spawn` — but not verbatim. The manager's `spawn` behind the RPC is `spawnTopLevel` in `src/triggers/spawn-funnel.ts`, which deletes internal-only fields first. Then `spawnResolved` in the same file resolves the type, model scope, capability verdict and isolation. The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`; what a bus caller actually gets is three different things.
+`agent:rpc:spawn` forwards `options` to `AgentManager.spawn` — but not verbatim. The manager's `spawn` behind the RPC is `spawnTopLevel` in `src/triggers/spawn-funnel.ts`, which deletes internal-only fields first. Then `spawnResolved` in the same file resolves the type, model scope, capability verdict and isolation. The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`; what a bus caller actually gets is three different things.
 
 **Honoured** — set these and they take effect:
 
@@ -83,7 +83,7 @@ The shape is `AgentConfig` from `src/types.ts`, using its field names rather tha
 A no-tool agent with no extensions or skills:
 
 ```typescript
-pi.events.emit("subagents:rpc:spawn", {
+pi.events.emit("agent:rpc:spawn", {
   requestId,
   type: "advisor",
   prompt: renderedTranscript,
@@ -140,10 +140,10 @@ Every failure reaches the caller as `{ success: false, error }`, where `error` i
 | `SpawnOptions.cwd is not a directory: "<cwd>"` | `assertValidSpawnCwd` in `src/manager/agent-manager-rules.ts` |
 | `Cannot run with isolation: "worktree" — not a git repo, no commits yet, or 'git worktree add' failed.` | `startAgent` in `src/manager/agent-start.ts`, surfaced through `awaitStartup` |
 | git plumbing failures | `git` helper in `src/platform/worktree.ts` |
-| `Agent not found` | stop — `subagents:rpc:stop` handler in `src/triggers/cross-extension-rpc.ts` |
+| `Agent not found` | stop — `agent:rpc:stop` handler in `src/triggers/cross-extension-rpc.ts` |
 | `Agent is owned by another agent` | stop — same handler |
 | `Agent is not running` | stop — same handler. The record exists, so it has already settled |
-| `Agent not found or still running` | consume — `subagents:rpc:consume` handler in the same file |
+| `Agent not found or still running` | consume — `agent:rpc:consume` handler in the same file |
 
 **The in-session `agent_stop` tool diverges from this on the already-settled case.** Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel throws `Agent is not running`. The tool reports its terminal status as a normal (non-error) result.
 
@@ -155,53 +155,53 @@ Three things the table cannot show:
 
 - **The failure that is not an error.** With `worktreeIsolation` off project-wide, the spawn funnel and `src/manager/agent-start.ts` drop `isolation: "worktree"`. They raise no error and leave no note on the record. The wire carries a success envelope. Your agent runs in the main tree. If you asked for isolation because two agents were going to write the same files, they now collide and nothing told you.
 - **A handler that returns nothing omits `data`**, so a successful stop or consume reply is a bare `{ success: true }` and `reply.data.anything` throws.
-- **`requestId` is not validated.** Nothing checks it, and the value goes straight into the reply channel name. A caller that omits it gets its reply on the literal channel `subagents:rpc:spawn:reply:undefined`. Every other caller that omitted it also listens there. Send one, and send a unique one.
+- **`requestId` is not validated.** Nothing checks it, and the value goes straight into the reply channel name. A caller that omits it gets its reply on the literal channel `agent:rpc:spawn:reply:undefined`. Every other caller that omitted it also listens there. Send one, and send a unique one.
 
 ## Ownership
 
-`isTopLevelAgent(record)` is `parentAgentId === undefined` (`isTopLevelAgent` in `src/manager/agent-manager-rules.ts`). `subagents:rpc:stop` enforces it (`src/triggers/cross-extension-rpc.ts`): a nested child has an owner that is *waiting on it*. Aborting the child out from under that owner turns another extension's stop into a failed step. It is defence in depth rather than a live hole. No RPC hands out agent ids, so a caller has no ordinary way to name an agent it does not own.
+`isTopLevelAgent(record)` is `parentAgentId === undefined` (`isTopLevelAgent` in `src/manager/agent-manager-rules.ts`). `agent:rpc:stop` enforces it (`src/triggers/cross-extension-rpc.ts`): a nested child has an owner that is *waiting on it*. Aborting the child out from under that owner turns another extension's stop into a failed step. It is defence in depth rather than a live hole. No RPC hands out agent ids, so a caller has no ordinary way to name an agent it does not own.
 
 One asymmetry to know about, stated as it is:
 
-- **Stop takes an id only** (`subagents:rpc:stop` in `src/triggers/cross-extension-rpc.ts`). Consume takes an id *or* an `@handle`, through `consumeResult` in `src/index.ts`, which calls `resolveAgentRef` from `src/triggers/spawn-funnel.ts`.
+- **Stop takes an id only** (`agent:rpc:stop` in `src/triggers/cross-extension-rpc.ts`). Consume takes an id *or* an `@handle`, through `consumeResult` in `src/index.ts`, which calls `resolveAgentRef` from `src/triggers/spawn-funnel.ts`.
 
-The same predicate silently scopes the events. **Every lifecycle event is top-level only** — `subagents:started`, `:completed`, `:failed` and `:compacted` all return early for nested agents (`src/index.ts`). A nested child is invisible on the bus: you will see its parent come and go without a single event for the child.
+The same predicate silently scopes the events. **Every lifecycle event is top-level only** — `agent:started`, `:completed`, `:failed` and `:compacted` all return early for nested agents (`src/index.ts`). A nested child is invisible on the bus: you will see its parent come and go without a single event for the child.
 
 ### Stop and the settle tail
 
-**Stop fires the abort signal and arms a grace timer.** `manager.abort(id, "extension")` — the same call this channel makes — aborts the run, sets `record.stopCause` to `extension` and arms a 5s timer. The same cause applies when a `signal` you pass to `subagents:rpc:spawn` aborts.
+**Stop fires the abort signal and arms a grace timer.** `manager.abort(id, "extension")` — the same call this channel makes — aborts the run, sets `record.stopCause` to `extension` and arms a 5s timer. The same cause applies when a `signal` you pass to `agent:rpc:spawn` aborts.
 
 Every run settles exactly once, through one tail. The tail detaches the parent abort signal and flushes the output file. It stops nested children and releases the pool slot. Then it fires the completion callback.
 
-A run that resolves enters the tail itself. A wedged run enters the same tail when the timer fires, so a `subagents:rpc:stop` call frees its slot and fires `subagents:completed`/`:failed` within a few seconds. A later real settle returns at once and fires nothing.
+A run that resolves enters the tail itself. A wedged run enters the same tail when the timer fires, so a `agent:rpc:stop` call frees its slot and fires `agent:completed`/`:failed` within a few seconds. A later real settle returns at once and fires nothing.
 
-A stop while the run waits in the queue, or during worktree creation, enters the same tail. It fires `subagents:failed` once, with status `stopped`.
+A stop while the run waits in the queue, or during worktree creation, enters the same tail. It fires `agent:failed` once, with status `stopped`.
 
-A start that fails enters the same tail with status `error`. It fires `subagents:failed` once and appends one `subagents:record` entry. A direct start also rethrows to its caller.
+A start that fails enters the same tail with status `error`. It fires `agent:failed` once and appends one `agent:record` entry. A direct start also rethrows to its caller.
 
 The forced entry copies the streamed response text into `record.result` when no result exists. That event and the notification then carry the partial output instead of an empty `result`. The forced entry also adds the worktree path when the run has a worktree. Nothing about the reply envelope changes — `stop` still replies before the settle tail runs, forced or otherwise.
 
 ## The notification race
 
-When a background agent finishes, pi-subagents sends the user a completion notification. If you have already shown the model that result yourself, the notification arrives on top of an answer the model already has. It costs the parent a turn to dismiss. `subagents:rpc:consume` is how you say you have handled it — the bus-side half of what `agent_get_result` does when it returns a result.
+When a background agent finishes, pi-subagents sends the user a completion notification. If you have already shown the model that result yourself, the notification arrives on top of an answer the model already has. It costs the parent a turn to dismiss. `agent:rpc:consume` is how you say you have handled it — the bus-side half of what `agent_get_result` does when it returns a result.
 
 **When you send it decides whether it works.** The timeline:
 
-1. The agent settles and the settle callback of `AgentManager` in `src/index.ts` emits `subagents:completed`.
+1. The agent settles and the settle callback of `AgentManager` in `src/index.ts` emits `agent:completed`.
 2. In the same callback, `notifier.onAgentComplete` (`src/manager/completion-notifier.ts`) checks `record.resultConsumed` and decides whether to notify at all.
-3. `pi.events` dispatch is synchronous and in-process, so a handler that emits `subagents:rpc:consume` **without awaiting anything** has already set that flag before step 2 evaluates.
+3. `pi.events` dispatch is synchronous and in-process, so a handler that emits `agent:rpc:consume` **without awaiting anything** has already set that flag before step 2 evaluates.
 
 | When you consume | What happens |
 | --- | --- |
-| Synchronously, inside your `subagents:completed` handler | The notification is never scheduled. This is the clean path |
+| Synchronously, inside your `agent:completed` handler | The notification is never scheduled. This is the clean path |
 | After an `await`, within 200 ms | Still suppressed. The notifier holds the nudge for `NUDGE_HOLD_MS` (`src/manager/completion-notifier.ts`), `consumeResult` in `src/index.ts` calls `cancelNudge`, and `emitIndividualNudge` re-checks `resultConsumed` at send time |
 | After 200 ms | Too late. The follow-up has fired with `triggerTurn: true` and cost the parent a turn |
 
-Fire-and-forget is the intended use. The reply carries nothing to act on. The channel sits outside the `subagents:rpc:ping` version handshake on purpose (`registerRpcHandlers` in `src/triggers/cross-extension-rpc.ts`). You can send it unconditionally, because an older pi-subagents with no handler simply keeps notifying.
+Fire-and-forget is the intended use. The reply carries nothing to act on. The channel sits outside the `agent:rpc:ping` version handshake on purpose (`registerRpcHandlers` in `src/triggers/cross-extension-rpc.ts`). You can send it unconditionally, because an older pi-subagents with no handler simply keeps notifying.
 
 Consumption is not terminal. A resume, foreground or background, un-consumes the record (`resume` in `src/manager/agent-resume.ts` sets `record.resultConsumed = false`) because the record is starting a new run. Only a new run clears consumption: an `@handle` steer of a running or queued agent leaves it unchanged.
 
-One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("subagents:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
+One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("agent:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
 
 ## The manager registry
 
@@ -220,19 +220,19 @@ Prefer the bus. The registry has no reply envelope, no version, and no availabil
 
 ## Protocol versions
 
-`subagents:rpc:ping` replies `{ version: PROTOCOL_VERSION, policy }`, currently `2` (`PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`). 0.5.0 introduced the constant already equal to `2`. "v1" is a retroactive name for the pre-envelope contract:
+`agent:rpc:ping` replies `{ version: PROTOCOL_VERSION, policy }`, currently `2` (`PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`). 0.5.0 introduced the constant already equal to `2`. "v1" is a retroactive name for the pre-envelope contract:
 
 - Spawn replied with a bare `{ id }` or `{ error }`.
 - Stop replied `{ success: boolean }` with no message.
 - Each handler caught its own errors.
 
-`policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `subagents:settings_loaded` and `subagents:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
+`policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `agent:settings_loaded` and `agent:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 
 ## Settings events
 
-`subagents:settings_loaded` fires once at init. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
+`agent:settings_loaded` fires once at init. Its payload is `{ settings, policy }`, where `settings` is the merged global and project file, with only the keys the files set.
 
-`subagents:settings_changed` fires when the `/agents` menu changes or resets a setting, including `policy.ephemeralNesting`. Its payload is `{ settings, persisted, layer, policy }`:
+`agent:settings_changed` fires when the `/agents` menu changes or resets a setting, including `policy.ephemeralNesting`. Its payload is `{ settings, persisted, layer, policy }`:
 
 | Field | Meaning |
 | --- | --- |
@@ -251,11 +251,11 @@ So send `consume` unconditionally and ignore the outcome. An older build has no 
 
 ## Availability
 
-`subagents:ready` is the discovery signal, and the `session_start` handler in `src/index.ts` wires both the RPC handlers and the event itself on the first bound `session_start`. It does not do this at factory time, on purpose. pi runs every extension factory *before* it applies an agent's `extensions:` filter. It only delivers lifecycle events to the survivors. A factory-time broadcast made a filtered-out session advertise a spawn service it could never provide: `ping` succeeded and every `spawn` answered `No active session`.
+`agent:ready` is the discovery signal, and the `session_start` handler in `src/index.ts` wires both the RPC handlers and the event itself on the first bound `session_start`. It does not do this at factory time, on purpose. pi runs every extension factory *before* it applies an agent's `extensions:` filter. It only delivers lifecycle events to the survivors. A factory-time broadcast made a filtered-out session advertise a spawn service it could never provide: `ping` succeeded and every `spawn` answered `No active session`.
 
-The consequence is worth stating plainly: **a session that excludes pi-subagents is indistinguishable from a system that lacks pi-subagents.** It emits no `subagents:ready` and answers nothing. Give discovery a timeout and treat expiry as "not available here" rather than waiting indefinitely. The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (the `session_shutdown` handler in `src/index.ts`), so a later `session_start` re-registers and re-emits.
+The consequence is worth stating plainly: **a session that excludes pi-subagents is indistinguishable from a system that lacks pi-subagents.** It emits no `agent:ready` and answers nothing. Give discovery a timeout and treat expiry as "not available here" rather than waiting indefinitely. The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (the `session_shutdown` handler in `src/index.ts`), so a later `session_start` re-registers and re-emits.
 
-One more trap on the way in: an RPC-spawned agent emits **no `subagents:created`**. The only two emit sites are the `agent` tool's background branch (`src/tool/agent-tool-background.ts`) and detached resume (`src/manager/background-resume.ts`). Your first event for your own agent is `subagents:started` (the start callback of `AgentManager` in `src/index.ts`), so key your bookkeeping off the id that `spawn` handed you, not off `subagents:created`.
+One more trap on the way in: an RPC-spawned agent emits **no `agent:created`**. The only two emit sites are the `agent` tool's background branch (`src/tool/agent-tool-background.ts`) and detached resume (`src/manager/background-resume.ts`). Your first event for your own agent is `agent:started` (the start callback of `AgentManager` in `src/index.ts`), so key your bookkeeping off the id that `spawn` handed you, not off `agent:created`.
 
 ## What the tests pin
 
@@ -267,17 +267,17 @@ This document has no test of its own, so it is worth knowing which claims are ac
 | `test/rpc-lifecycle-gating.test.ts` | Real extension factory | Nothing wired at factory time, everything once at `session_start`, and live widget activity for RPC spawns |
 | `test/rpc-result-consumption.test.ts` | Real delivery path | The notification firing, and not firing, around `consume` |
 | `test/rpc-inline-agent.test.ts` | Real extension factory | An inline `agentConfig` skips type resolution, reaches `runAgent`, and stays out of the registry |
-| `test/queued-stop-events.test.ts` | Real extension factory | A `subagents:rpc:stop` of a queued run fires `subagents:failed` once and appends one `subagents:record` entry |
+| `test/queued-stop-events.test.ts` | Real extension factory | A `agent:rpc:stop` of a queued run fires `agent:failed` once and appends one `agent:record` entry |
 
-Not pinned anywhere, so treat them as descriptions rather than contracts: the `SpawnOptions.cwd` error strings, `subagents:ready`'s `{}` payload, and consume's handle resolution.
+Not pinned anywhere, so treat them as descriptions rather than contracts: the `SpawnOptions.cwd` error strings, `agent:ready`'s `{}` payload, and consume's handle resolution.
 
 ## Reference implementation
 
-[**`tintinweb/pi-tasks`**](https://github.com/tintinweb/pi-tasks) is the working integration, and it shaped this surface. Its `TaskExecute` drives `subagents:rpc:spawn`, including the serialized `"provider/modelId"` string form that the boundary now resolves. Its `TaskOutput` drives `subagents:rpc:consume`. That channel exists because pi-tasks joins an agent on `subagents:completed` and reports the result itself ([pi-tasks#62](https://github.com/tintinweb/pi-tasks/issues/62)).
+[**`tintinweb/pi-tasks`**](https://github.com/tintinweb/pi-tasks) is the working integration, and it shaped this surface. Its `TaskExecute` drives `agent:rpc:spawn`, including the serialized `"provider/modelId"` string form that the boundary now resolves. Its `TaskOutput` drives `agent:rpc:consume`. That channel exists because pi-tasks joins an agent on `agent:completed` and reports the result itself ([pi-tasks#62](https://github.com/tintinweb/pi-tasks/issues/62)).
 
 Read it for the shape of the whole loop:
 
-- Wait on `subagents:ready`.
+- Wait on `agent:ready`.
 - Keep an id-keyed map of outstanding spawns.
-- Resolve each from the `subagents:completed` / `subagents:failed` handler.
+- Resolve each from the `agent:completed` / `agent:failed` handler.
 - Consume the result in the same synchronous handler that reports it.

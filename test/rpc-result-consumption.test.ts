@@ -55,9 +55,9 @@ function ctx() {
 }
 
 const notifications = (pi: any): unknown[] =>
-  pi.sendMessage.mock.calls.filter((c: any[]) => c[0]?.customType === "subagent-notification");
+  pi.sendMessage.mock.calls.filter((c: any[]) => c[0]?.customType === "agent:notification");
 
-describe("subagents:rpc:consume", () => {
+describe("agent:rpc:consume", () => {
   let tmpDir: string;
   let agentDir: string;
   let prevCwd: string;
@@ -110,8 +110,8 @@ describe("subagents:rpc:consume", () => {
 
   async function spawnOverRpc(bus: ReturnType<typeof makePi>["bus"], requestId: string): Promise<string> {
     let id = "";
-    bus.on(`subagents:rpc:spawn:reply:${requestId}`, (reply: any) => { id = reply.data.id; });
-    bus.emit("subagents:rpc:spawn", {
+    bus.on(`agent:rpc:spawn:reply:${requestId}`, (reply: any) => { id = reply.data.id; });
+    bus.emit("agent:rpc:spawn", {
       requestId,
       type: "general-purpose",
       prompt: "go",
@@ -135,8 +135,8 @@ describe("subagents:rpc:consume", () => {
     vi.mocked(runAgent).mockResolvedValue({ responseText: "TASK_EXECUTE_AGENT_OK" } as any);
     const { pi, bus } = await boot();
 
-    bus.on("subagents:completed", (data: unknown) => {
-      bus.emit("subagents:rpc:consume", { requestId: "req-consume", agentId: (data as { id: string }).id });
+    bus.on("agent:completed", (data: unknown) => {
+      bus.emit("agent:rpc:consume", { requestId: "req-consume", agentId: (data as { id: string }).id });
     });
 
     await spawnOverRpc(bus, "req-spawn-2");
@@ -151,8 +151,8 @@ describe("subagents:rpc:consume", () => {
 
     const id = await spawnOverRpc(bus, "req-spawn-3");
     const reply = vi.fn();
-    bus.on("subagents:rpc:consume:reply:req-consume-running", reply);
-    bus.emit("subagents:rpc:consume", { requestId: "req-consume-running", agentId: id });
+    bus.on("agent:rpc:consume:reply:req-consume-running", reply);
+    bus.emit("agent:rpc:consume", { requestId: "req-consume-running", agentId: id });
 
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
     expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found or still running" });
@@ -161,8 +161,8 @@ describe("subagents:rpc:consume", () => {
   it("reports an unknown agent rather than silently succeeding", async () => {
     const { bus } = await boot();
     const reply = vi.fn();
-    bus.on("subagents:rpc:consume:reply:req-consume-unknown", reply);
-    bus.emit("subagents:rpc:consume", { requestId: "req-consume-unknown", agentId: "no-such-agent" });
+    bus.on("agent:rpc:consume:reply:req-consume-unknown", reply);
+    bus.emit("agent:rpc:consume", { requestId: "req-consume-unknown", agentId: "no-such-agent" });
 
     await vi.waitFor(() => expect(reply).toHaveBeenCalled());
     expect(reply).toHaveBeenCalledWith({ success: false, error: "Agent not found or still running" });

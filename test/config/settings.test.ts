@@ -668,7 +668,7 @@ describe("settings persistence", () => {
       };
     });
 
-    it("loads, applies, and emits subagents:settings_loaded with merged settings", () => {
+    it("loads, applies, and emits agent:settings_loaded with merged settings", () => {
       writeGlobal({ maxConcurrent: 16 });
       writeProject({ graceTurns: 7 });
       const emit = vi.fn();
@@ -681,7 +681,7 @@ describe("settings persistence", () => {
       expect(appliers.setDefaultJoinMode).not.toHaveBeenCalled();
 
       expect(emit).toHaveBeenCalledTimes(1);
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", {
+      expect(emit).toHaveBeenCalledWith("agent:settings_loaded", {
         settings: { maxConcurrent: 16, graceTurns: 7 },
         policy: NO_POLICY,
       });
@@ -693,7 +693,7 @@ describe("settings persistence", () => {
 
       const result = applyAndEmitLoaded(appliers, emit, projectDir);
 
-      expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", { settings: {}, policy: NO_POLICY });
+      expect(emit).toHaveBeenCalledWith("agent:settings_loaded", { settings: {}, policy: NO_POLICY });
       expect(result).toEqual({});
       expect(appliers.setMaxConcurrent).not.toHaveBeenCalled();
       expect(appliers.setDefaultMaxTurns).not.toHaveBeenCalled();
@@ -720,7 +720,7 @@ describe("settings persistence", () => {
       );
 
       expect(emit).toHaveBeenCalledTimes(1);
-      expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
+      expect(emit).toHaveBeenCalledWith("agent:settings_changed", {
         settings: { ...effectiveSettings(projectDir), maxConcurrent: 5, graceTurns: 2 },
         persisted: true,
         layer: "project",
@@ -771,7 +771,7 @@ describe("settings persistence", () => {
         expect(spy).toHaveBeenCalledWith(expect.stringContaining(globalFile()));
         expect(toast.level).toBe("warning");
         expect(emit).toHaveBeenCalledWith(
-          "subagents:settings_changed",
+          "agent:settings_changed",
           expect.objectContaining({ persisted: false }),
         );
       } finally {
@@ -788,7 +788,7 @@ describe("settings persistence", () => {
       expect(JSON.parse(readFileSync(projectFile(), "utf-8"))).toEqual({ showCost: true });
       expect(appliers.setGraceTurns).toHaveBeenCalledWith(9);
       expect(emit).toHaveBeenCalledWith(
-        "subagents:settings_changed",
+        "agent:settings_changed",
         expect.objectContaining({ persisted: true, settings: expect.objectContaining({ graceTurns: 9 }) }),
       );
     });
@@ -798,7 +798,7 @@ describe("settings persistence", () => {
       const emit = vi.fn();
       saveAndEmitChanged(change("global", "graceTurns", 9), "ok", emit, spyAppliers(), projectDir);
       const payload = emit.mock.calls[0][1];
-      expect(emit.mock.calls[0][0]).toBe("subagents:settings_changed");
+      expect(emit.mock.calls[0][0]).toBe("agent:settings_changed");
       expect(payload.layer).toBe("global");
       expect(payload.settings).toEqual({ ...effectiveSettings(projectDir), maxConcurrent: 2, graceTurns: 9 });
       expect(Object.keys(payload.settings).sort()).toEqual([...SETTING_KEYS].sort());
@@ -831,7 +831,7 @@ describe("settings persistence", () => {
           spyAppliers(),
           filePosingAsCwd,
         );
-        expect(emit).toHaveBeenCalledWith("subagents:settings_changed", {
+        expect(emit).toHaveBeenCalledWith("agent:settings_changed", {
           settings: { ...effectiveSettings(projectDir), maxConcurrent: 5 },
           persisted: false,
           layer: "project",

@@ -328,11 +328,11 @@ describe("capability policy at every spawn path", () => {
     expect(runAgent).not.toHaveBeenCalled();
   });
 
-  it("refuses a caller-supplied denied tool through subagents:rpc:spawn", async () => {
+  it("refuses a caller-supplied denied tool through agent:rpc:spawn", async () => {
     writePolicy({ tools: { deny: ["bash"] } });
     const { handlers, replies } = rpcHarness(funnel());
     const request = (requestId: string, tools: string[]) =>
-      handlers.get("subagents:rpc:spawn")?.({
+      handlers.get("agent:rpc:spawn")?.({
         requestId,
         type: "adhoc",
         prompt: "go",
@@ -340,12 +340,12 @@ describe("capability policy at every spawn path", () => {
       });
 
     await request("denied", ["bash"]);
-    const refused = replies.find(r => r.channel === "subagents:rpc:spawn:reply:denied");
+    const refused = replies.find(r => r.channel === "agent:rpc:spawn:reply:denied");
     expect(refused?.data.success).toBe(false);
     expect(refused?.data.error).toMatch(/^Capability policy: tool "bash"/);
 
     await request("allowed", ["read"]);
-    const accepted = replies.find(r => r.channel === "subagents:rpc:spawn:reply:allowed");
+    const accepted = replies.find(r => r.channel === "agent:rpc:spawn:reply:allowed");
     expect(accepted?.data).toEqual({ success: true, data: { id: expect.any(String) } });
   });
 
@@ -353,8 +353,8 @@ describe("capability policy at every spawn path", () => {
     writePolicy({ tools: { deny: ["bash"] } });
     const { handlers, replies } = rpcHarness(funnel());
     registerAgents(new Map([["scout", { name: "scout", description: "s", builtinToolNames: ["read", "bash"], extensions: false, skills: false, systemPrompt: "p", promptMode: "replace" }]]));
-    await handlers.get("subagents:rpc:spawn")?.({ requestId: "f", type: "scout", prompt: "go", options: { description: "d" } });
-    const reply = replies.find(r => r.channel === "subagents:rpc:spawn:reply:f");
+    await handlers.get("agent:rpc:spawn")?.({ requestId: "f", type: "scout", prompt: "go", options: { description: "d" } });
+    const reply = replies.find(r => r.channel === "agent:rpc:spawn:reply:f");
     expect(reply?.data).toEqual({ success: true, data: { id: expect.any(String), filtered: ["tool bash"] } });
   });
 

@@ -140,7 +140,7 @@ export function applyAndEmitLoaded(
   applySettings(settings, appliers);
   const policy = policyEventPayload(cwd);
   for (const problem of policy.malformed ?? []) console.warn(`[pi-subagents] Capability policy: ${problem}. Every spawn is denied until it is fixed.`);
-  emit("subagents:settings_loaded", { settings, policy });
+  emit("agent:settings_loaded", { settings, policy });
   return settings;
 }
 
@@ -171,6 +171,6 @@ export function saveAndEmitChanged(
   const effective = effectiveSettings(cwd);
   const settings = persisted ? effective : { ...effective, ...sanitize({ [change.key]: change.value }) };
   applySettings(settings, appliers);
-  emit("subagents:settings_changed", { settings, persisted, layer: change.layer, policy: policyEventPayload(cwd) });
+  emit("agent:settings_changed", { settings, persisted, layer: change.layer, policy: policyEventPayload(cwd) });
   return persistToastFor(successMsg, persisted);
 }

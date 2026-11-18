@@ -141,13 +141,13 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       if (!record.session) {
         if (!record.pendingSteers) record.pendingSteers = [];
         record.pendingSteers.push(params.message);
-        pi.events.emit("subagents:steered", { id: record.id, message: params.message });
+        pi.events.emit("agent:steered", { id: record.id, message: params.message });
         return textResult(`Steering message queued for agent ${record.id}. It will be delivered once the session initializes.`);
       }
 
       try {
         await steerAgent(record.session, params.message);
-        pi.events.emit("subagents:steered", { id: record.id, message: params.message });
+        pi.events.emit("agent:steered", { id: record.id, message: params.message });
         return textResult(
           `Steering message sent to agent ${record.id}. The agent will process it after its current tool execution.\n` +
           `Current state: ${formatSteerState(record, settings.showCost)}`,

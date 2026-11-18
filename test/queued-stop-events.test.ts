@@ -86,34 +86,34 @@ describe("a stop while queued reaches the lifecycle events", () => {
     vi.restoreAllMocks();
   });
 
-  it("emits subagents:failed once and appends one subagents:record", async () => {
+  it("emits agent:failed once and appends one agent:record", async () => {
     const { pi, lifecycle, busHandlers } = makePi();
     subagentsExtension(pi);
     await lifecycle.get("session_start")({}, ctx(tmpDir));
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
 
     const spawn = async (requestId: string) => {
-      await busHandlers.get("subagents:rpc:spawn")!({
+      await busHandlers.get("agent:rpc:spawn")!({
         requestId,
         type: "general-purpose",
         prompt: "go",
         options: { description: requestId, isBackground: true },
       });
-      return pi.events.emit.mock.calls.find((c: any[]) => c[0] === `subagents:rpc:spawn:reply:${requestId}`)![1].data.id;
+      return pi.events.emit.mock.calls.find((c: any[]) => c[0] === `agent:rpc:spawn:reply:${requestId}`)![1].data.id;
     };
     await spawn("holder");
     const queuedId = await spawn("queued");
-    expect(callsFor(pi.events.emit, "subagents:failed")).toHaveLength(0);
+    expect(callsFor(pi.events.emit, "agent:failed")).toHaveLength(0);
 
-    await busHandlers.get("subagents:rpc:stop")!({ requestId: "stop", agentId: queuedId });
+    await busHandlers.get("agent:rpc:stop")!({ requestId: "stop", agentId: queuedId });
 
-    const failed = callsFor(pi.events.emit, "subagents:failed");
+    const failed = callsFor(pi.events.emit, "agent:failed");
     expect(failed).toHaveLength(1);
     expect(failed[0][1]).toMatchObject({ id: queuedId, status: "stopped" });
-    const records = callsFor(pi.appendEntry, "subagents:record");
+    const records = callsFor(pi.appendEntry, "agent:record");
     expect(records).toHaveLength(1);
     expect(records[0][1]).toMatchObject({ id: queuedId, status: "stopped" });
-    expect(callsFor(pi.events.emit, "subagents:completed")).toHaveLength(0);
+    expect(callsFor(pi.events.emit, "agent:completed")).toHaveLength(0);
     expect(vi.mocked(runAgent)).toHaveBeenCalledTimes(1);
     await lifecycle.get("session_shutdown")();
   });

@@ -492,7 +492,7 @@ describe("settings layers", () => {
       applySettingValue(layerCtx, deps, "project", "ephemeralNesting", "off");
       expect(readJson(projectFile())).toEqual({ policy: { ephemeralNesting: false } });
       expect(events).toHaveLength(1);
-      expect(events[0][0]).toBe("subagents:settings_changed");
+      expect(events[0][0]).toBe("agent:settings_changed");
       expect(events[0][1]).toMatchObject({
         layer: "project",
         persisted: true,

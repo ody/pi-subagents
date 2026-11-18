@@ -133,7 +133,7 @@ describe("capability policy configuration", () => {
       extra: true,
     });
     expect(emit).toHaveBeenCalledWith(
-      "subagents:settings_changed",
+      "agent:settings_changed",
       expect.objectContaining({
         layer: "project",
         persisted: true,
@@ -177,8 +177,8 @@ describe("capability policy configuration", () => {
     applyAndEmitLoaded(appliers, emit, projectDir);
     saveAndEmitChanged({ layer: "project", key: "maxConcurrent", value: 2 }, "ok", emit, appliers, projectDir);
     const expected = { global: { skills: { deny: ["x"] } }, project: {}, ephemeralNesting: false };
-    expect(emit).toHaveBeenCalledWith("subagents:settings_loaded", expect.objectContaining({ policy: expected }));
-    expect(emit).toHaveBeenCalledWith("subagents:settings_changed", expect.objectContaining({ policy: expected }));
+    expect(emit).toHaveBeenCalledWith("agent:settings_loaded", expect.objectContaining({ policy: expected }));
+    expect(emit).toHaveBeenCalledWith("agent:settings_changed", expect.objectContaining({ policy: expected }));
   });
 
   it("names the file and entry for a well-formed entry that names nothing known", async () => {
@@ -301,8 +301,8 @@ describe("capability policy configuration", () => {
       getCtx: () => ({ cwd: projectDir }),
       manager: {},
     } as unknown as Parameters<typeof registerRpcHandlers>[0]);
-    await handlers.get("subagents:rpc:ping")?.({ requestId: "r1" });
-    const reply = replies.find(r => r.channel === "subagents:rpc:ping:reply:r1");
+    await handlers.get("agent:rpc:ping")?.({ requestId: "r1" });
+    const reply = replies.find(r => r.channel === "agent:rpc:ping:reply:r1");
     expect(reply?.data.data.version).toBe(2);
     expect(reply?.data.data.policy).toEqual(policyEventPayload(projectDir));
     expect(reply?.data.data.policy.global).toEqual({ tools: { allow: ["read"] } });

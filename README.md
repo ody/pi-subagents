@@ -32,8 +32,8 @@ A [pi](https://pi.dev) extension that brings **autonomous sub-agents** to pi. Sp
 - **Skill preloading** — inject named skills into agent system prompts, discovered from `.pi/skills/`, `.agents/skills/`, and global locations (Pi-standard `<name>/SKILL.md` directory layout supported)
 - **Tool denylist** — block specific tools via `disallowed_tools` frontmatter
 - **Styled completion notifications** — background agent results render as themed, compact notification boxes (icon, stats, result preview) instead of raw XML. Expandable to show full output. Group completions render each agent individually
-- **Event bus** — lifecycle events (`subagents:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
-- **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`subagents:rpc:ping`, `subagents:rpc:spawn`, `subagents:rpc:stop`, `subagents:rpc:consume`). Standardized reply envelopes with protocol versioning. Emits `subagents:ready` on session start. **[Full reference](docs/rpc.md)**
+- **Event bus** — lifecycle events (`agent:created`, `started`, `completed`, `failed`, `steered`, `compacted`) emitted via `pi.events`, enabling other extensions to react to sub-agent activity
+- **Cross-extension RPC** — other pi extensions can spawn, stop, and join subagents via the `pi.events` event bus (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`). Standardized reply envelopes with protocol versioning. Emits `agent:ready` on session start. **[Full reference](docs/rpc.md)**
 - **Model scope enforcement** — opt-in validation that subagent model choices stay within your pi `enabledModels` allowlist (from `/scoped-models`, honoring both global and project-local pi settings). A caller-supplied out-of-scope model gives a hard error to the orchestrator. The session model replaces an out-of-scope model pinned in an agent file, with a warning toast and a note in the tool result. Toggle via `/agents → Settings → Scope models`
 
 ## Install
@@ -440,7 +440,7 @@ The hard cap is depth 2 by default: main session (0) → subagent (1) → nested
 
 Nested children occupy no concurrency slot, in either pool. Their parent already holds one, and queueing them behind it would deadlock a parent waiting on its own child. The depth cap bounds how *deep* nesting goes, not how *wide*. A parent's only limit on concurrent children is that each spawn costs it a turn. Pair `allowed_subagents` with a `max_turns` on that agent if you want a hard ceiling on its fan-out.
 
-A subagent session never activates this extension. That keeps a child from building a second agent manager, and it is why the extension injects nested tools directly instead. A subagent therefore also gets none of the extension's other surfaces: no `/agents` command, no cross-extension RPC handlers, no `subagents:ready` event.
+A subagent session never activates this extension. That keeps a child from building a second agent manager, and it is why the extension injects nested tools directly instead. A subagent therefore also gets none of the extension's other surfaces: no `/agents` command, no cross-extension RPC handlers, no `agent:ready` event.
 
 ### Tool & extension scoping
 
@@ -557,7 +557,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 
 ### `agent_stop`
 
-Stop a running or queued background agent. The run records `stopCause` `agent`. This is the model's own lever to end a run. A human takes the same action with `x` in the conversation viewer or `/agents`, and `subagents:rpc:stop` gives it to another extension.
+Stop a running or queued background agent. The run records `stopCause` `agent`. This is the model's own lever to end a run. A human takes the same action with `x` in the conversation viewer or `/agents`, and `agent:rpc:stop` gives it to another extension.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -620,7 +620,7 @@ Every `stopped` run has a `stopCause`. The status text the model reads names it.
 | --- | --- |
 | `user` | `/agents`, the conversation viewer, or the session's interrupted tool call |
 | `agent` | `agent_stop` or its nested mirror |
-| `extension` | `subagents:rpc:stop`, or an aborted spawn `signal` from `subagents:rpc:spawn` or the manager registry |
+| `extension` | `agent:rpc:stop`, or an aborted spawn `signal` from `agent:rpc:spawn` or the manager registry |
 | `owner` | The owner's settle, or the owning agent's interrupted tool call |
 | `shutdown` | Session shutdown |
 
@@ -636,7 +636,7 @@ The two are deliberately **not** one limit. A foreground agent blocks the parent
 
 Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume of a record whose earlier run has not settled, or whose worktree save is still running.
 
-Stopping a resume from `/agents` or the conversation viewer stops that resume. A foreground resume emits `subagents:started`, then `subagents:completed` or `subagents:failed`, and appends a `subagents:record` entry.
+Stopping a resume from `/agents` or the conversation viewer stops that resume. A foreground resume emits `agent:started`, then `agent:completed` or `agent:failed`, and appends a `agent:record` entry.
 
 Nested children are outside the pool entirely: a nested child would deadlock behind a parent waiting on it.
 
@@ -667,7 +667,7 @@ When on, the extension validates each subagent spawn's effective model against p
 | Model source | Out-of-scope behavior |
 | --- | --- |
 | Caller-supplied via `agent({ model: "..." })` | Hard error returned to the orchestrator, listing allowed models |
-| Caller-supplied via cross-extension RPC (`subagents:rpc:spawn`, e.g. pi-tasks `TaskExecute`) | Hard error returned to the calling extension, listing allowed models |
+| Caller-supplied via cross-extension RPC (`agent:rpc:spawn`, e.g. pi-tasks `TaskExecute`) | Hard error returned to the calling extension, listing allowed models |
 | Pinned in agent frontmatter, with no caller `model` | Warning toast + the session model runs instead; the `agent` tool result carries a note |
 | Session model (nothing pinned, or the pin does not resolve) | Never checked; the session model runs |
 | `agent({ resume })` of a live agent | Never checked; the agent keeps its session and model |
@@ -676,7 +676,7 @@ When on, the extension validates each subagent spawn's effective model against p
 
 - The `agent` tool and the nested `agent` tool.
 - `@handle` mentions, including the clone fallback and tombstone reopens.
-- `subagents:rpc:spawn`.
+- `agent:rpc:spawn`.
 - The registry `spawn`, which still returns only the agent id.
 
 **Design:** `scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin outside the scope gives way to the session model, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one. Winning the precedence contest against a pin does not buy it a replacement instead of an error.
@@ -746,7 +746,7 @@ Project overrides global on any field present in both. A menu change never copie
 A `subagent_type` that does not resolve to exactly one enabled agent is an error that lists the enabled types. That covers unknown, disabled, and ambiguous types, where two agents differ only by case.
 
 - Only the `agent` tool's message suggests omitting the type to run a one-off agent.
-- An empty `type` on `subagents:rpc:spawn` without `agentConfig` is an error envelope.
+- An empty `type` on `agent:rpc:spawn` without `agentConfig` is an error envelope.
 - A stored reference to a removed type fails when the extension uses it, and the error names the type.
 - The extension ignores a key for a removed setting in `subagents.json`.
 
@@ -773,7 +773,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - Extensions match by canonical name and skills by the name pi assigns, both case-insensitively. A deny entry beats an allow entry.
 - A value outside the policy that the caller supplied refuses the spawn with an error that starts `Capability policy:`. The extension filters a value from an agent file instead. Filtering an explicit tool list to empty refuses.
 - `ephemeralNesting: false` forces `allowed_subagents: []` on an ephemeral agent and refuses any other caller value.
-- The check runs at the `agent` tool, the nested tool, `@handle` starts and tombstone reopens, `subagents:rpc:spawn`, and the registry `spawn`. Resuming a live agent is not re-checked.
+- The check runs at the `agent` tool, the nested tool, `@handle` starts and tombstone reopens, `agent:rpc:spawn`, and the registry `spawn`. Resuming a live agent is not re-checked.
 - A filtered value notifies the user and adds a note to the `agent` tool result. The extension stores it on the agent's record and shows it in the conversation viewer.
 - The extension narrows `skills: true` through the skill loader, and filters named skills before it preloads them. The same scope filters extension tools that register after spawn.
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
@@ -782,8 +782,8 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - A change from `/agents → Settings` keeps the `policy` of the file it writes. It refuses, with a warning, when that file exists and does not parse.
 - The `Ephemeral nesting` row appears in both layers and writes `policy.ephemeralNesting` only. It leaves every other part of `policy` as it was, and `r` removes the key.
 - The row shows the effective value. On the project layer it refuses to turn on while the global file has it off, because a project can only narrow.
-- A change fires `subagents:settings_changed` with the `policy` payload.
-- `subagents:settings_loaded`, `subagents:settings_changed`, and the `subagents:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy fails to parse). The ping reply is the only copy that is always current.
+- A change fires `agent:settings_changed` with the `policy` payload.
+- `agent:settings_loaded`, `agent:settings_changed`, and the `agent:rpc:ping` reply carry `policy: { global, project, ephemeralNesting }` (plus `malformed`, a list of problems, when the policy fails to parse). The ping reply is the only copy that is always current.
 
 ### Strict agent files
 
@@ -817,7 +817,7 @@ Two visible consequences of the default:
 - Top-level subagents write a session file.
 - They nest under the session that spawned them in pi's `/resume`.
 
-This excludes agents that another agent spawned. They get no handle, so nothing could reopen their transcript. It also excludes an inline `subagents:rpc:spawn` agent, which persists only when its `agentConfig` sets `persistSession: true`. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
+This excludes agents that another agent spawned. They get no handle, so nothing could reopen their transcript. It also excludes an inline `agent:rpc:spawn` agent, which persists only when its `agentConfig` sets `persistSession: true`. A custom agent's `persist_session` frontmatter overrides this per agent, in both directions.
 
 With it off, handles expire with their record (roughly ten minutes past completion) and `@reviewer` then starts a fresh agent rather than resuming. That was the behaviour before this setting existed.
 
@@ -960,17 +960,17 @@ The extension emits agent lifecycle events via `pi.events.emit()` so other exten
 
 | Event | When | Key fields |
 | --- | --- | --- |
-| `subagents:created` | `agent`-tool background spawn, or a detached resume — **not** cross-extension RPC or `@handle` spawns, which are first seen at `subagents:started` | `id`, `type`, `description`, `isBackground` (always `true`) |
-| `subagents:started` | Agent transitions to running (including queued→running) | `id`, `type`, `description` |
-| `subagents:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`: token components including `cacheRead`, plus `cost.total` in USD; absent when nothing was spent), `toolUses`, `result` |
-| `subagents:failed` | Agent errored, stopped, or aborted (background and foreground). A stop while queued and a failed start also emit it | identical payload to `subagents:completed` — the same formatter builds both, so `error` and `status` are present on that row too, just empty |
-| `subagents:steered` | Steering message accepted — fires for a *queued* steer as well as a delivered one | `id`, `message` |
-| `subagents:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
-| `subagents:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
-| `subagents:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project), `policy` (`{ global, project, ephemeralNesting }`) |
-| `subagents:settings_changed` | `/agents` → Settings change or reset took effect | `settings` (effective, recomputed from both files and the defaults), `persisted` (`boolean` — `false` on write failure), `layer` (`"global"` or `"project"`, the layer that changed), `policy` (`{ global, project, ephemeralNesting }`) |
+| `agent:created` | `agent`-tool background spawn, or a detached resume — **not** cross-extension RPC or `@handle` spawns, which are first seen at `agent:started` | `id`, `type`, `description`, `isBackground` (always `true`) |
+| `agent:started` | Agent transitions to running (including queued→running) | `id`, `type`, `description` |
+| `agent:completed` | Agent finished successfully (background and foreground) | `id`, `type`, `description`, `status`, `durationMs`, `tokens` (display total, `{ input, output, total }` — see the note below), `usage` (the run's spend as a pi `Usage`: token components including `cacheRead`, plus `cost.total` in USD; absent when nothing was spent), `toolUses`, `result` |
+| `agent:failed` | Agent errored, stopped, or aborted (background and foreground). A stop while queued and a failed start also emit it | identical payload to `agent:completed` — the same formatter builds both, so `error` and `status` are present on that row too, just empty |
+| `agent:steered` | Steering message accepted — fires for a *queued* steer as well as a delivered one | `id`, `message` |
+| `agent:compacted` | Agent's session successfully compacted | `id`, `type`, `description`, `reason` (`"manual"` / `"threshold"` / `"overflow"`), `tokensBefore`, `compactionCount` |
+| `agent:ready` | RPC handlers registered and armed — fired on session start; not emitted in a session that excludes pi-subagents | `{}` (empty object) |
+| `agent:settings_loaded` | Persisted settings applied at extension init | `settings` (merged global + project), `policy` (`{ global, project, ephemeralNesting }`) |
+| `agent:settings_changed` | `/agents` → Settings change or reset took effect | `settings` (effective, recomputed from both files and the defaults), `persisted` (`boolean` — `false` on write failure), `layer` (`"global"` or `"project"`, the layer that changed), `policy` (`{ global, project, ephemeralNesting }`) |
 
-The extension emits the four agent-lifecycle events (`subagents:started`, `:completed`, `:failed`, `:compacted`) for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
+The extension emits the four agent-lifecycle events (`agent:started`, `:completed`, `:failed`, `:compacted`) for **top-level agents only**. Nested subagents emit nothing at all; they report through the parent that owns them.
 
 `tokens.total` = `input + output + cacheWrite`. The total excludes `cacheRead`. Each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call. Summing per-message would over-count it as a measure of work. Use `contextUsage.percent` (which the widget shows as `(NN%)`) for current context size.
 
@@ -992,15 +992,15 @@ All RPC replies use a standardized envelope: `{ success: true, data?: T }` on su
 
 ### Discovery
 
-Listen for `subagents:ready` to know when RPC handlers are available:
+Listen for `agent:ready` to know when RPC handlers are available:
 
 ```typescript
-pi.events.on("subagents:ready", () => {
+pi.events.on("agent:ready", () => {
   // RPC handlers are registered — safe to call ping/spawn/stop
 });
 ```
 
-`subagents:ready` fires only when pi-subagents is actually loaded **and bound** in the current session. A session that excludes it (via an agent's `extensions:`) emits no `subagents:ready` and does not answer the RPC channels. It acts exactly as if pi-subagents were not installed. Treat "no `subagents:ready`" as "not available here" and give discovery a timeout rather than waiting indefinitely.
+`agent:ready` fires only when pi-subagents is actually loaded **and bound** in the current session. A session that excludes it (via an agent's `extensions:`) emits no `agent:ready` and does not answer the RPC channels. It acts exactly as if pi-subagents were not installed. Treat "no `agent:ready`" as "not available here" and give discovery a timeout rather than waiting indefinitely.
 
 ### Ping
 
@@ -1008,11 +1008,11 @@ Check whether pi loaded the subagents extension and get the protocol version:
 
 ```typescript
 const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:ping:reply:${requestId}`, (reply) => {
+const unsub = pi.events.on(`agent:rpc:ping:reply:${requestId}`, (reply) => {
   unsub();
   if (reply.success) console.log("Protocol version:", reply.data.version, reply.data.policy);
 });
-pi.events.emit("subagents:rpc:ping", { requestId });
+pi.events.emit("agent:rpc:ping", { requestId });
 ```
 
 ### Spawn
@@ -1021,7 +1021,7 @@ Spawn a subagent and receive its ID:
 
 ```typescript
 const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:spawn:reply:${requestId}`, (reply) => {
+const unsub = pi.events.on(`agent:rpc:spawn:reply:${requestId}`, (reply) => {
   unsub();
   if (!reply.success) {
     console.error("Spawn failed:", reply.error);
@@ -1029,7 +1029,7 @@ const unsub = pi.events.on(`subagents:rpc:spawn:reply:${requestId}`, (reply) => 
     console.log("Agent ID:", reply.data.id);
   }
 });
-pi.events.emit("subagents:rpc:spawn", {
+pi.events.emit("agent:rpc:spawn", {
   requestId,
   type: "worker",
   prompt: "Do something useful",
@@ -1046,7 +1046,7 @@ Every RPC spawn returns its id immediately and runs detached either way. What `i
 - `isBackground: true` makes the agent occupy one of the `maxConcurrent` slots, and queue behind them when they are full.
 - Leaving it unset starts the agent immediately regardless of the limit.
 - `maxConcurrentForeground` never applies here whatever `isBackground` says: it bounds only spawns where a caller blocks inline, and every RPC spawn runs detached.
-- It does not affect `subagents:created`, which is never emitted for an RPC spawn at all — the first event you see for one is `subagents:started`.
+- It does not affect `agent:created`, which is never emitted for an RPC spawn at all — the first event you see for one is `agent:started`.
 
 A top-level RPC spawn renders in the widget while it runs. It shows the same live tool activity and turn counter an `agent`-tool spawn gets. The widget's default `background` mode drops only an explicit `isBackground: false` spawn, the way it drops a foreground `agent` call. Nested spawns stay hidden from both.
 
@@ -1074,11 +1074,11 @@ Stop a running agent by ID:
 
 ```typescript
 const requestId = crypto.randomUUID();
-const unsub = pi.events.on(`subagents:rpc:stop:reply:${requestId}`, (reply) => {
+const unsub = pi.events.on(`agent:rpc:stop:reply:${requestId}`, (reply) => {
   unsub();
   if (!reply.success) console.error("Stop failed:", reply.error);
 });
-pi.events.emit("subagents:rpc:stop", { requestId, agentId: "agent-id-here" });
+pi.events.emit("agent:rpc:stop", { requestId, agentId: "agent-id-here" });
 ```
 
 `abort(id, cause)` on a running agent fires the run's `AbortController`, marks the record `"stopped"` and sets `record.stopCause`. A stop through this channel sets `extension`. It also arms a 5 s grace timer that does not keep the process alive.
@@ -1102,12 +1102,12 @@ The forced entry first copies the streamed response text into `record.result` wh
 Tell the extension that the model has seen an agent's result, so it does not deliver the completion notification on top of it:
 
 ```typescript
-pi.events.emit("subagents:rpc:consume", { requestId: crypto.randomUUID(), agentId: "agent-id-here" });
+pi.events.emit("agent:rpc:consume", { requestId: crypto.randomUUID(), agentId: "agent-id-here" });
 ```
 
-This is the bus-side half of what `agent_get_result` does when it returns a result. A caller that joins an agent on `subagents:completed` and reports the result itself should consume it. Otherwise the notification lands after the parent has already answered, and it costs a turn to dismiss.
+This is the bus-side half of what `agent_get_result` does when it returns a result. A caller that joins an agent on `agent:completed` and reports the result itself should consume it. Otherwise the notification lands after the parent has already answered, and it costs a turn to dismiss.
 
-Fire-and-forget is the intended use. The reply carries nothing to act on. The channel is outside the `subagents:rpc:ping` version handshake, so a caller can send it unconditionally. An older extension that has no handler simply keeps notifying.
+Fire-and-forget is the intended use. The reply carries nothing to act on. The channel is outside the `agent:rpc:ping` version handshake, so a caller can send it unconditionally. An older extension that has no handler simply keeps notifying.
 
 The extension refuses to consume a running or unknown agent (`success: false`) and changes nothing. A running agent has no result for anyone to read, and its notification is still the caller's only signal that it finished.
 

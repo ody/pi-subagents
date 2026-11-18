@@ -78,13 +78,13 @@ function handleRpc<P extends { requestId: string }>(
 export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
   const { events, pi, getCtx, manager } = deps;
 
-  const unsubPing = handleRpc(events, "subagents:rpc:ping", () => {
+  const unsubPing = handleRpc(events, "agent:rpc:ping", () => {
     const cwd = (getCtx() as { cwd?: string } | undefined)?.cwd ?? process.cwd();
     return { version: PROTOCOL_VERSION, policy: policyEventPayload(cwd) };
   });
 
   const unsubSpawn = handleRpc<{ requestId: string; type: string; prompt: string; options?: any }>(
-    events, "subagents:rpc:spawn", async ({ type, prompt, options }) => {
+    events, "agent:rpc:spawn", async ({ type, prompt, options }) => {
       const ctx = getCtx();
       if (!ctx) throw new Error("No active session");
 
@@ -135,7 +135,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
   );
 
   const unsubStop = handleRpc<{ requestId: string; agentId: string }>(
-    events, "subagents:rpc:stop", ({ agentId }) => {
+    events, "agent:rpc:stop", ({ agentId }) => {
       const record = manager.getRecord(agentId);
       if (!record) throw new Error("Agent not found");
       if (!isTopLevelAgent(record)) throw new Error("Agent is owned by another agent");
@@ -144,7 +144,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
   );
 
   const unsubConsume = handleRpc<{ requestId: string; agentId: string }>(
-    events, "subagents:rpc:consume", ({ agentId }) => {
+    events, "agent:rpc:consume", ({ agentId }) => {
       if (!manager.consumeResult(agentId)) throw new Error("Agent not found or still running");
     },
   );

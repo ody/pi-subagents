@@ -60,7 +60,7 @@ export class CompletionNotifier {
           const cutHint = unconsumed.some(r => isResultCut(r, 300)) ? "\n\nUse agent_get_result for full output." : "";
 
           this.pi.sendMessage<NotificationDetails>({
-            customType: "subagent-notification",
+            customType: "agent:notification",
             content: `Background agent group completed: ${label}\n\n${notifications}${cutHint}`,
             display: true,
             details,
@@ -135,7 +135,7 @@ export class CompletionNotifier {
     const footer = record.outputFile ? `\nFull transcript available at: ${record.outputFile}` : '';
 
     this.pi.sendMessage<NotificationDetails>({
-      customType: "subagent-notification",
+      customType: "agent:notification",
       content: notification + footer,
       display: true,
       details: buildNotificationDetails(record, 500, this.manager.getActivity(record.id)),

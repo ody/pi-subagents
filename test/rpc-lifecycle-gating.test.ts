@@ -11,7 +11,7 @@ vi.mock("../src/session/agent-runner.js", async () => {
 import subagentsExtension from "../src/index.js";
 import { runAgent } from "../src/session/agent-runner.js";
 
-const RPC_CHANNELS = ["subagents:rpc:ping", "subagents:rpc:spawn", "subagents:rpc:stop"] as const;
+const RPC_CHANNELS = ["agent:rpc:ping", "agent:rpc:spawn", "agent:rpc:stop"] as const;
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -58,11 +58,11 @@ function ctx(hasUI = false, setWidget = vi.fn()) {
 }
 
 const readyEmits = (pi: any): unknown[] =>
-  pi.events.emit.mock.calls.filter((c: any[]) => c[0] === "subagents:ready");
+  pi.events.emit.mock.calls.filter((c: any[]) => c[0] === "agent:ready");
 const onCallsFor = (pi: any, channel: string): unknown[] =>
   pi.events.on.mock.calls.filter((c: any[]) => c[0] === channel);
 
-describe("issue #142: RPC handlers + subagents:ready are gated on session_start", () => {
+describe("issue #142: RPC handlers + agent:ready are gated on session_start", () => {
   let tmpDir: string;
   let agentDir: string;
   let prevCwd: string;
@@ -103,7 +103,7 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
 
     subagentsExtension(pi);
 
-    expect(readyEmits(pi), "no subagents:ready before session_start").toHaveLength(0);
+    expect(readyEmits(pi), "no agent:ready before session_start").toHaveLength(0);
     for (const channel of RPC_CHANNELS) {
       expect(busHandlers.has(channel), `${channel} must not be registered at factory time`).toBe(false);
     }
@@ -115,14 +115,14 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
 
     await lifecycle.get("session_start")({}, ctx());
 
-    expect(readyEmits(pi), "subagents:ready fires once bound").toHaveLength(1);
+    expect(readyEmits(pi), "agent:ready fires once bound").toHaveLength(1);
     for (const channel of RPC_CHANNELS) {
       expect(busHandlers.has(channel), `${channel} registered on session_start`).toBe(true);
     }
 
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
     const requestId = "req-142";
-    await busHandlers.get("subagents:rpc:spawn")!({
+    await busHandlers.get("agent:rpc:spawn")!({
       requestId,
       type: "general-purpose",
       prompt: "go",
@@ -130,7 +130,7 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
     });
 
     const reply = pi.events.emit.mock.calls.find(
-      (c: any[]) => c[0] === `subagents:rpc:spawn:reply:${requestId}`,
+      (c: any[]) => c[0] === `agent:rpc:spawn:reply:${requestId}`,
     );
     expect(reply, "spawn emitted a reply").toBeTruthy();
     expect(reply![1].success, `spawn succeeded, got: ${JSON.stringify(reply![1])}`).toBe(true);
@@ -146,7 +146,7 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
 
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as any);
     try {
-      await busHandlers.get("subagents:rpc:spawn")!({
+      await busHandlers.get("agent:rpc:spawn")!({
         requestId: "req-widget",
         type: "general-purpose",
         prompt: "go",
@@ -183,7 +183,7 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
 
     await lifecycle.get("session_start")({}, extensionCtx);
     await lifecycle.get("tool_execution_start")({}, extensionCtx);
-    await busHandlers.get("subagents:rpc:spawn")!({
+    await busHandlers.get("agent:rpc:spawn")!({
       requestId: "req-activity",
       type: "general-purpose",
       prompt: "go",
@@ -208,7 +208,7 @@ describe("issue #142: RPC handlers + subagents:ready are gated on session_start"
     await lifecycle.get("session_start")({}, ctx());
     await lifecycle.get("session_start")({}, ctx());
 
-    expect(readyEmits(pi), "subagents:ready emitted exactly once across two session_starts").toHaveLength(1);
+    expect(readyEmits(pi), "agent:ready emitted exactly once across two session_starts").toHaveLength(1);
     for (const channel of RPC_CHANNELS) {
       expect(onCallsFor(pi, channel), `${channel} registered exactly once`).toHaveLength(1);
     }

@@ -208,7 +208,7 @@ describe("agent_stop", () => {
       await vi.advanceTimersByTimeAsync(NUDGE_HOLD_MS);
 
       expect(pi.sendMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ customType: "subagent-notification" }),
+        expect.objectContaining({ customType: "agent:notification" }),
         expect.anything(),
       );
 
@@ -234,7 +234,7 @@ describe("agent_stop", () => {
       await vi.advanceTimersByTimeAsync(NUDGE_HOLD_MS);
 
       const notified = vi.mocked(pi.sendMessage).mock.calls
-        .find(([message]: any[]) => message?.customType === "subagent-notification");
+        .find(([message]: any[]) => message?.customType === "agent:notification");
       expect(notified).toBeDefined();
       const content = String((vi.mocked(pi.sendMessage).mock.calls.at(-1) as any[])[0].content);
       expect(content).toContain("STOPPED BY THE ORCHESTRATING AGENT");

@@ -91,9 +91,9 @@ describe("Agent startup failures fail the tool call (#179)", () => {
         ),
       ).rejects.toThrow('Cannot run with isolation: "worktree"');
 
-      expect(callsFor(pi.events.emit, "subagents:failed")).toHaveLength(1);
-      expect(callsFor(pi.events.emit, "subagents:completed")).toHaveLength(0);
-      const records = callsFor(pi.appendEntry, "subagents:record");
+      expect(callsFor(pi.events.emit, "agent:failed")).toHaveLength(1);
+      expect(callsFor(pi.events.emit, "agent:completed")).toHaveLength(0);
+      const records = callsFor(pi.appendEntry, "agent:record");
       expect(records).toHaveLength(1);
       expect(records[0][1]).toMatchObject({ status: "error", error: expect.stringContaining("isolation") });
       await waitForNudgeHold();

@@ -221,13 +221,13 @@ describe("stopCause", () => {
       return { events, funnel };
     }
 
-    it("subagents:rpc:stop records it", async () => {
+    it("agent:rpc:stop records it", async () => {
       const { events } = wire();
       const id = spawnBackground();
       const reply = vi.fn();
-      events.on("subagents:rpc:stop:reply:r1", reply);
+      events.on("agent:rpc:stop:reply:r1", reply);
 
-      events.emit("subagents:rpc:stop", { requestId: "r1", agentId: id });
+      events.emit("agent:rpc:stop", { requestId: "r1", agentId: id });
       await vi.waitFor(() => expect(reply).toHaveBeenCalledWith({ success: true }));
 
       expect(manager.getRecord(id)?.stopCause).toBe("extension");

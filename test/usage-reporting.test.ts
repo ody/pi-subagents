@@ -175,7 +175,7 @@ describe("reporting subagent usage back to the parent session", () => {
     runSpending({ input: 100, output: 50, cacheWrite: 0, cost: 0.01 });
     await spawn(tools, "tc-1");
     await flush();
-    const id = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "subagents:completed")?.[1]?.id;
+    const id = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "agent:completed")?.[1]?.id;
 
     vi.mocked(resumeAgent).mockImplementation(async (_session: any, _prompt: any, opts: any) => {
       opts.onAssistantUsage?.({ input: 7, output: 3, cacheWrite: 0, cost: 0.002 });
@@ -236,7 +236,7 @@ describe("reporting subagent usage back to the parent session", () => {
       return { text: "resumed" };
     });
 
-    const id = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "subagents:completed")?.[1]?.id;
+    const id = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "agent:completed")?.[1]?.id;
     const result = await tools.get("agent").execute(
       "tc-2",
       { prompt: "more", description: "spend", subagent_type: "general-purpose", resume: id, run_in_background: false },
@@ -250,7 +250,7 @@ describe("reporting subagent usage back to the parent session", () => {
   describe("the lifecycle event payload", () => {
     async function completedPayload(pi: any) {
       await flush();
-      const call = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "subagents:completed");
+      const call = pi.events.emit.mock.calls.find((c: any[]) => c[0] === "agent:completed");
       return call?.[1];
     }
 

@@ -154,7 +154,7 @@ describe("agent tool background spawn", () => {
     expect(out).toContain("Do not duplicate this agent's work.");
     expect(notifier.addToBatch).toHaveBeenCalledWith("new1", "smart");
     expect(manager.awaitStartup).toHaveBeenCalledWith("new1");
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:created", expect.objectContaining({ id: "new1", isBackground: true }));
+    expect(pi.events.emit).toHaveBeenCalledWith("agent:created", expect.objectContaining({ id: "new1", isBackground: true }));
   });
 
   it("wires toolCallId and joinMode on the record", async () => {

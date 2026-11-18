@@ -104,7 +104,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
   widget.ensureTimer();
   widget.update();
 
-  pi.events.emit("subagents:created", {
+  pi.events.emit("agent:created", {
     id,
     type: subagentType,
     description: params.description,

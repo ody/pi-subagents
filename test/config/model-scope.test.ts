@@ -255,7 +255,7 @@ describe("spawn funnel scope", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it("reports modelReplaced in the subagents:rpc:spawn reply and refuses a caller model", async () => {
+  it("reports modelReplaced in the agent:rpc:spawn reply and refuses a caller model", async () => {
     const records = new Map<string, any>();
     const handlers = new Map<string, (raw: any) => unknown>();
     const replies: Array<{ channel: string; data: any }> = [];
@@ -282,11 +282,11 @@ describe("spawn funnel scope", () => {
       },
     });
 
-    await handlers.get("subagents:rpc:spawn")?.({ requestId: "a", type: "pinned", prompt: "go", options: { description: "d" } });
-    await handlers.get("subagents:rpc:spawn")?.({ requestId: "b", type: "plain", prompt: "go", options: { description: "d" } });
-    await handlers.get("subagents:rpc:spawn")?.({ requestId: "c", type: "plain", prompt: "go", options: { description: "d", model: "anthropic/claude-opus-4-6" } });
+    await handlers.get("agent:rpc:spawn")?.({ requestId: "a", type: "pinned", prompt: "go", options: { description: "d" } });
+    await handlers.get("agent:rpc:spawn")?.({ requestId: "b", type: "plain", prompt: "go", options: { description: "d" } });
+    await handlers.get("agent:rpc:spawn")?.({ requestId: "c", type: "plain", prompt: "go", options: { description: "d", model: "anthropic/claude-opus-4-6" } });
 
-    const reply = (id: string) => replies.find(r => r.channel === `subagents:rpc:spawn:reply:${id}`)?.data;
+    const reply = (id: string) => replies.find(r => r.channel === `agent:rpc:spawn:reply:${id}`)?.data;
     expect(reply("a")).toEqual({ success: true, data: { id: "id-1", modelReplaced: "anthropic/claude-opus-4-6" } });
     expect(reply("b")).toEqual({ success: true, data: { id: "id-1" } });
     expect(reply("c").success).toBe(false);

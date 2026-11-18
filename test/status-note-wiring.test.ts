@@ -161,10 +161,10 @@ describe("status note reaches the parent through the real handlers", () => {
       const result = await tools.get(name).execute("tc-nested", params, undefined, undefined, ctx());
       expect(textOf(result)).toContain("Agent not found");
     }
-    expect(pi.events.emit).not.toHaveBeenCalledWith("subagents:started", expect.objectContaining({ id }));
-    expect(pi.events.emit).not.toHaveBeenCalledWith("subagents:completed", expect.objectContaining({ id }));
-    expect(pi.events.emit).not.toHaveBeenCalledWith("subagents:failed", expect.objectContaining({ id }));
-    expect(pi.appendEntry).not.toHaveBeenCalledWith("subagents:record", expect.objectContaining({ id }));
+    expect(pi.events.emit).not.toHaveBeenCalledWith("agent:started", expect.objectContaining({ id }));
+    expect(pi.events.emit).not.toHaveBeenCalledWith("agent:completed", expect.objectContaining({ id }));
+    expect(pi.events.emit).not.toHaveBeenCalledWith("agent:failed", expect.objectContaining({ id }));
+    expect(pi.appendEntry).not.toHaveBeenCalledWith("agent:record", expect.objectContaining({ id }));
     expect(pi.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -182,7 +182,7 @@ describe("status note reaches the parent through the real handlers", () => {
     const id = textOf(spawn).match(/Agent ID: (\S+)/)?.[1];
     expect(id, "background spawn should surface an agent id").toBeTruthy();
 
-    eventHandlers.get("subagents:rpc:stop")?.({ requestId: "r1", agentId: id });
+    eventHandlers.get("agent:rpc:stop")?.({ requestId: "r1", agentId: id });
 
     const res = await tools.get("agent_get_result").execute(
       "tc3", { agent_id: id }, undefined, undefined, ctx(),
@@ -198,7 +198,7 @@ describe("status note reaches the parent through the real handlers", () => {
   });
 });
 
-describe("subagents:compacted", () => {
+describe("agent:compacted", () => {
   function runWithCompaction(info: { reason: string; tokensBefore: number }) {
     vi.mocked(runAgent).mockImplementation(async (_ctx: any, _type: any, _prompt: any, opts: any) => {
       opts.onCompaction?.(info);
@@ -217,7 +217,7 @@ describe("subagents:compacted", () => {
       undefined, undefined, ctx(),
     );
 
-    expect(pi.events.emit).toHaveBeenCalledWith("subagents:compacted", expect.objectContaining({
+    expect(pi.events.emit).toHaveBeenCalledWith("agent:compacted", expect.objectContaining({
       id: expect.any(String),
       type: "general-purpose",
       description: "compacting agent",
@@ -243,7 +243,7 @@ describe("subagents:compacted", () => {
     );
 
     const counts = pi.events.emit.mock.calls
-      .filter((c: any[]) => c[0] === "subagents:compacted")
+      .filter((c: any[]) => c[0] === "agent:compacted")
       .map((c: any[]) => c[1].compactionCount);
     expect(counts).toEqual([1, 2]);
   });
@@ -272,6 +272,6 @@ describe("subagents:compacted", () => {
     });
     await new Promise(resolve => setTimeout(resolve, 0));
 
-    expect(pi.events.emit).not.toHaveBeenCalledWith("subagents:compacted", expect.anything());
+    expect(pi.events.emit).not.toHaveBeenCalledWith("agent:compacted", expect.anything());
   });
 });

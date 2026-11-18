@@ -72,7 +72,7 @@ export function createBackgroundResume(deps: BackgroundResumeDeps): StartBackgro
     widget.ensureTimer();
     widget.update();
 
-    pi.events.emit("subagents:created", {
+    pi.events.emit("agent:created", {
       id,
       type: existing.type,
       description: existing.description,
