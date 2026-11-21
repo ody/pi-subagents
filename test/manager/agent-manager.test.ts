@@ -1294,7 +1294,7 @@ describe("AgentManager — resolved runs with a failed final turn map to error (
     manager = new AgentManager();
     let resolveRun: ((v: unknown) => void) | undefined;
     const session = mockSession();
-    vi.mocked(runAgent).mockImplementation(() => new Promise((r) => { resolveRun = r; }));
+    vi.mocked(runAgent).mockImplementation(() => new Promise((r) => { resolveRun = r as (v: unknown) => void; }));
 
     const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "x", isBackground: true });
     const record = manager.getRecord(id)!;

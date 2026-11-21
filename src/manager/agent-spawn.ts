@@ -63,7 +63,7 @@ export interface SpawnDeps {
   poolFor: (record: AgentRecord) => Pool | undefined;
   poolHasRoom: (pool: Pool) => boolean;
   armQueuedAbort: (id: string, signal?: AbortSignal, cause?: StopCause) => boolean;
-  launch: (id: string, record: AgentRecord, args: SpawnArgs, queued: boolean) => Promise<void>;
+  launch: (record: AgentRecord, args: SpawnArgs, queued: boolean) => Promise<void>;
   awaitStartup: (id: string) => Promise<void>;
 }
 
@@ -102,12 +102,12 @@ export function spawnAgent(
   if (pool !== undefined && !options.bypassQueue && !deps.poolHasRoom(pool)) {
     record.status = "queued";
     if (!deps.armQueuedAbort(id, options.signal, options.signalCause)) return id;
-    const ahead = enqueueRun(deps.queue, record, pool, () => deps.launch(id, record, args, true));
+    const ahead = enqueueRun(deps.queue, record, pool, () => deps.launch(record, args, true));
     options.onQueued?.(id, ahead);
     return id;
   }
 
-  deps.launch(id, record, args, false);
+  deps.launch(record, args, false);
   return id;
 }
 

@@ -30,12 +30,12 @@ export interface StartDeps {
 
 export function launch(
   deps: StartDeps,
-  id: string,
   record: AgentRecord,
   args: SpawnArgs,
   queued: boolean,
 ): Promise<void> {
-  const startup = startAgent(deps, id, record, args).then(
+  const id = record.id;
+  const startup = startAgent(deps, record, args).then(
     () => { deps.startups.delete(id); },
     (err) => {
       deps.startups.delete(id);
@@ -59,10 +59,12 @@ export function awaitStartup(deps: StartDeps, id: string): Promise<void> {
 
 export async function startAgent(
   deps: StartDeps,
-  id: string,
   record: AgentRecord,
   { pi, ctx, type, prompt, options }: SpawnArgs,
 ): Promise<void> {
+  const id = record.id;
+  const capability = options.capability;
+  if (!capability) throw new Error(`Agent ${id} started without a capability verdict.`);
   assertValidSpawnCwd(options.cwd);
   const customCwd = options.cwd ?? undefined;
   const baseCwd = customCwd ?? ctx.cwd;
@@ -76,7 +78,7 @@ export async function startAgent(
 
   let worktreeCwd: string | undefined;
   if (options.isolation === "worktree" && isWorktreeIsolationEnabled()) {
-    worktreeCwd = await enterWorktree(deps, pi, record, baseCwd, customCwd);
+    worktreeCwd = await enterWorktree(deps, pi, record, { baseCwd, customCwd });
     if (record.status !== "running") {
       await cleanupWorktreeOutcome(record, options.description);
       deps.settleRun(record);
@@ -86,9 +88,10 @@ export async function startAgent(
 
   deps.onStart?.(record);
 
-  const controller = record.abortController!;
+  const controller = record.abortController ?? new AbortController();
+  record.abortController = controller;
   record.detachParentSignal = watchParentSignal(deps.abort, record, controller, options.signal, options.signalCause);
-  if (options.signal?.aborted) deps.abort(id, options.signalCause!);
+  if (options.signal?.aborted && options.signalCause) deps.abort(id, options.signalCause);
 
   const isCurrent = () => record.abortController === controller;
 
@@ -96,7 +99,7 @@ export async function startAgent(
     pi,
     agentId: id,
     agentConfig: options.agentConfig,
-    capability: options.capability!,
+    capability,
     model: options.model,
     maxTurns: options.maxTurns,
     isolated: options.isolated,
@@ -174,8 +177,7 @@ async function enterWorktree(
   deps: StartDeps,
   pi: SpawnArgs["pi"],
   record: AgentRecord,
-  baseCwd: string,
-  customCwd: string | undefined,
+  { baseCwd, customCwd }: { baseCwd: string; customCwd: string | undefined },
 ): Promise<string> {
   const wt = await createWorktree(pi, baseCwd, record.id);
   if (!wt) {

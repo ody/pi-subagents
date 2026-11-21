@@ -97,7 +97,7 @@ describe("AgentManager — abort() forced settle", () => {
     const completed: string[] = [];
     let resolveFirst!: (v: unknown) => void;
     vi.mocked(runAgent).mockImplementationOnce(
-      () => new Promise((res) => { resolveFirst = res; }),
+      () => new Promise((res) => { resolveFirst = res as (v: unknown) => void; }),
     );
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}));
 

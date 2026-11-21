@@ -10,6 +10,7 @@ import { enqueueRun, type QueuedRun } from "./run-queue.js";
 import { cleanupWorktreeOutcome } from "./worktree-outcome.js";
 
 export interface ResumeOptions {
+  signal?: AbortSignal;
   isBackground?: boolean;
   signalCause?: StopCause;
   onToolActivity?: (activity: ToolActivity) => void;
@@ -39,9 +40,9 @@ export async function resume(
   deps: ResumeDeps,
   id: string,
   prompt: string,
-  signal?: AbortSignal,
   options?: ResumeOptions,
 ): Promise<AgentRecord | undefined> {
+  const signal = options?.signal;
   assertSignalCause("resume", signal, options?.signalCause);
   const record = deps.agents.get(id);
   if (!record?.session) return undefined;
@@ -77,7 +78,7 @@ export async function resume(
 
   const begin = () => {
     try {
-      startResume(deps, record, prompt, signal, options);
+      startResume(deps, record, prompt, options);
     } catch (err) {
       record.status = "error";
       record.error = err instanceof Error ? err.message : String(err);
@@ -98,8 +99,9 @@ export async function resume(
   }
 
   if (isBackground) return record;
-  if (record.status === "queued") await record.startGate;
-  await record.promise;
+  const live: AgentRecord = record;
+  if (live.status === "queued") await live.startGate;
+  await live.promise;
   return record;
 }
 
@@ -107,12 +109,12 @@ function startResume(
   deps: ResumeDeps,
   record: AgentRecord,
   prompt: string,
-  parentSignal: AbortSignal | undefined,
   options: ResumeOptions | undefined,
 ) {
-  if (!record.session) return;
+  const controller = record.abortController;
+  if (!record.session || !controller) return;
   const id = record.id;
-  const controller = record.abortController!;
+  const parentSignal = options?.signal;
   const isCurrent = () => record.abortController === controller;
 
   const pool = deps.poolFor(record);

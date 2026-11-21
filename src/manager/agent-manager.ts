@@ -112,7 +112,7 @@ export class AgentManager {
       poolFor: record => this.poolFor(record),
       poolHasRoom: pool => this.poolHasRoom(pool),
       armQueuedAbort: (id, signal, cause) => this.armQueuedAbort(id, signal, cause),
-      launch: (id, record, args, queued) => this.launch(id, record, args, queued),
+      launch: (record, args, queued) => this.launch(record, args, queued),
       awaitStartup: id => this.awaitStartup(id),
     };
   }
@@ -154,8 +154,8 @@ export class AgentManager {
     return armQueuedAbortOperation((agentId, stopCause) => this.abort(agentId, stopCause), id, signal, cause);
   }
 
-  private launch(id: string, record: AgentRecord, args: SpawnArgs, queued: boolean): Promise<void> {
-    return launchAgent(this.startDeps(), id, record, args, queued);
+  private launch(record: AgentRecord, args: SpawnArgs, queued: boolean): Promise<void> {
+    return launchAgent(this.startDeps(), record, args, queued);
   }
 
   awaitStartup(id: string): Promise<void> {
@@ -261,7 +261,7 @@ export class AgentManager {
     signal?: AbortSignal,
     options?: ResumeOptions,
   ): Promise<AgentRecord | undefined> {
-    return resumeOperation(this.resumeDeps(), id, prompt, signal, options);
+    return resumeOperation(this.resumeDeps(), id, prompt, { ...options, signal });
   }
 
   steer(id: string, message: string): boolean {
