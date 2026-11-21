@@ -30,42 +30,83 @@ function loadSkillAgents(root: string, agents: Map<string, AgentConfig>, strict:
   const queue = [root];
   while (queue.length > 0) {
     const dir = queue.shift() as string;
-    let real: string;
-    try {
-      real = realpathSync(dir);
-    } catch {
-      continue;
-    }
-    if (seen.has(real)) continue;
+    const real = realpathOrUndefined(dir);
+    if (real === undefined || seen.has(real)) continue;
     seen.add(real);
 
     if (dir !== root && existsSync(join(dir, "SKILL.md"))) {
-      const loaded = new Map<string, AgentConfig>();
-      loadFromDir(join(dir, "agents"), loaded, "skill", strict);
-      for (const [name, cfg] of loaded) {
-        const prior = skillAgents.get(name);
-        if (prior) warnIfNew(`Agent "${name}" is shipped by two skills; ${cfg.sourcePath} overrides ${prior.sourcePath}`);
-        skillAgents.set(name, cfg);
-      }
+      collectSkillBundleAgents(dir, skillAgents, strict);
       continue;
     }
-
-    let entries: string[];
-    try {
-      entries = readdirSync(dir).sort();
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.startsWith(".") || entry === "node_modules") continue;
-      const path = join(dir, entry);
-      try {
-        if (statSync(path).isDirectory()) queue.push(path);
-      } catch {
-      }
-    }
+    queue.push(...searchableSubdirectories(dir));
   }
   for (const [name, cfg] of skillAgents) agents.set(name, cfg);
+}
+
+function realpathOrUndefined(dir: string): string | undefined {
+  try {
+    return realpathSync(dir);
+  } catch {
+    return undefined;
+  }
+}
+
+function collectSkillBundleAgents(dir: string, skillAgents: Map<string, AgentConfig>, strict: boolean): void {
+  const loaded = new Map<string, AgentConfig>();
+  loadFromDir(join(dir, "agents"), loaded, "skill", strict);
+  for (const [name, cfg] of loaded) {
+    const prior = skillAgents.get(name);
+    if (prior) warnIfNew(`Agent "${name}" is shipped by two skills; ${cfg.sourcePath} overrides ${prior.sourcePath}`);
+    skillAgents.set(name, cfg);
+  }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function searchableSubdirectories(dir: string): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return [];
+  }
+  return entries
+    .filter(entry => !entry.startsWith(".") && entry !== "node_modules")
+    .map(entry => join(dir, entry))
+    .filter(isDirectory);
+}
+
+function resolveAgentName(path: string, fm: Record<string, unknown>, filenameType: string): string | undefined {
+  const declared = str(fm.name)?.trim();
+  if (declared?.includes(RESERVED_IN_TYPE)) {
+    warnIfNew(
+      `Agent file ${path} declares name "${declared}", which contains "${RESERVED_IN_TYPE}" — reserved for `
+      + "plugin-scoped identifiers. Rename it, or move the label to `display_name:`. Skipping.",
+    );
+    return undefined;
+  }
+  const name = declared || filenameType;
+  if (name.startsWith(EPHEMERAL_TYPE_PREFIX)) {
+    warnIfNew(
+      `Agent file ${path} is named "${name}", which starts with "${EPHEMERAL_TYPE_PREFIX}" — reserved for agents the \`agent\` tool builds from its parameters. Rename it. Skipping.`,
+    );
+    return undefined;
+  }
+  return name;
+}
+
+function explicitTrue(value: unknown): boolean | undefined {
+  return value != null ? value === true : undefined;
+}
+
+function notExplicitFalse(value: unknown): boolean | undefined {
+  return value != null ? value !== false : undefined;
 }
 
 function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "project" | "global" | "skill", strict: boolean): void {
@@ -90,21 +131,8 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
     }
     const { frontmatter: fm, body } = parsed;
 
-    const declared = str(fm.name)?.trim();
-    if (declared?.includes(RESERVED_IN_TYPE)) {
-      warnIfNew(
-        `Agent file ${path} declares name "${declared}", which contains "${RESERVED_IN_TYPE}" — reserved for `
-        + "plugin-scoped identifiers. Rename it, or move the label to `display_name:`. Skipping.",
-      );
-      continue;
-    }
-    const name = declared || filenameType;
-    if (name.startsWith(EPHEMERAL_TYPE_PREFIX)) {
-      warnIfNew(
-        `Agent file ${path} is named "${name}", which starts with "${EPHEMERAL_TYPE_PREFIX}" — reserved for agents the \`agent\` tool builds from its parameters. Rename it. Skipping.`,
-      );
-      continue;
-    }
+    const name = resolveAgentName(path, fm, filenameType);
+    if (name === undefined) continue;
 
     const allowedSubagents = parseAllowedSubagents(fm.allowed_subagents);
     const allowedRefusal = allowedSubagentsRefusal(allowedSubagents);
@@ -129,15 +157,15 @@ function loadFromDir(dir: string, agents: Map<string, AgentConfig>, source: "pro
       model: str(fm.model),
       thinking: str(fm.thinking) as ThinkingLevel | undefined,
       maxTurns: nonNegativeInt(fm.max_turns),
-      persistSession: fm.persist_session != null ? fm.persist_session === true : undefined,
-      outputTranscript: fm.output_transcript != null ? fm.output_transcript !== false : undefined,
+      persistSession: explicitTrue(fm.persist_session),
+      outputTranscript: notExplicitFalse(fm.output_transcript),
       sessionDir: str(fm.session_dir),
       allowedSubagents,
       systemPrompt: body.trim(),
       promptMode: fm.prompt_mode === "append" ? "append" : "replace",
-      inheritContext: fm.inherit_context != null ? fm.inherit_context === true : undefined,
-      runInBackground: fm.run_in_background != null ? fm.run_in_background === true : undefined,
-      isolated: fm.isolated != null ? fm.isolated === true : undefined,
+      inheritContext: explicitTrue(fm.inherit_context),
+      runInBackground: explicitTrue(fm.run_in_background),
+      isolated: explicitTrue(fm.isolated),
       isolation: parseIsolation(fm.isolation),
       enabled: fm.enabled !== false,
       source,
