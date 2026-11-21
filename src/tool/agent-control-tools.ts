@@ -195,7 +195,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
       }
 
       const partial = manager.getActivity(record.id)?.responseText?.trim();
-      const preview = partial ? (partial.length > 500 ? `${partial.slice(0, 500)}…` : partial) : undefined;
+      const preview = partial && partial.length > 500 ? `${partial.slice(0, 500)}…` : partial || undefined;
 
       return textResult(
         `Agent ${record.id} (${displayName}) stopped. Previous status: running.\n\n` +

@@ -275,17 +275,16 @@ export async function runAgent(
 
   let discoveredExtensions: LoadExtensionsResult | undefined;
   const policy = loadCapabilityPolicy(configCwd);
+  const recordingExtensionsOverride = (base: LoadExtensionsResult) => {
+    discoveredExtensions = base;
+    return plan.extensionsOverride ? plan.extensionsOverride(base) : base;
+  };
   const loader = new DefaultResourceLoader({
     cwd: configCwd,
     agentDir,
     noExtensions,
     additionalExtensionPaths: plan.additionalExtensionPaths,
-    extensionsOverride: policyHasEntries(policy)
-      ? base => {
-          discoveredExtensions = base;
-          return plan.extensionsOverride ? plan.extensionsOverride(base) : base;
-        }
-      : plan.extensionsOverride,
+    extensionsOverride: policyHasEntries(policy) ? recordingExtensionsOverride : plan.extensionsOverride,
     noSkills,
     skillsOverride: skillsOverrideFor(capabilities),
     noPromptTemplates: true,

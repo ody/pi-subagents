@@ -76,7 +76,7 @@ function findSkillDirectory(root: string, name: string): string | undefined {
       continue;
     }
 
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    entries.sort((a, b) => Number(a.name > b.name) - Number(a.name < b.name));
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
 
@@ -46,7 +46,9 @@ export function updateLayerFile(
   try {
     mutate(read.data);
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, JSON.stringify(read.data, null, 2), "utf-8");
+    const tempPath = `${path}.${process.pid}.tmp`;
+    writeFileSync(tempPath, JSON.stringify(read.data, null, 2), "utf-8");
+    renameSync(tempPath, path);
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: `${path} cannot be written (${describeError(err)})` };

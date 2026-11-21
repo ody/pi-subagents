@@ -30,6 +30,10 @@ export interface ForegroundAgentInput {
   attachTranscript: (rec: AgentRecord | undefined, agentId: string) => void;
 }
 
+function aheadSuffix(queuedAhead: number): string {
+  return queuedAhead > 0 ? ` (${queuedAhead} ahead)` : "";
+}
+
 export async function runForegroundAgent(deps: ForegroundAgentDeps, input: ForegroundAgentInput) {
   const { pi, manager, widget, settings } = deps;
   const { ctx, params, signal, onUpdate, call, attachTranscript } = input;
@@ -74,7 +78,7 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
       status: "running",
       activity: queuedAhead === undefined
         ? describeActivity(fgState.activeTools, fgState.responseText)
-        : `queued — waiting for a foreground slot${queuedAhead > 0 ? ` (${queuedAhead} ahead)` : ""}`,
+        : `queued — waiting for a foreground slot${aheadSuffix(queuedAhead)}`,
       spinnerFrame: spinnerFrame % SPINNER.length,
     };
     onUpdate?.({

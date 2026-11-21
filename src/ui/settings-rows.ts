@@ -137,7 +137,8 @@ export const SETTING_ROWS: readonly SettingRowDef[] = [
 ];
 
 export function displayValue(value: string | number | boolean): string {
-  return typeof value === "boolean" ? (value ? "on" : "off") : String(value);
+  if (typeof value !== "boolean") return String(value);
+  return value ? "on" : "off";
 }
 
 export type RowSource = "project" | "overriding" | "inherited";
