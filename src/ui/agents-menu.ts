@@ -7,7 +7,7 @@ import { disableInContent, enableInContent, isEmptyStub, locateAgentFile, person
 import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
 import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import type { AgentManager } from "../manager/agent-manager.js";
-import type { AgentConfig } from "../types.js";
+import type { AgentConfig, AgentRecord } from "../types.js";
 import { buildAgentTree } from "./agent-tree.js";
 import { selectAgentRow } from "./agents-list.js";
 import type { ConversationViewerOpener } from "./conversation-viewer-opener.js";
@@ -32,6 +32,34 @@ export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] 
   return ["Edit", "Disable", "Delete", "Back"];
 }
 
+function agentsMenuOptions(agents: AgentRecord[], typeCount: number): string[] {
+  const options: string[] = [];
+  if (agents.length > 0) {
+    const running = agents.filter(a => a.status === "running" || a.status === "queued").length;
+    const done = agents.filter(a => a.status === "completed" || a.status === "steered").length;
+    options.push(`Agents (${agents.length}) — ${running} running, ${done} done`);
+  }
+  if (typeCount > 0) options.push(`Agent types (${typeCount})`);
+  options.push("Settings");
+  return options;
+}
+
+const SOURCE_MARKS: Record<NonNullable<AgentConfig["source"]>, string> = { project: "•", global: "◦", skill: "▹" };
+
+function sourceIndicator(cfg: AgentConfig | undefined): string {
+  const disabled = cfg?.enabled === false;
+  const mark = cfg?.source ? SOURCE_MARKS[cfg.source] : undefined;
+  if (!mark) return disabled ? "✕  " : "   ";
+  return disabled ? `✕${mark} ` : `${mark}  `;
+}
+
+function agentLegendParts(configs: (AgentConfig | undefined)[]): string[] {
+  const legendParts: string[] = [];
+  if (configs.some(c => c && c.enabled !== false)) legendParts.push("• = project  ◦ = global  ▹ = skill");
+  if (configs.some(c => c?.enabled === false)) legendParts.push("✕ = disabled");
+  return legendParts;
+}
+
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
   const { manager, reloadCustomAgents, viewer, showSettings, showCost, showModel } = deps;
 
@@ -52,20 +80,8 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     reloadCustomAgents();
     const allNames = getAllTypes();
 
-    const options: string[] = [];
-
     const agents = manager.listAgents();
-    if (agents.length > 0) {
-      const running = agents.filter(a => a.status === "running" || a.status === "queued").length;
-      const done = agents.filter(a => a.status === "completed" || a.status === "steered").length;
-      options.push(`Agents (${agents.length}) — ${running} running, ${done} done`);
-    }
-
-    if (allNames.length > 0) {
-      options.push(`Agent types (${allNames.length})`);
-    }
-
-    options.push("Settings");
+    const options = agentsMenuOptions(agents, allNames.length);
 
     const noAgentsMsg = allNames.length === 0 && agents.length === 0
       ? `No agents found. Define them as .md files in ${projectAgentsDir()} (project) or ${personalAgentsDir()} (personal).\n\n`
@@ -97,15 +113,6 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       return;
     }
 
-    const sourceIndicator = (cfg: AgentConfig | undefined) => {
-      const disabled = cfg?.enabled === false;
-      if (cfg?.source === "project") return disabled ? "✕• " : "•  ";
-      if (cfg?.source === "global") return disabled ? "✕◦ " : "◦  ";
-      if (cfg?.source === "skill") return disabled ? "✕▹ " : "▹  ";
-      if (disabled) return "✕  ";
-      return "   ";
-    };
-
     const items: SettingItem[] = allNames.map(name => {
       const cfg = getAgentConfig(name);
       const disabled = cfg?.enabled === false;
@@ -119,11 +126,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
       };
     });
 
-    const hasCustom = allNames.some(n => { const c = getAgentConfig(n); return c && c.enabled !== false; });
-    const hasDisabled = allNames.some(n => getAgentConfig(n)?.enabled === false);
-    const legendParts: string[] = [];
-    if (hasCustom) legendParts.push("• = project  ◦ = global  ▹ = skill");
-    if (hasDisabled) legendParts.push("✕ = disabled");
+    const legendParts = agentLegendParts(allNames.map(n => getAgentConfig(n)));
 
     const selected = await ctx.ui.custom<string | undefined>((_tui, _theme, _kb, done) => {
       const slTheme = getSettingsListTheme();
@@ -182,17 +185,14 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     const choice = await ctx.ui.select(name, detailMenuOptions(cfg, file !== undefined));
     if (!choice || choice === "Back") return;
 
-    if (choice === "Edit" && file) {
-      await editAgentFile(ctx, name, file);
-    } else if (choice === "Delete") {
-      if (file) await deleteAgentFile(ctx, name, file);
-    } else if (choice.startsWith("Eject")) {
-      await ejectAgent(ctx, name, cfg);
-    } else if (choice === "Disable") {
-      await disableAgent(ctx, name);
-    } else if (choice === "Enable") {
-      enableAgent(ctx, name);
-    }
+    const actions: Record<string, (() => unknown) | undefined> = {
+      Eject: () => ejectAgent(ctx, name, cfg),
+      Disable: () => disableAgent(ctx, name),
+      Enable: () => enableAgent(ctx, name),
+      Edit: file && (() => editAgentFile(ctx, name, file)),
+      Delete: file && (() => deleteAgentFile(ctx, name, file)),
+    };
+    await actions[choice.startsWith("Eject") ? "Eject" : choice]?.();
   }
 
   function locateUserAgentFile(name: string, cfg: AgentConfig | undefined) {

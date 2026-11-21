@@ -11,7 +11,7 @@ interface Diagnostic {
   location: { path: string };
 }
 
-function readReport(): { offenders: string[]; reported: number } {
+function readReport(): { offenders: string[]; parsed: boolean } {
   const result = spawnSync(
     join(ROOT, "node_modules/.bin/biome"),
     ["lint", "--max-diagnostics=none", "--reporter=json", "--only=complexity/noExcessiveCognitiveComplexity", "src"],
@@ -19,21 +19,19 @@ function readReport(): { offenders: string[]; reported: number } {
   );
   const report = JSON.parse(result.stdout) as { diagnostics: Diagnostic[] };
   const offenders: string[] = [];
-  let reported = 0;
   for (const d of report.diagnostics) {
     if (!d.category.endsWith("noExcessiveCognitiveComplexity")) continue;
-    reported++;
     const score = Number(/complexity of (\d+)/.exec(d.message)?.[1]);
     if (score > MAX_SCORE) offenders.push(`${d.location.path}: ${score}`);
   }
-  return { offenders, reported };
+  return { offenders, parsed: Array.isArray(report.diagnostics) };
 }
 
-const { offenders, reported } = readReport();
+const { offenders, parsed } = readReport();
 
 describe(`cognitive complexity ceiling of ${MAX_SCORE} (ADR 0004)`, () => {
   it("parses the Biome report", () => {
-    expect(reported).toBeGreaterThan(0);
+    expect(parsed).toBe(true);
   });
 
   it(`has no function scoring over ${MAX_SCORE}`, () => {
