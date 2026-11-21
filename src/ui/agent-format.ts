@@ -166,39 +166,52 @@ export function renderStats(theme: Theme, stats: Stat[]): string {
   return stats.map(stat => fgPreservingNestedStyles(theme, statColor(stat), stat.text)).join(theme.fg("dim", " · "));
 }
 
+function overPinned(value: string | undefined, pinned: string | undefined): string | undefined {
+  return value && pinned && pinned !== value ? `${value} (over pinned ${pinned})` : value;
+}
+
+function thinkingTag(invocation: AgentInvocation): string | undefined {
+  if (!invocation.thinking) return undefined;
+  const notes: string[] = [];
+  if (invocation.requestedThinking && invocation.requestedThinking !== invocation.thinking) {
+    notes.push(`asked ${invocation.requestedThinking}`);
+  }
+  if (invocation.pinnedThinking && invocation.pinnedThinking !== invocation.thinking) {
+    notes.push(`over ${invocation.pinnedThinking}`);
+  }
+  return `thinking: ${invocation.thinking}${notes.length > 0 ? ` (${notes.join(", ")})` : ""}`;
+}
+
+function backgroundTag(invocation: AgentInvocation): string | undefined {
+  const { runInBackground, pinnedRunInBackground } = invocation;
+  if (pinnedRunInBackground === undefined || pinnedRunInBackground === Boolean(runInBackground)) {
+    return runInBackground ? "background" : undefined;
+  }
+  const mode = (background: boolean | undefined) => (background ? "background" : "foreground");
+  return `${mode(runInBackground)} (over ${mode(pinnedRunInBackground)})`;
+}
+
+function maxTurnsTag(invocation: AgentInvocation): string | undefined {
+  const { maxTurns, pinnedMaxTurns } = invocation;
+  if (pinnedMaxTurns === undefined || (pinnedMaxTurns || undefined) === maxTurns) {
+    return maxTurns != null ? `max turns: ${maxTurns}` : undefined;
+  }
+  const pinned = pinnedMaxTurns === 0 ? "unlimited" : String(pinnedMaxTurns);
+  return `${maxTurns == null ? "unlimited" : `${maxTurns} turns`} (over ${pinned})`;
+}
+
 export function buildInvocationTags(
   invocation: AgentInvocation | undefined,
 ): { modelName?: string; modelId?: string; tags: string[] } {
-  const tags: string[] = [];
-  if (!invocation) return { tags };
-  const overPinned = (value: string | undefined, pinned: string | undefined): string | undefined =>
-    value && pinned && pinned !== value ? `${value} (over pinned ${pinned})` : value;
-  const thinkingNotes = [
-    invocation.requestedThinking && invocation.requestedThinking !== invocation.thinking
-      ? `asked ${invocation.requestedThinking}`
-      : undefined,
-    invocation.pinnedThinking && invocation.pinnedThinking !== invocation.thinking
-      ? `over ${invocation.pinnedThinking}`
-      : undefined,
-  ].filter(note => note !== undefined);
-  if (invocation.thinking) {
-    tags.push(`thinking: ${invocation.thinking}${thinkingNotes.length > 0 ? ` (${thinkingNotes.join(", ")})` : ""}`);
-  }
-  if (invocation.isolated) tags.push("isolated");
-  if (invocation.isolation === "worktree") tags.push("worktree");
-  if (invocation.inheritContext) tags.push("inherit context");
-  if (invocation.pinnedRunInBackground !== undefined && invocation.pinnedRunInBackground !== Boolean(invocation.runInBackground)) {
-    const mode = (background: boolean | undefined) => background ? "background" : "foreground";
-    tags.push(`${mode(invocation.runInBackground)} (over ${mode(invocation.pinnedRunInBackground)})`);
-  } else if (invocation.runInBackground) {
-    tags.push("background");
-  }
-  if (invocation.pinnedMaxTurns !== undefined && (invocation.pinnedMaxTurns || undefined) !== invocation.maxTurns) {
-    const pinned = invocation.pinnedMaxTurns === 0 ? "unlimited" : String(invocation.pinnedMaxTurns);
-    tags.push(`${invocation.maxTurns == null ? "unlimited" : `${invocation.maxTurns} turns`} (over ${pinned})`);
-  } else if (invocation.maxTurns != null) {
-    tags.push(`max turns: ${invocation.maxTurns}`);
-  }
+  if (!invocation) return { tags: [] };
+  const tags = [
+    thinkingTag(invocation),
+    invocation.isolated ? "isolated" : undefined,
+    invocation.isolation === "worktree" ? "worktree" : undefined,
+    invocation.inheritContext ? "inherit context" : undefined,
+    backgroundTag(invocation),
+    maxTurnsTag(invocation),
+  ].filter(tag => tag !== undefined);
   return {
     modelName: overPinned(invocation.modelName, invocation.pinnedModel),
     modelId: overPinned(invocation.modelId, invocation.pinnedModel),
@@ -212,28 +225,20 @@ function truncateLine(text: string, len = 60): string {
   return line.slice(0, len) + "…";
 }
 
+function describeActiveTools(activeTools: Map<string, string>): string {
+  const groups = new Map<string, number>();
+  for (const toolName of activeTools.values()) {
+    const action = TOOL_DISPLAY[toolName] ?? toolName;
+    groups.set(action, (groups.get(action) ?? 0) + 1);
+  }
+  const parts = [...groups].map(([action, count]) =>
+    count > 1 ? `${action} ${count} ${action === "searching" ? "patterns" : "files"}` : action,
+  );
+  return parts.join(", ") + "…";
+}
+
 export function describeActivity(activeTools: Map<string, string>, responseText?: string): string {
-  if (activeTools.size > 0) {
-    const groups = new Map<string, number>();
-    for (const toolName of activeTools.values()) {
-      const action = TOOL_DISPLAY[toolName] ?? toolName;
-      groups.set(action, (groups.get(action) ?? 0) + 1);
-    }
-
-    const parts: string[] = [];
-    for (const [action, count] of groups) {
-      if (count > 1) {
-        parts.push(`${action} ${count} ${action === "searching" ? "patterns" : "files"}`);
-      } else {
-        parts.push(action);
-      }
-    }
-    return parts.join(", ") + "…";
-  }
-
-  if (responseText && responseText.trim().length > 0) {
-    return truncateLine(responseText);
-  }
-
+  if (activeTools.size > 0) return describeActiveTools(activeTools);
+  if (responseText && responseText.trim().length > 0) return truncateLine(responseText);
   return "thinking…";
 }
