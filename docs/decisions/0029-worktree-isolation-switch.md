@@ -18,7 +18,7 @@ With the switch off, `isolationParam` drops the parameter from the `agent` and n
 - On: a worktree request creates a worktree.
 - An agent file's `isolation: off` overrides a caller's worktree request, and the agent runs without a worktree (ADR 0014).
 
-Done check: `npx vitest run test/worktree.test.ts test/isolation-param.test.ts test/invocation-config.test.ts test/worktree-isolation-e2e.test.ts` passes. It covers the downgrade on each path and the missing schema field.
+Done check: `npx vitest run test/platform/worktree.test.ts test/tool/isolation-param.test.ts test/tool/invocation-config.test.ts test/e2e/worktree-isolation-e2e.test.ts` passes. It covers the downgrade on each path and the missing schema field.
 
 ## Consequences
 
