@@ -185,7 +185,7 @@ export function buildInvocationTags(
   if (invocation.isolated) tags.push("isolated");
   if (invocation.isolation === "worktree") tags.push("worktree");
   if (invocation.inheritContext) tags.push("inherit context");
-  if (invocation.pinnedRunInBackground !== undefined && invocation.pinnedRunInBackground !== !!invocation.runInBackground) {
+  if (invocation.pinnedRunInBackground !== undefined && invocation.pinnedRunInBackground !== Boolean(invocation.runInBackground)) {
     const mode = (background: boolean | undefined) => background ? "background" : "foreground";
     tags.push(`${mode(invocation.runInBackground)} (over ${mode(invocation.pinnedRunInBackground)})`);
   } else if (invocation.runInBackground) {

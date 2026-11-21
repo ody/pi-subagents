@@ -44,7 +44,7 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
     worktreeEnabled: isWorktreeIsolationEnabled(),
   });
 
-  const agentTool = defineTool({
+  return defineTool({
     name: SUBAGENT_TOOL_NAMES.AGENT,
     label: "Agent",
     description: agentToolDescription,
@@ -171,5 +171,4 @@ export function createAgentTool(pi: ExtensionAPI, deps: AgentToolDeps) {
     },
   });
 
-  return agentTool;
 }

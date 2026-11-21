@@ -22,7 +22,7 @@ export function assertValidSpawnCwd(cwd: unknown): asserts cwd is string | undef
 export function occupiesPoolSlot(
   record: Pick<AgentRecord, "isBackground" | "parentAgentId">,
 ): boolean {
-  return !!record.isBackground && isTopLevelAgent(record);
+  return Boolean(record.isBackground) && isTopLevelAgent(record);
 }
 
 export function isTopLevelAgent(
@@ -34,7 +34,7 @@ export function isTopLevelAgent(
 export function occupiesForegroundSlot(
   record: Pick<AgentRecord, "blocking" | "parentAgentId">,
 ): boolean {
-  return !!record.blocking && isTopLevelAgent(record);
+  return Boolean(record.blocking) && isTopLevelAgent(record);
 }
 
 export type Pool = "background" | "foreground";

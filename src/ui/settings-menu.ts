@@ -41,7 +41,7 @@ function promptLabel(id: NumericSettingId): string {
 const SWITCH_LAYER = "\0tab";
 const REFRESH = "\0refresh";
 
-function layerOwn(layer: SettingsLayer, cwd: string): object {
+function layerOwn(layer: SettingsLayer, cwd: string): Partial<Record<RowId, unknown>> {
   const read = readLayerSettings(layer, cwd);
   const own = read.ok ? read.own : {};
   return layerEphemeralNesting(layer, cwd) === undefined ? own : { ...own, ephemeralNesting: true };

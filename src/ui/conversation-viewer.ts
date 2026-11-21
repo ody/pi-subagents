@@ -246,11 +246,11 @@ export class ConversationViewer implements Component {
   }
 
   private isStoppable(): boolean {
-    return !!this.onStop && (this.record.status === "running" || this.record.status === "queued");
+    return Boolean(this.onStop) && (this.record.status === "running" || this.record.status === "queued");
   }
 
   private canSteer(): boolean {
-    return !!this.onSteer && !!this.keybindings && (this.record.status === "running" || this.record.status === "queued");
+    return Boolean(this.onSteer) && Boolean(this.keybindings) && (this.record.status === "running" || this.record.status === "queued");
   }
 
   private openComposer(): void {

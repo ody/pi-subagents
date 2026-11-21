@@ -148,7 +148,7 @@ const SOURCE_TAGS: Record<RowSource, string> = {
   inherited: "inherited",
 };
 
-export function rowSources(project: object, global: object): Record<string, RowSource> {
+export function rowSources(project: Partial<Record<RowId, unknown>>, global: Partial<Record<RowId, unknown>>): Record<string, RowSource> {
   return Object.fromEntries(
     SETTING_ROWS.map((row) => {
       if (!(row.id in project)) return [row.id, "inherited"];

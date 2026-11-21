@@ -84,7 +84,7 @@ export function normalizeInlineAgentConfig(type: unknown, raw: unknown, descript
   };
 }
 
-function assertKnownOptions(options: object): void {
+function assertKnownOptions(options: Record<string, unknown>): void {
   for (const key of Object.keys(options)) {
     if (!rpcSpawnOptionSet.has(key)) throw new RpcError("unknown_option", `Unknown spawn option "${key}"`);
   }
