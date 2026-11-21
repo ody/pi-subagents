@@ -32,6 +32,7 @@ import { MainSessionStatus } from "./ui/main-session-status.js";
 import { registerNotificationRenderer } from "./ui/notification-renderer.js";
 import { showSettings } from "./ui/settings-menu.js";
 import { PendingUsagePool, withUsageReporting } from "./usage.js";
+import { setWarningSink } from "./warnings.js";
 
 export default function (pi: ExtensionAPI) {
   if (inChildSessionContext()) return;
@@ -107,6 +108,10 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     currentCtx = ctx;
+    setWarningSink((message) => {
+      if (ctx.hasUI) ctx.ui.notify(message, "warning");
+      else console.error(message);
+    });
     mainSession.reset();
     if (ctx.hasUI) {
       widget.setUICtx(ctx.ui);

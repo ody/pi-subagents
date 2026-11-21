@@ -4,6 +4,7 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { BUILTIN_TOOL_NAMES, getAgentConfig, getAvailableTypes } from "../agents/agent-types.js";
 import type { ToolDescriptionMode } from "../config/settings.js";
 import type { AgentConfig } from "../types.js";
+import { warn } from "../warnings.js";
 
 export function formatToolsSuffix(cfg: AgentConfig | undefined): string {
   const tools = cfg?.builtinToolNames;
@@ -117,7 +118,7 @@ Terse command-style prompts produce shallow, generic work.
     };
     return template.replace(/\{\{(\w+)\}\}/g, (raw, name: string) => {
       if (vars[name]) return vars[name]();
-      console.warn(`[pi-subagents] agent-tool-description.md: unknown placeholder ${raw} left as-is`);
+      warn(`[pi-subagents] agent-tool-description.md: unknown placeholder ${raw} left as-is`);
       return raw;
     });
   };
@@ -131,9 +132,9 @@ Terse command-style prompts produce shallow, generic work.
         if (!existsSync(path)) continue;
         const text = readFileSync(path, "utf-8").trim();
         if (text) return renderToolDescriptionTemplate(text);
-        console.warn(`[pi-subagents] ${path} is empty — ignoring`);
+        warn(`[pi-subagents] ${path} is empty — ignoring`);
       } catch (err) {
-        console.warn(`[pi-subagents] failed to read ${path}: ${err instanceof Error ? err.message : String(err)}`);
+        warn(`[pi-subagents] failed to read ${path}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
     return undefined;
@@ -144,7 +145,7 @@ Terse command-style prompts produce shallow, generic work.
   if (mode === "custom") {
     const custom = loadCustomToolDescription();
     if (custom) return custom;
-    console.warn('[pi-subagents] toolDescriptionMode is "custom" but no agent-tool-description.md found — using "full"');
+    warn('[pi-subagents] toolDescriptionMode is "custom" but no agent-tool-description.md found — using "full"');
   }
   return fullAgentToolDescription;
 }

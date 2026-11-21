@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import subagentsExtension from "../src/index.js";
 import { setWorktreeIsolationEnabled } from "../src/platform/worktree.js";
+import { captureWarnings } from "./harness/warnings.js";
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -221,7 +222,7 @@ describe("toolDescriptionMode", () => {
   });
 
   it("custom mode without a file falls back to the full description with a warning", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       const tools = setup({ toolDescriptionMode: "custom" });
       const desc: string = tools.get("agent").description;

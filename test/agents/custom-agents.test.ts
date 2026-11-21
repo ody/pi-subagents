@@ -6,6 +6,7 @@ import { serializeAgentFile } from "../../src/agents/agent-file-toggle.js";
 import { BUILTIN_TOOL_NAMES, buildAgentRegistry } from "../../src/agents/agent-types.js";
 import { loadCustomAgents } from "../../src/agents/custom-agents.js";
 import type { AgentConfig } from "../../src/types.js";
+import { captureWarnings } from "../harness/warnings.js";
 
 describe("loadCustomAgents", () => {
   let tmpDir: string;
@@ -705,7 +706,7 @@ Agent prompt.`);
   });
 
   it("does not claim the rejected file was overriding its filename's agent", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeWorkspaceAgent("scoped", "---\ndescription: An unrelated agent\n---\n\nBody.");
       writeAgent("scoped", "---\nname: my-plugin:reviewer\ndescription: Reviews code\n---\n\nBody.");
@@ -845,7 +846,7 @@ Good body.`);
   });
 
   it("names the offending file and the reason when skipping it", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeAgent("broken", "---\nname: broken\ndescription: Use this: that\n---\n\nBroken body.");
 
@@ -860,7 +861,7 @@ Good body.`);
   });
 
   it("warns when a skipped file was overriding an agent that stays resolvable", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeWorkspaceAgent("dup", "---\ndescription: Earlier definition\n---\n\nEarlier body.");
       writeAgent("dup", "---\nname: dup\ndescription: Use this: that\n---\n\nBroken body.");
@@ -876,7 +877,7 @@ Good body.`);
   });
 
   it("does not claim a fallback when the shadowed definition is disabled", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeWorkspaceAgent("dup", "---\ndescription: Earlier definition\nenabled: false\n---\n\nEarlier body.");
       writeAgent("dup", "---\nname: dup\ndescription: Use this: that\n---\n\nBroken body.");
@@ -892,7 +893,7 @@ Good body.`);
   });
 
   it("does not claim a fallback when the skipped file overrode nothing", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeAgent("lonely", "---\nname: lonely\ndescription: Use this: that\n---\n\nBroken body.");
 
@@ -914,7 +915,7 @@ Good body.`);
     expect(() => loadCustomAgents(tmpDir, true)).toThrow(brokenPath);
     expect(() => loadCustomAgents(tmpDir, true)).toThrow("Nested mappings are not allowed");
 
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       const result = loadCustomAgents(tmpDir);
       expect(result.has("broken")).toBe(false);
@@ -925,7 +926,7 @@ Good body.`);
   });
 
   it("warns when a file breaks, not while it stays broken", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeAgent("flip", "---\nname: flip\ndescription: Use this: that\n---\n\nBroken.");
       loadCustomAgents(tmpDir);
@@ -945,7 +946,7 @@ Good body.`);
   });
 
   it("warns once per message, not on every reload", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       writeAgent("noisy", "---\nname: noisy\ndescription: Use this: that\n---\n\nBroken body.");
 
@@ -1165,7 +1166,7 @@ describe("loadCustomAgents — skill-embedded agents", () => {
   });
 
   it("warns when two skills ship the same agent name; the later path wins", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     writeSkill("a", { shared: agentMd("From a") });
     writeSkill("b", { shared: agentMd("From b") });
 
@@ -1174,7 +1175,7 @@ describe("loadCustomAgents — skill-embedded agents", () => {
   });
 
   it("resolves a clash between a shallow and a deep skill breadth-first", () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureWarnings();
     writeSkill("zulu", { shared: agentMd("From zulu") });
     writeSkill("alpha/inner", { shared: agentMd("From alpha/inner") });
 
@@ -1184,7 +1185,7 @@ describe("loadCustomAgents — skill-embedded agents", () => {
   });
 
   it("names both files in the clash warning", () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     const shallow = writeSkill("zulu", { shared: agentMd("From zulu") });
     const deep = writeSkill("alpha/inner", { shared: agentMd("From alpha/inner") });
 

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { AgentMentionMode, JoinMode, WidgetMode } from "../types.js";
+import { warn } from "../warnings.js";
 import { policyEventPayload } from "./capability-policy-config.js";
 import { isValidSettingValue, SETTING_KEYS, SETTING_SPECS } from "./settings-defaults.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
@@ -67,7 +68,7 @@ function readSettingsFile(path: string): SubagentsSettings {
     return sanitize(JSON.parse(readFileSync(path, "utf-8")));
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
+    warn(`[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
     return {};
   }
 }
@@ -134,7 +135,7 @@ export function persistToastFor(
 export function applyLoadedSettings(appliers: SettingsAppliers, cwd: string = process.cwd()): SubagentsSettings {
   const settings = loadSettings(cwd);
   applySettings(settings, appliers);
-  for (const problem of policyEventPayload(cwd).malformed ?? []) console.warn(`[pi-subagents] Capability policy: ${problem}. Every spawn is denied until it is fixed.`);
+  for (const problem of policyEventPayload(cwd).malformed ?? []) warn(`[pi-subagents] Capability policy: ${problem}. Every spawn is denied until it is fixed.`);
   return settings;
 }
 

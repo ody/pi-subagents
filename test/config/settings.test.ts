@@ -15,6 +15,7 @@ import {
 } from "../../src/config/settings.js";
 import { SETTING_KEYS, SETTING_SPECS, type SettingSpec } from "../../src/config/settings-defaults.js";
 import { setLayerKey } from "../../src/config/settings-store.js";
+import { captureWarnings } from "../harness/warnings.js";
 
 const NO_POLICY = { global: {}, project: {}, ephemeralNesting: true };
 
@@ -431,8 +432,8 @@ describe("settings persistence", () => {
       }
     });
 
-    it("warns to console.warn when an existing file is malformed", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("warns through the warning sink when an existing file is malformed", () => {
+      const spy = captureWarnings();
       mkdirSync(join(projectDir, ".pi"), { recursive: true });
       writeFileSync(projectFile(), "not valid json {{{");
       try {
@@ -445,7 +446,7 @@ describe("settings persistence", () => {
     });
 
     it("does NOT warn when a file is simply missing", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const spy = captureWarnings();
       try {
         expect(loadSettings(projectDir)).toEqual({});
         expect(spy).not.toHaveBeenCalled();
@@ -759,7 +760,7 @@ describe("settings persistence", () => {
     });
 
     it("does not write a layer file that fails to parse, and warns naming it", () => {
-      const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const spy = captureWarnings();
       try {
         writeFileSync(globalFile(), "{ broken");
         const emit = vi.fn();

@@ -2,6 +2,7 @@ import type { AutocompleteItem, AutocompleteProvider, AutocompleteSuggestions } 
 import type { AgentManager } from "../manager/agent-manager.js";
 import { handleBase, MENTION_TRIGGER } from "../triggers/mention.js";
 import type { AgentRecord, AgentTombstone } from "../types.js";
+import { warn } from "../warnings.js";
 
 export type MentionTarget =
   | { kind: "record"; handle: string; record: AgentRecord; typeLabel: string }
@@ -65,7 +66,7 @@ export function createMentionProvider(
       } catch (err) {
         if (!warnedInnerFailure) {
           warnedInnerFailure = true;
-          console.warn("[pi-subagents] the autocomplete provider below us failed; showing agent rows only:", err);
+          warn(`[pi-subagents] the autocomplete provider below us failed; showing agent rows only: ${err instanceof Error ? err.message : String(err)}`);
         }
         theirs = null;
       }

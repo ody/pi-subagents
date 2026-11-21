@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { captureWarnings } from "../harness/warnings.js";
 
 vi.mock("../../src/session/agent-runner.js", async () => {
   const actual = await vi.importActual<typeof import("../../src/session/agent-runner.js")>("../../src/session/agent-runner.js");
@@ -425,7 +426,7 @@ describe("agent files", () => {
     mkdirSync(join(hermetic.dir, ".pi", "agents"), { recursive: true });
     writeFileSync(join(hermetic.dir, ".pi", "agents", "ephemeral-x.md"), "---\ndescription: d\n---\nbody");
     writeFileSync(join(hermetic.dir, ".pi", "agents", "kept.md"), "---\ndescription: d\n---\nbody");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     const agents = loadCustomAgents(hermetic.dir);
     expect([...agents.keys()]).toEqual(["kept"]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("ephemeral-"));

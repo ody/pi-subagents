@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentManager } from "../src/manager/agent-manager.js";
 import type { AgentRecord, AgentTombstone } from "../src/types.js";
 import { createMentionProvider, mentionRoster } from "../src/ui/agent-mention.js";
+import { captureWarnings } from "./harness/warnings.js";
 
 const FILE_SUGGESTIONS = { items: [{ value: "@src/index.ts", label: "src/index.ts" }], prefix: "@src/" };
 
@@ -133,7 +134,7 @@ describe("agent suggestions", () => {
   });
 
   it("warns once about a failing inner provider, not once per keystroke", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const warn = captureWarnings();
     try {
       const current = builtIn();
       current.getSuggestions.mockRejectedValue(new Error("inner provider exploded"));

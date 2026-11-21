@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../src/agents/agent-types.js";
 import subagentsExtension from "../src/index.js";
+import { captureWarnings } from "./harness/warnings.js";
 
 function makePi() {
   const tools = new Map<string, any>();
@@ -43,7 +44,7 @@ function writeBrokenAgent(): string {
 }
 
 describe("strictAgentFiles gates extension activation", () => {
-  let warn: ReturnType<typeof vi.spyOn>;
+  let warn: ReturnType<typeof captureWarnings>;
 
   beforeEach(() => {
     originalCwd = process.cwd();
@@ -53,7 +54,7 @@ describe("strictAgentFiles gates extension activation", () => {
     originalHome = process.env.HOME;
     process.env.PI_CODING_AGENT_DIR = join(cwd, "agent-dir");
     process.env.HOME = cwd;
-    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    warn = captureWarnings();
   });
 
   afterEach(() => {

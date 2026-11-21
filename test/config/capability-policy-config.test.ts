@@ -11,11 +11,13 @@ import { registerRpcHandlers } from "../../src/triggers/cross-extension-rpc.js";
 import type { AgentConfig } from "../../src/types.js";
 import { registeredCapability } from "../harness/capability.js";
 import { registerFauxProvider } from "../harness/pi-ai.js";
+import { captureWarnings } from "../harness/warnings.js";
 
 describe("capability policy configuration", () => {
   let globalDir: string;
   let projectDir: string;
   let originalAgentDirEnv: string | undefined;
+  let warnings: ReturnType<typeof captureWarnings>;
 
   const globalFile = () => join(globalDir, "subagents.json");
   const projectFile = () => join(projectDir, ".pi", "subagents.json");
@@ -30,7 +32,7 @@ describe("capability policy configuration", () => {
     projectDir = mkdtempSync(join(tmpdir(), "pi-policy-project-"));
     originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
     process.env.PI_CODING_AGENT_DIR = globalDir;
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    warnings = captureWarnings();
   });
 
   afterEach(() => {
@@ -166,7 +168,7 @@ describe("capability policy configuration", () => {
     const file = layer === "project" ? projectFile() : globalFile();
     expect(changeMax(layer, 7).level).toBe("warning");
     expect(readFileSync(file, "utf-8")).toBe("{ broken");
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(file));
+    expect(warnings).toHaveBeenCalledWith(expect.stringContaining(file));
   });
 
   it("carries the policy in settings_loaded and settings_changed", () => {

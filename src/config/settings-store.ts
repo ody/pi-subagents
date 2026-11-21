@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { warn } from "../warnings.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
 
 export type SettingsLayer = "global" | "project";
@@ -39,7 +40,7 @@ export function updateLayerFile(
 ): LayerWrite {
   const read = readLayerFile(layer, cwd);
   if (!read.ok) {
-    console.warn(`[pi-subagents] Not saving settings: ${read.reason}. Fix the file so its contents are not lost.`);
+    warn(`[pi-subagents] Not saving settings: ${read.reason}. Fix the file so its contents are not lost.`);
     return read;
   }
   const path = layerPath(layer, cwd);

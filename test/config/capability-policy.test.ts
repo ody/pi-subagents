@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { captureWarnings } from "../harness/warnings.js";
 
 vi.mock("../../src/session/agent-runner.js", async () => {
   const actual = await vi.importActual<typeof import("../../src/session/agent-runner.js")>("../../src/session/agent-runner.js");
@@ -437,7 +438,7 @@ describe("capability policy at every spawn path", () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
     booted = lifecycle;
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    captureWarnings();
     const agentTool = tools.get("agent");
     const result = await agentTool.execute(
       "tc-1",
