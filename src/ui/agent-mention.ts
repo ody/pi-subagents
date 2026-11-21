@@ -49,6 +49,15 @@ export function mentionRoster(
   return targets;
 }
 
+function mergeSuggestions(
+  mine: AutocompleteSuggestions | null,
+  theirs: AutocompleteSuggestions | null,
+): AutocompleteSuggestions | null {
+  if (!mine) return theirs;
+  if (!theirs) return mine;
+  return { items: [...mine.items, ...theirs.items], prefix: mine.prefix };
+}
+
 export function createMentionProvider(
   current: AutocompleteProvider,
   roster: () => MentionTarget[],
@@ -70,9 +79,7 @@ export function createMentionProvider(
         }
         theirs = null;
       }
-      if (!mine) return theirs;
-      if (!theirs) return mine;
-      return { items: [...mine.items, ...theirs.items], prefix: mine.prefix };
+      return mergeSuggestions(mine, theirs);
     },
 
     applyCompletion(lines, cursorLine, cursorCol, item, prefix) {

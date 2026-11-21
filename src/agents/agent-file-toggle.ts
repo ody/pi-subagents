@@ -95,6 +95,19 @@ function formatToolsField(tools: string[] | undefined): string {
   return tools.join(", ");
 }
 
+function inheritFieldLine(key: string, value: true | string[] | false | undefined): string | undefined {
+  if (value === false) return `${key}: false`;
+  return Array.isArray(value) ? `${key}: ${value.join(", ")}` : undefined;
+}
+
+function extensionAndSkillFields(cfg: AgentConfig): string[] {
+  return [
+    inheritFieldLine("extensions", cfg.extensions),
+    cfg.excludeExtensions?.length ? `exclude_extensions: ${cfg.excludeExtensions.join(", ")}` : undefined,
+    inheritFieldLine("skills", cfg.skills),
+  ].filter((line) => line !== undefined);
+}
+
 export function serializeAgentFile(cfg: AgentConfig): string {
   const fmFields: string[] = [];
   fmFields.push(`description: ${JSON.stringify(cfg.description)}`);
@@ -108,11 +121,7 @@ export function serializeAgentFile(cfg: AgentConfig): string {
     fmFields.push(`allowed_subagents: ${cfg.allowedSubagents === "all" ? "all" : cfg.allowedSubagents.join(", ")}`);
   }
   fmFields.push(`prompt_mode: ${cfg.promptMode}`);
-  if (cfg.extensions === false) fmFields.push("extensions: false");
-  else if (Array.isArray(cfg.extensions)) fmFields.push(`extensions: ${cfg.extensions.join(", ")}`);
-  if (cfg.excludeExtensions?.length) fmFields.push(`exclude_extensions: ${cfg.excludeExtensions.join(", ")}`);
-  if (cfg.skills === false) fmFields.push("skills: false");
-  else if (Array.isArray(cfg.skills)) fmFields.push(`skills: ${cfg.skills.join(", ")}`);
+  fmFields.push(...extensionAndSkillFields(cfg));
   if (cfg.disallowedTools?.length) fmFields.push(`disallowed_tools: ${cfg.disallowedTools.join(", ")}`);
   if (cfg.inheritContext) fmFields.push("inherit_context: true");
   if (cfg.runInBackground !== undefined) fmFields.push(`run_in_background: ${cfg.runInBackground}`);
