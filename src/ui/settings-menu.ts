@@ -126,6 +126,50 @@ interface MenuOutcome {
   values: RowValues;
 }
 
+function isEditKey(data: string): boolean {
+  return data === "r" || data === " " || matchesKey(data, Key.enter) || matchesKey(data, "left") || matchesKey(data, "right");
+}
+
+function movedIndex(data: string, index: number, count: number): number {
+  if (matchesKey(data, "up")) return (index + count - 1) % count;
+  if (matchesKey(data, "down")) return (index + 1) % count;
+  return index;
+}
+
+interface MenuKeyContext {
+  ctx: ExtensionCommandContext;
+  deps: SettingsMenuDeps;
+  layer: SettingsLayer;
+  rowIds: readonly RowId[];
+  nav: { index: number };
+  readOnlyReason: string | undefined;
+  list: SettingsList;
+  done: (result: string | undefined) => void;
+}
+
+function handleMenuKey(data: string, menu: MenuKeyContext): void {
+  const { ctx, deps, layer, rowIds, nav, readOnlyReason, list, done } = menu;
+  if (matchesKey(data, Key.tab)) {
+    done(SWITCH_LAYER);
+    return;
+  }
+  nav.index = movedIndex(data, nav.index, rowIds.length);
+  if (readOnlyReason && isEditKey(data)) {
+    ctx.ui.notify(`${readOnlyReason}. Fix the file first.`, "warning");
+    return;
+  }
+  const row = rowIds[nav.index];
+  if (data === "r") {
+    if (resetSettingValue(ctx, deps, layer, row)) done(REFRESH);
+    return;
+  }
+  if (matchesKey(data, Key.enter) && isNumericSettingId(row)) {
+    done(row);
+    return;
+  }
+  list.handleInput?.(data);
+}
+
 async function runMenu(
   ctx: ExtensionCommandContext,
   deps: SettingsMenuDeps,
@@ -136,7 +180,7 @@ async function runMenu(
   const file = readLayerSettings(layer, deps.cwd);
   const readOnlyReason = file.ok ? undefined : file.reason;
   const rowIds = SETTING_ROWS.map((row) => row.id);
-  let currentIndex = Math.max(0, rowIds.findIndex((id) => id === selectedRow));
+  const nav = { index: Math.max(0, rowIds.findIndex((id) => id === selectedRow)) };
   const sources = layer === "project" ? projectSources(deps.cwd) : undefined;
 
   const result = await ctx.ui.custom<string | undefined>((_tui, theme, _kb, done) => {
@@ -150,7 +194,7 @@ async function runMenu(
       },
       () => done(undefined as undefined),
     );
-    list.selectItem(rowIds[currentIndex]);
+    list.selectItem(rowIds[nav.index]);
 
     const scope = (name: SettingsLayer): string =>
       name === layer ? theme.fg("accent", theme.bold(name)) : theme.fg("dim", name);
@@ -166,36 +210,11 @@ async function runMenu(
     return {
       render: (w: number) => container.render(w),
       invalidate: () => container.invalidate(),
-      handleInput: (data: string) => {
-        if (matchesKey(data, Key.tab)) {
-          done(SWITCH_LAYER);
-          return;
-        }
-        if (matchesKey(data, "up")) {
-          currentIndex = (currentIndex + rowIds.length - 1) % rowIds.length;
-        } else if (matchesKey(data, "down")) {
-          currentIndex = (currentIndex + 1) % rowIds.length;
-        }
-
-        const editing = data === "r" || matchesKey(data, Key.enter) || data === " " || matchesKey(data, "left") || matchesKey(data, "right");
-        if (editing && readOnlyReason) {
-          ctx.ui.notify(`${readOnlyReason}. Fix the file first.`, "warning");
-          return;
-        }
-        if (data === "r") {
-          if (resetSettingValue(ctx, deps, layer, rowIds[currentIndex])) done(REFRESH);
-          return;
-        }
-        if (matchesKey(data, Key.enter) && isNumericSettingId(rowIds[currentIndex])) {
-          done(rowIds[currentIndex]);
-          return;
-        }
-        list.handleInput?.(data);
-      },
+      handleInput: (data: string) => handleMenuKey(data, { ctx, deps, layer, rowIds, nav, readOnlyReason, list, done }),
     };
   });
 
-  return { result, selected: rowIds[currentIndex], values };
+  return { result, selected: rowIds[nav.index], values };
 }
 
 export async function showSettings(
