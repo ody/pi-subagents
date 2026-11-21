@@ -231,6 +231,49 @@ function createRunSessionManager(
   });
 }
 
+function resolveRunCwds(options: RunOptions, ctx: ExtensionContext): { effectiveCwd: string; configCwd: string } {
+  const effectiveCwd = options.cwd ?? ctx.cwd;
+  return { effectiveCwd, configCwd: options.configCwd ?? effectiveCwd };
+}
+
+function buildPromptExtras(
+  worktreeBase: string | undefined,
+  skills: boolean | string[],
+  configCwd: string,
+): PromptExtras {
+  const extras: PromptExtras = {};
+  if (worktreeBase) extras.worktreeBase = worktreeBase;
+  const loaded = Array.isArray(skills) ? preloadSkills(skills, configCwd) : [];
+  if (loaded.length > 0) extras.skillBlocks = loaded;
+  return extras;
+}
+
+function reportUnknownBuiltinTools(options: RunOptions, toolNames: readonly string[], type: string): void {
+  for (const name of toolNames) {
+    if (BUILTIN_TOOL_NAMES.includes(name)) continue;
+    options.onToolActivity?.({
+      type: "end",
+      toolName: `tools-error:tool "${name}" requested by agent "${type}" is not a known built-in`,
+    });
+  }
+}
+
+type OptionalSessionFields = Pick<NonNullable<Parameters<typeof createAgentSession>[0]>, "excludeTools" | "thinkingLevel">;
+
+function optionalSessionFields(
+  excludeTools: string[] | undefined,
+  thinkingLevel: ThinkingLevel | undefined,
+): OptionalSessionFields {
+  const fields: OptionalSessionFields = {};
+  if (excludeTools) fields.excludeTools = excludeTools;
+  if (thinkingLevel) fields.thinkingLevel = thinkingLevel;
+  return fields;
+}
+
+function sessionNameFor(baseName: string, agentId: string | undefined): string {
+  return agentId ? `${baseName}#${agentId.slice(0, 8)}` : baseName;
+}
+
 export async function runAgent(
   ctx: ExtensionContext,
   type: SubagentType,
@@ -242,24 +285,14 @@ export async function runAgent(
   if (!agentConfig) throw new Error(`Unknown agent type "${type}" and no inline agent definition given`);
   const capabilities = options.capability.capabilities;
 
-  const effectiveCwd = options.cwd ?? ctx.cwd;
-  const configCwd = options.configCwd ?? effectiveCwd;
+  const { effectiveCwd, configCwd } = resolveRunCwds(options, ctx);
 
   const env = await detectEnv(options.pi, effectiveCwd);
 
   const parentSystemPrompt = ctx.getSystemPrompt();
 
-  const extras: PromptExtras = {};
-  if (options.worktreeBase) extras.worktreeBase = options.worktreeBase;
-
   const { extensions, excludeExtensions, skills, extSelectors } = resolveExtensionInputs(options, capabilities);
-
-  if (Array.isArray(skills)) {
-    const loaded = preloadSkills(skills, configCwd);
-    if (loaded.length > 0) {
-      extras.skillBlocks = loaded;
-    }
-  }
+  const extras = buildPromptExtras(options.worktreeBase, skills, configCwd);
 
   const toolNames = capabilities.builtinToolNames;
 
@@ -295,13 +328,7 @@ export async function runAgent(
   });
   await runInChildSessionContext(() => loader.reload());
 
-  for (const name of capabilities.builtinToolNames) {
-    if (BUILTIN_TOOL_NAMES.includes(name)) continue;
-    options.onToolActivity?.({
-      type: "end",
-      toolName: `tools-error:tool "${name}" requested by agent "${type}" is not a known built-in`,
-    });
-  }
+  reportUnknownBuiltinTools(options, capabilities.builtinToolNames, type);
 
   const policyWarnings = await unknownPolicyEntries(
     policy,
@@ -360,20 +387,12 @@ export async function runAgent(
     tools: sessionTools,
     customTools: nestedTools,
     resourceLoader: loader,
+    ...optionalSessionFields(sessionExcludeTools, thinkingLevel),
   };
-  if (sessionExcludeTools) {
-    sessionOpts.excludeTools = sessionExcludeTools;
-  }
-  if (thinkingLevel) {
-    sessionOpts.thinkingLevel = thinkingLevel;
-  }
 
   const { session } = await runInChildSessionContext(() => createAgentSession(sessionOpts));
 
-  const baseSessionName = agentConfig?.name ?? type;
-  session.setSessionName(
-    options.agentId ? `${baseSessionName}#${options.agentId.slice(0, 8)}` : baseSessionName,
-  );
+  session.setSessionName(sessionNameFor(agentConfig?.name ?? type, options.agentId));
 
   await session.bindExtensions({
     onError: (err) => {
@@ -405,8 +424,7 @@ export async function runAgent(
   const collector = collectResponseText(session);
   const cleanupAbort = forwardAbortSignal(session, options.signal);
 
-  const parentContext = options.inheritContext ? buildParentContext(ctx) : undefined;
-  const effectivePrompt = parentContext ? parentContext + prompt : prompt;
+  const effectivePrompt = options.inheritContext ? buildParentContext(ctx) + prompt : prompt;
 
   const startLen = session.messages.length;
   try {
