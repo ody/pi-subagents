@@ -186,6 +186,18 @@ function narrowBuiltinTools(
   return { value: kept, filtered };
 }
 
+function mergedExtensionTools(
+  tools: Set<string> | "all",
+  name: string,
+  declaredMap: ExtAllow | undefined,
+  allowMap: ExtAllow | undefined,
+): Set<string> | "all" | undefined {
+  const allowed = declaredMap && allowMap ? allowMap.get(name) : tools;
+  if (allowed === undefined) return undefined;
+  const merged = intersectTools(tools, allowed);
+  return merged !== "all" && merged.size === 0 ? undefined : merged;
+}
+
 function narrowExtensionSelectors(
   declared: string[] | undefined,
   bounds: CapabilityBound[],
@@ -199,21 +211,45 @@ function narrowExtensionSelectors(
   if (!base) return { value: { map: undefined, restricted: false }, filtered };
   const out: ExtAllow = new Map();
   for (const [name, tools] of base) {
-    const extensionReason = declaredMap ? nameRefusal(bounds, "extensions", name) : undefined;
+    const extensionReason = declaredMap && nameRefusal(bounds, "extensions", name);
     if (extensionReason) {
       if (callerSupplied) refuse(`extension "${name}" is not allowed: ${extensionReason}.`);
       filtered.push(`ext:${name}`);
       continue;
     }
-    const allowed = declaredMap && allowMap ? allowMap.get(name) : tools;
-    const merged = allowed === undefined ? undefined : intersectTools(tools, allowed);
-    if (deniedWhole.has(name) || merged === undefined || (merged !== "all" && merged.size === 0)) {
+    const merged = mergedExtensionTools(tools, name, declaredMap, allowMap);
+    if (deniedWhole.has(name) || merged === undefined) {
       if (declaredMap) filtered.push(`ext:${name}`);
       continue;
     }
     out.set(name, merged);
   }
   return { value: { map: out, restricted: true }, filtered };
+}
+
+function splitDenies(denies: string[], initial: string[]): { deniedWhole: Set<string>; disallowed: Set<string> } {
+  const deniedWhole = new Set<string>();
+  const disallowed = new Set(initial);
+  for (const entry of denies) {
+    if (entry.startsWith("ext:")) addExtensionDeny(entry, deniedWhole, disallowed);
+    else if (!BUILTIN_TOOL_NAMES.includes(entry)) disallowed.add(entry);
+  }
+  return { deniedWhole, disallowed };
+}
+
+function addExtensionDeny(entry: string, deniedWhole: Set<string>, disallowed: Set<string>): void {
+  const { extNames, narrowing } = parseExtSelectors([entry]);
+  for (const name of extNames) {
+    const tools = narrowing.get(name);
+    if (!tools) deniedWhole.add(name);
+    else for (const tool of tools) disallowed.add(tool);
+  }
+}
+
+function refuseWhenNoToolLeft(declaredCount: number, leftCount: number): void {
+  if (declaredCount > 0 && leftCount === 0) {
+    refuse("no tool is left once the policy and the parent agent's tools are applied.");
+  }
 }
 
 function narrowToolScope(
@@ -224,27 +260,12 @@ function narrowToolScope(
 ): Pick<EffectiveCapabilities, "builtinToolNames" | "extSelectors" | "noExtensionTools" | "deniedExtensionNames" | "disallowedTools"> & { filtered: string[] } {
   const builtin = narrowBuiltinTools(config.builtinToolNames, bounds, refusing);
   const denies = denyEntries(bounds);
-  const deniedWhole = new Set<string>();
-  const disallowed = new Set(config.disallowedTools ?? []);
-  for (const entry of denies) {
-    if (!entry.startsWith("ext:")) {
-      if (!BUILTIN_TOOL_NAMES.includes(entry)) disallowed.add(entry);
-      continue;
-    }
-    const { extNames, narrowing } = parseExtSelectors([entry]);
-    for (const name of extNames) {
-      const tools = narrowing.get(name);
-      if (!tools) deniedWhole.add(name);
-      else for (const tool of tools) disallowed.add(tool);
-    }
-  }
+  const { deniedWhole, disallowed } = splitDenies(denies, config.disallowedTools ?? []);
   const selectors = narrowExtensionSelectors(config.extSelectors, bounds, deniedWhole, callerSupplied);
   const { map, restricted } = selectors.value;
   const extSelectors = map ? selectorsOf(map) : [];
   const declaredCount = (config.builtinToolNames?.length ?? 0) + (config.extSelectors?.length ?? 0);
-  if (declaredCount > 0 && builtin.value.length === 0 && extSelectors.length === 0) {
-    refuse("no tool is left once the policy and the parent agent's tools are applied.");
-  }
+  refuseWhenNoToolLeft(declaredCount, builtin.value.length + extSelectors.length);
   return {
     builtinToolNames: builtin.value,
     extSelectors,
@@ -253,6 +274,12 @@ function narrowToolScope(
     disallowedTools: [...disallowed],
     filtered: [...builtin.filtered, ...selectors.filtered],
   };
+}
+
+function wildcardExtensions(allows: string[][], denied: string[]): true | string[] | false {
+  if (allows.length === 0) return true;
+  const names = lower(allows[0]).filter(name => allows.every(list => lower(list).includes(name)) && !denied.includes(name));
+  return names.length > 0 ? names : false;
 }
 
 function narrowExtensions(
@@ -268,11 +295,7 @@ function narrowExtensions(
   if (declared === false) return { value: { extensions: false, excludeExtensions: lower(excluded) }, filtered };
   const allows = bounds.map(bound => restrictingAllow(bound.scope.extensions)).filter((a): a is string[] => a !== undefined);
   const wildcard = declared === true || declared.includes("*");
-  if (wildcard) {
-    if (allows.length === 0) return { value: { extensions: true, excludeExtensions: exclude }, filtered };
-    const names = lower(allows[0]).filter(name => allows.every(list => lower(list).includes(name)) && !denied.includes(name));
-    return { value: { extensions: names.length > 0 ? names : false, excludeExtensions: exclude }, filtered };
-  }
+  if (wildcard) return { value: { extensions: wildcardExtensions(allows, denied), excludeExtensions: exclude }, filtered };
   const kept: string[] = [];
   for (const entry of declared) {
     const path = isPathEntry(entry);
