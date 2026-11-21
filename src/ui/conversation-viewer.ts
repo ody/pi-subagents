@@ -75,15 +75,7 @@ export class ConversationViewer implements Component {
     }
 
     if (matchesKey(data, "x")) {
-      if (this.isStoppable()) {
-        if (this.stopArmed) {
-          this.stopArmed = false;
-          this.onStop?.();
-        } else {
-          this.stopArmed = true;
-        }
-        this.tui.requestRender();
-      }
+      this.pressStop();
       return;
     }
 
@@ -95,25 +87,37 @@ export class ConversationViewer implements Component {
       return;
     }
 
+    this.scrollForKey(data);
+  }
+
+  private pressStop(): void {
+    if (!this.isStoppable()) return;
+    if (this.stopArmed) {
+      this.stopArmed = false;
+      this.onStop?.();
+    } else {
+      this.stopArmed = true;
+    }
+    this.tui.requestRender();
+  }
+
+  private scrollTarget(data: string, maxScroll: number, viewportHeight: number): number | undefined {
+    if (this.keys.scrollUp(data)) return Math.max(0, this.scrollOffset - 1);
+    if (this.keys.scrollDown(data)) return Math.min(maxScroll, this.scrollOffset + 1);
+    if (this.keys.pageUp(data)) return Math.max(0, this.scrollOffset - viewportHeight);
+    if (this.keys.pageDown(data)) return Math.min(maxScroll, this.scrollOffset + viewportHeight);
+    if (matchesKey(data, "home")) return 0;
+    if (matchesKey(data, "end")) return maxScroll;
+    return undefined;
+  }
+
+  private scrollForKey(data: string): void {
     const totalLines = this.buildContentLines(this.lastInnerW).length;
     const viewportHeight = this.viewportHeight();
     const maxScroll = Math.max(0, totalLines - viewportHeight);
-
-    if (this.keys.scrollUp(data)) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - 1);
-    } else if (this.keys.scrollDown(data)) {
-      this.scrollOffset = Math.min(maxScroll, this.scrollOffset + 1);
-    } else if (this.keys.pageUp(data)) {
-      this.scrollOffset = Math.max(0, this.scrollOffset - viewportHeight);
-    } else if (this.keys.pageDown(data)) {
-      this.scrollOffset = Math.min(maxScroll, this.scrollOffset + viewportHeight);
-    } else if (matchesKey(data, "home")) {
-      this.scrollOffset = 0;
-    } else if (matchesKey(data, "end")) {
-      this.scrollOffset = maxScroll;
-    } else {
-      return;
-    }
+    const target = this.scrollTarget(data, maxScroll, viewportHeight);
+    if (target === undefined) return;
+    this.scrollOffset = target;
     this.autoScroll = this.scrollOffset >= maxScroll;
   }
 
