@@ -913,6 +913,7 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
     const { createWorktree } = await import("../../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce({
       path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy/sub/dir",
+      repoPath: "/repo", pi: mockPi,
     });
     vi.mocked(runAgent).mockClear();
     resolvedRun();
@@ -1626,7 +1627,7 @@ describe("AgentManager — waitForAll", () => {
     let releaseCopy!: () => void;
     vi.mocked(createWorktree).mockImplementationOnce(
       () => new Promise(resolve => {
-        releaseCopy = () => resolve({ path: "/wt/copy", branch: "b", baseSha: "abc", workPath: "/wt/copy" });
+        releaseCopy = () => resolve({ path: "/wt/copy", branch: "b", baseSha: "abc", workPath: "/wt/copy", repoPath: "/repo", pi: mockPi });
       }),
     );
     vi.mocked(runAgent).mockClear();
@@ -1662,7 +1663,7 @@ describe("AgentManager — dispose prunes worktree repos", () => {
   it("prunes the process cwd and every repo a worktree was created from", async () => {
     const { createWorktree, pruneWorktrees } = await import("../../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce({
-      path: "/wt/copy", branch: "b", baseSha: "abc", workPath: "/wt/copy",
+      path: "/wt/copy", branch: "b", baseSha: "abc", workPath: "/wt/copy", repoPath: "/repo", pi: mockPi,
     });
     vi.mocked(pruneWorktrees).mockClear().mockResolvedValue(undefined);
     resolvedRun();

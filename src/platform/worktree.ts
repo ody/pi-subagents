@@ -124,7 +124,7 @@ export async function cleanupWorktree(
       hasChanges: true,
       branch: worktree.branch,
       path: worktree.path,
-      ...(removalFailure ? { removalFailure } : {}),
+      removalFailure,
     };
   } catch (err) {
     return {
