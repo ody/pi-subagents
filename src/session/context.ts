@@ -7,30 +7,34 @@ export function extractText(content: readonly { type: string; text?: string }[])
     .join("\n");
 }
 
+type BranchEntry = ReturnType<ExtensionContext["sessionManager"]["getBranch"]>[number];
+
+function messageLine(message: Extract<BranchEntry, { type: "message" }>["message"]): string | undefined {
+  let label: string;
+  let text: string;
+  if (message.role === "user") {
+    label = "User";
+    text = typeof message.content === "string" ? message.content : extractText(message.content);
+  } else if (message.role === "assistant") {
+    label = "Assistant";
+    text = extractText(message.content);
+  } else {
+    return undefined;
+  }
+  return text.trim() ? `[${label}]: ${text.trim()}` : undefined;
+}
+
+function entryLine(entry: BranchEntry): string | undefined {
+  if (entry.type === "message") return messageLine(entry.message);
+  if (entry.type === "compaction" && entry.summary) return `[Summary]: ${entry.summary}`;
+  return undefined;
+}
+
 export function buildParentContext(ctx: ExtensionContext): string {
   const entries = ctx.sessionManager.getBranch();
   if (!entries || entries.length === 0) return "";
 
-  const parts: string[] = [];
-
-  for (const entry of entries) {
-    if (entry.type === "message") {
-      const msg = entry.message;
-      if (msg.role === "user") {
-        const text = typeof msg.content === "string"
-          ? msg.content
-          : extractText(msg.content);
-        if (text.trim()) parts.push(`[User]: ${text.trim()}`);
-      } else if (msg.role === "assistant") {
-        const text = extractText(msg.content);
-        if (text.trim()) parts.push(`[Assistant]: ${text.trim()}`);
-      }
-    } else if (entry.type === "compaction") {
-      if (entry.summary) {
-        parts.push(`[Summary]: ${entry.summary}`);
-      }
-    }
-  }
+  const parts = entries.map(entryLine).filter((line) => line !== undefined);
 
   if (parts.length === 0) return "";
 

@@ -26,6 +26,37 @@ export function getModelLabelFromConfig(model: string): string {
   return name.replace(/-\d{8}$/, "");
 }
 
+function normalizeModelText(text: string): string {
+  return text.toLowerCase().replace(/\./g, "-");
+}
+
+function scoreModelMatch(m: ModelEntry, query: string): number {
+  const id = normalizeModelText(m.id);
+  const name = normalizeModelText(m.name);
+  const full = normalizeModelText(`${m.provider}/${m.id}`);
+  if (id === query || full === query) return 100;
+  if (id.includes(query) || full.includes(query)) return 60 + (query.length / id.length) * 30;
+  if (name.includes(query)) return 40 + (query.length / name.length) * 20;
+  const partMatches = (part: string) =>
+    /^\d{8}$/.test(part) || id.includes(part) || name.includes(part) || m.provider.toLowerCase().includes(part);
+  return query.split(/[\s\-/]+/).every(partMatches) ? 20 : 0;
+}
+
+const MIN_MODEL_MATCH_SCORE = 20;
+
+function bestModelMatch(models: ModelEntry[], query: string): ModelEntry | undefined {
+  let best: ModelEntry | undefined;
+  let bestScore = 0;
+  for (const m of models) {
+    const score = scoreModelMatch(m, query);
+    if (score > bestScore) {
+      bestScore = score;
+      best = m;
+    }
+  }
+  return bestScore >= MIN_MODEL_MATCH_SCORE ? best : undefined;
+}
+
 export function resolveModel(
   input: string,
   registry: ModelRegistry,
@@ -43,39 +74,8 @@ export function resolveModel(
     }
   }
 
-  const normalize = (s: string) => s.toLowerCase().replace(/\./g, "-");
-  const query = normalize(input);
-
-  let bestMatch: ModelEntry | undefined;
-  let bestScore = 0;
-
-  for (const m of all) {
-    const id = normalize(m.id);
-    const name = normalize(m.name);
-    const full = normalize(`${m.provider}/${m.id}`);
-
-    let score = 0;
-    if (id === query || full === query) {
-      score = 100;
-    } else if (id.includes(query) || full.includes(query)) {
-      score = 60 + (query.length / id.length) * 30;
-    } else if (name.includes(query)) {
-      score = 40 + (query.length / name.length) * 20;
-    } else if (
-      query
-        .split(/[\s\-/]+/)
-        .every(part => /^\d{8}$/.test(part) || id.includes(part) || name.includes(part) || m.provider.toLowerCase().includes(part))
-    ) {
-      score = 20;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestMatch = m;
-    }
-  }
-
-  if (bestMatch && bestScore >= 20) {
+  const bestMatch = bestModelMatch(all, normalizeModelText(input));
+  if (bestMatch) {
     const found = registry.find(bestMatch.provider, bestMatch.id);
     if (found) return found;
   }

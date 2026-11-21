@@ -61,6 +61,18 @@ function findInRoot(root: string, name: string): string | undefined {
   return findSkillDirectory(root, name);
 }
 
+function sortedSearchableDirectories(dir: string): Dirent<string>[] {
+  let entries: Dirent<string>[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && entry.name !== "node_modules")
+    .sort((a, b) => Number(a.name > b.name) - Number(a.name < b.name));
+}
+
 function findSkillDirectory(root: string, name: string): string | undefined {
   if (!existsSync(root)) return undefined;
   const queue: string[] = [root];
@@ -69,32 +81,15 @@ function findSkillDirectory(root: string, name: string): string | undefined {
     const current = queue.shift();
     if (current === undefined) continue;
 
-    let entries: Dirent<string>[];
-    try {
-      entries = readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-
-    entries.sort((a, b) => Number(a.name > b.name) - Number(a.name < b.name));
-
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
-      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
-
+    for (const entry of sortedSearchableDirectories(current)) {
       const path = join(current, entry.name);
       const skillMd = join(path, "SKILL.md");
-      const isSkillDir = existsSync(skillMd);
-
-      if (isSkillDir) {
-        if (entry.name === name) {
-          const content = safeReadFile(skillMd)?.trim();
-          if (content !== undefined) return content;
-        }
+      if (!existsSync(skillMd)) {
+        queue.push(path);
         continue;
       }
-
-      queue.push(path);
+      const content = entry.name === name ? safeReadFile(skillMd)?.trim() : undefined;
+      if (content !== undefined) return content;
     }
   }
   return undefined;
