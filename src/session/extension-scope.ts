@@ -161,6 +161,23 @@ export function planExtensionLoad(
   };
 }
 
+function excludeWarnings(a: {
+  type: string;
+  noExtensions: boolean;
+  excludeNames: Set<string>;
+  discoveredNames: Set<string> | undefined;
+}): string[] {
+  const { type, excludeNames, discoveredNames } = a;
+  if (excludeNames.size === 0) return [];
+  if (a.noExtensions) {
+    return [`extension-error:exclude_extensions has no effect for agent "${type}" — extensions: false loads nothing`];
+  }
+  if (!discoveredNames) return [];
+  return [...excludeNames]
+    .filter((name) => !discoveredNames.has(name))
+    .map((name) => `extension-error:exclude_extensions: "${name}" for agent "${type}" did not match any discovered extension`);
+}
+
 export function extensionConfigWarnings(a: {
   type: string;
   noExtensions: boolean;
@@ -171,21 +188,7 @@ export function extensionConfigWarnings(a: {
   getSurvivingNames: () => Set<string>;
 }): string[] {
   const { type, keepNames, excludeNames, extNames } = a;
-  const warnings: string[] = [];
-  if (excludeNames.size > 0 && a.noExtensions) {
-    warnings.push(
-      `extension-error:exclude_extensions has no effect for agent "${type}" — extensions: false loads nothing`,
-    );
-  }
-  if (excludeNames.size > 0 && a.discoveredNames) {
-    for (const name of excludeNames) {
-      if (!a.discoveredNames.has(name)) {
-        warnings.push(
-          `extension-error:exclude_extensions: "${name}" for agent "${type}" did not match any discovered extension`,
-        );
-      }
-    }
-  }
+  const warnings = excludeWarnings(a);
   if (keepNames.size === 0 && extNames.size === 0) return warnings;
   const surviving = a.getSurvivingNames();
   for (const name of keepNames) {
@@ -230,35 +233,47 @@ export function resolveSessionToolScope(a: {
   return { sessionTools: undefined, sessionExcludeTools: [...denyTools] };
 }
 
+interface ToolScopeInputs {
+  loader: DefaultResourceLoader;
+  toolNames: string[];
+  disallowedSet: Set<string> | undefined;
+  extNames: Set<string>;
+  narrowing: Map<string, Set<string>>;
+  readmitToolNames: Set<string>;
+  deniedExtNames?: Set<string>;
+  noExtensionTools?: boolean;
+}
+
+function isExtensionAdmitted(canons: string[], inputs: ToolScopeInputs): boolean {
+  if (canons.some((c) => inputs.deniedExtNames?.has(c))) return false;
+  return inputs.extNames.size === 0 || canons.some((c) => inputs.extNames.has(c));
+}
+
+function extensionToolNamesInScope(inputs: ToolScopeInputs): string[] {
+  const { loader, disallowedSet, narrowing, noExtensionTools } = inputs;
+  if (noExtensionTools) return [];
+  const names: string[] = [];
+  for (const extension of loader.getExtensions().extensions) {
+    const canons = extensionCanonicalNames(extension.path);
+    if (!isExtensionAdmitted(canons, inputs)) continue;
+    const narrowed = canons.map((c) => narrowing.get(c)).find(Boolean);
+    for (const name of extension.tools.keys()) {
+      if (narrowed && !narrowed.has(name)) continue;
+      if (!disallowedSet?.has(name)) names.push(name);
+    }
+  }
+  return names;
+}
+
 export function installExtensionToolScope(
   session: AgentSession,
-  ctx: {
-    loader: DefaultResourceLoader;
-    toolNames: string[];
-    disallowedSet: Set<string> | undefined;
-    extNames: Set<string>;
-    narrowing: Map<string, Set<string>>;
-    readmitToolNames: Set<string>;
-    deniedExtNames?: Set<string>;
-    noExtensionTools?: boolean;
-  },
+  ctx: ToolScopeInputs,
 ): void {
-  const { loader, toolNames, disallowedSet, extNames, narrowing, readmitToolNames, deniedExtNames, noExtensionTools } = ctx;
+  const { toolNames, disallowedSet, readmitToolNames } = ctx;
 
   const inScope = (): Set<string> => {
     const keep = new Set(toolNames.filter((t) => !disallowedSet?.has(t)));
-    const optInActive = extNames.size > 0;
-    for (const extension of noExtensionTools ? [] : loader.getExtensions().extensions) {
-      const canons = extensionCanonicalNames(extension.path);
-      if (canons.some((c) => deniedExtNames?.has(c))) continue;
-      if (optInActive && !canons.some((c) => extNames.has(c))) continue;
-      const narrowed = canons.map((c) => narrowing.get(c)).find(Boolean);
-      for (const name of extension.tools.keys()) {
-        if (narrowed && !narrowed.has(name)) continue;
-        if (disallowedSet?.has(name)) continue;
-        keep.add(name);
-      }
-    }
+    for (const name of extensionToolNamesInScope(ctx)) keep.add(name);
     for (const name of EXCLUDED_TOOL_NAMES) keep.delete(name);
     for (const name of readmitToolNames) keep.add(name);
     return keep;
