@@ -1,6 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describeModel } from "../config/model-resolver.js";
-import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled } from "../platform/worktree.js";
+import { createWorktree, isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { RpcError } from "../rpc-error.js";
 import { runAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { NestedAgentManager } from "../tool/nested-tools.js";
@@ -10,6 +10,7 @@ import { assertValidSpawnCwd, type Pool } from "./agent-manager-rules.js";
 import type { SpawnArgs } from "./agent-spawn.js";
 import { watchParentSignal } from "./parent-signal.js";
 import { recordRunError, recordRunOutcome } from "./run-outcome.js";
+import { cleanupWorktreeOutcome } from "./worktree-outcome.js";
 
 export interface StartDeps {
   agents: Map<string, AgentRecord>;
@@ -77,7 +78,7 @@ export async function startAgent(
   if (options.isolation === "worktree" && isWorktreeIsolationEnabled()) {
     worktreeCwd = await enterWorktree(deps, pi, record, baseCwd, customCwd);
     if (record.status !== "running") {
-      record.worktreeResult = await cleanupWorktree(pi, baseCwd, record.worktree!, options.description);
+      await cleanupWorktreeOutcome(record, options.description);
       deps.settleRun(record);
       return;
     }
@@ -150,7 +151,7 @@ export async function startAgent(
         record.session = session;
       }
 
-      if (record.worktree) await saveWorktree(pi, baseCwd, customCwd, record, options.description);
+      await cleanupWorktreeOutcome(record, options.description);
 
       if (isCurrent()) deps.settleRun(record);
       return responseText;
@@ -158,18 +159,7 @@ export async function startAgent(
     .catch(async (err) => {
       if (isCurrent()) recordRunError(record, err);
 
-      if (record.worktree) {
-        try {
-          const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree, options.description);
-          record.worktreeResult = wtResult;
-        } catch (cleanupErr) {
-          record.worktreeResult = {
-            hasChanges: false,
-            path: record.worktree.path,
-            failure: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-          };
-        }
-      }
+      await cleanupWorktreeOutcome(record, options.description);
 
       if (isCurrent()) deps.settleRun(record);
       return "";
@@ -221,24 +211,5 @@ function attachSession(deps: StartDeps, record: AgentRecord, session: AgentSessi
       session.steer(msg).catch(() => {});
     }
     record.pendingSteers = undefined;
-  }
-}
-
-async function saveWorktree(
-  pi: SpawnArgs["pi"],
-  baseCwd: string,
-  customCwd: string | undefined,
-  record: AgentRecord,
-  description: string,
-): Promise<void> {
-  const wtResult = await cleanupWorktree(pi, baseCwd, record.worktree!, description);
-  record.worktreeResult = wtResult;
-  if (wtResult.hasChanges && wtResult.branch) {
-    const repoNote = customCwd !== undefined ? ` in \`${baseCwd}\`` : "";
-    record.result = (record.result ?? "") +
-      `\n\n---\nChanges saved to branch \`${wtResult.branch}\`${repoNote}. Merge with: \`git merge ${wtResult.branch}\`${customCwd !== undefined ? ` (run in \`${baseCwd}\`)` : ""}`;
-  } else if (wtResult.failure) {
-    record.result = (record.result ?? "") +
-      `\n\n---\nSaving the worktree changes failed: ${wtResult.failure}\nThe worktree stays at \`${wtResult.path}\`. Its changes are not on a branch.`;
   }
 }

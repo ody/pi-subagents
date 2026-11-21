@@ -777,7 +777,7 @@ describe("AgentManager — isolation: worktree fails loud, no silent fallback", 
   it("a stop that lands during the copy discards the worktree instead of running", async () => {
     const { createWorktree, cleanupWorktree } = await import("../../src/platform/worktree.js");
     let releaseCopy!: () => void;
-    const wt = { path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy" };
+    const wt = { path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy", repoPath: "/tmp", pi: mockPi };
     vi.mocked(createWorktree).mockImplementationOnce(
       () => new Promise(resolve => { releaseCopy = () => resolve(wt); }),
     );
@@ -888,7 +888,7 @@ describe("AgentManager — SpawnOptions.cwd passthrough (#96)", () => {
   it("cwd + isolation: worktree — worktree created FROM cwd, session runs at the copy's workPath, cleanup targets cwd's repo", async () => {
     const { createWorktree, cleanupWorktree } = await import("../../src/platform/worktree.js");
     vi.mocked(createWorktree).mockResolvedValueOnce({
-      path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy/packages/api",
+      path: "/wt/copy", branch: "pi-agent-x", baseSha: "abc", workPath: "/wt/copy/packages/api", repoPath: "/", pi: mockPi,
     });
     resolvedRun();
 

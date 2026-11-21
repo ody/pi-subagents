@@ -1,4 +1,5 @@
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
+import { isWorktreeRetained } from "../platform/worktree.js";
 import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
@@ -6,6 +7,7 @@ import type { Pool } from "./agent-manager-rules.js";
 import { assertSignalCause, watchParentSignal } from "./parent-signal.js";
 import { recordRunOutcome } from "./run-outcome.js";
 import { enqueueRun, type QueuedRun } from "./run-queue.js";
+import { cleanupWorktreeOutcome } from "./worktree-outcome.js";
 
 export interface ResumeOptions {
   isBackground?: boolean;
@@ -44,7 +46,7 @@ export async function resume(
   const record = deps.agents.get(id);
   if (!record?.session) return undefined;
   if (record.status === "running" || record.status === "queued" || (!record.settled && record.promise !== undefined)) return undefined;
-  if (record.worktree && !record.worktreeResult) return undefined;
+  if (record.worktree && (!record.worktreeResult || !isWorktreeRetained(record.worktree))) return undefined;
 
   const activity = deps.activities.get(id);
   if (activity) {
@@ -61,6 +63,7 @@ export async function resume(
   record.blocking = !isBackground;
   record.resultConsumed = false;
   record.result = undefined;
+  record.worktreeResult = undefined;
   record.error = undefined;
   record.stopCause = undefined;
   record.completedAt = undefined;
@@ -142,20 +145,24 @@ function startResume(
     },
     signal: controller.signal,
   })
-    .then(({ text, failure }) => {
-      if (!isCurrent()) return text;
-      recordRunOutcome(record, { text, failure });
-      deps.settleRun(record);
+    .then(async ({ text, failure }) => {
+      if (isCurrent()) {
+        recordRunOutcome(record, { text, failure });
+        await cleanupWorktreeOutcome(record, record.description);
+        deps.settleRun(record);
+      }
       return text;
     })
-    .catch((err) => {
-      if (!isCurrent()) return "";
-      if (record.status !== "stopped") {
-        record.status = "error";
-        record.error = err instanceof Error ? err.message : String(err);
+    .catch(async (err) => {
+      if (isCurrent()) {
+        if (record.status !== "stopped") {
+          record.status = "error";
+          record.error = err instanceof Error ? err.message : String(err);
+        }
+        record.completedAt ??= Date.now();
+        await cleanupWorktreeOutcome(record, record.description);
+        deps.settleRun(record);
       }
-      record.completedAt ??= Date.now();
-      deps.settleRun(record);
       return "";
     });
 }

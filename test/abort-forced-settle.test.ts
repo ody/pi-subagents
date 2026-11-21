@@ -11,9 +11,11 @@ vi.mock("../src/platform/worktree.js", () => ({
   cleanupWorktree: vi.fn(() => ({ hasChanges: false })),
   pruneWorktrees: vi.fn(),
   isWorktreeIsolationEnabled: vi.fn(() => false),
+  isWorktreeRetained: vi.fn(() => true),
 }));
 
-import { runAgent } from "../src/session/agent-runner.js";
+import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled } from "../src/platform/worktree.js";
+import { resumeAgent, runAgent } from "../src/session/agent-runner.js";
 
 const mockPi = {} as any;
 const mockCtx = { cwd: "/tmp" } as any;
@@ -35,6 +37,10 @@ describe("AgentManager — abort() forced settle", () => {
   afterEach(() => {
     manager?.dispose();
     vi.useRealTimers();
+    vi.mocked(isWorktreeIsolationEnabled).mockReturnValue(false);
+    vi.mocked(createWorktree).mockReset();
+    vi.mocked(cleanupWorktree).mockReset();
+    vi.mocked(cleanupWorktree).mockReturnValue({ hasChanges: false } as any);
   });
 
   it("returns a wedged agent's background slot only after the grace period", async () => {
@@ -111,6 +117,107 @@ describe("AgentManager — abort() forced settle", () => {
     expect(completed).toEqual(["stopped"]);
     const id3 = manager.spawn(mockPi, mockCtx, "Z", "r", { description: "d", isBackground: true });
     expect(manager.getRecord(id3)?.status).toBe("queued");
+  });
+
+  it("records the late worktree cleanup after a forced settle without a second completion", async () => {
+    const completed: string[] = [];
+    let resolveRun!: (v: unknown) => void;
+    vi.mocked(runAgent).mockImplementationOnce(() => new Promise((resolve) => { resolveRun = resolve; }) as any);
+    vi.mocked(isWorktreeIsolationEnabled).mockReturnValue(true);
+    vi.mocked(createWorktree).mockResolvedValue({ path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt" } as any);
+    vi.mocked(cleanupWorktree).mockResolvedValue({ hasChanges: true, branch: "late-branch", path: "/tmp/wt" } as any);
+
+    manager = new AgentManager((r) => completed.push(r.status));
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true, isolation: "worktree" });
+    const record = manager.getRecord(id)!;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(record.status).toBe("running");
+
+    manager.abort(id, "user");
+    await vi.advanceTimersByTimeAsync(GRACE);
+    expect(completed).toEqual(["stopped"]);
+    expect(record.result).toContain("/tmp/wt");
+    expect(record.worktreeResult).toBeUndefined();
+    expect(cleanupWorktree).not.toHaveBeenCalled();
+
+    resolveRun({ responseText: "late", session: mockSession(), aborted: false, steered: false });
+    await record.promise;
+    expect(cleanupWorktree).toHaveBeenCalledTimes(1);
+    expect(record.result).toContain("late-branch");
+    expect(record.worktreeResult?.branch).toBe("late-branch");
+    expect(record.status).toBe("stopped");
+    expect(completed).toEqual(["stopped"]);
+  });
+
+  it("records the late worktree failure after a forced settle without a second completion", async () => {
+    const completed: string[] = [];
+    let rejectRun!: (reason: unknown) => void;
+    vi.mocked(runAgent).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRun = reject; }) as any);
+    vi.mocked(isWorktreeIsolationEnabled).mockReturnValue(true);
+    vi.mocked(createWorktree).mockResolvedValue({ path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt" } as any);
+    vi.mocked(cleanupWorktree).mockRejectedValue(new Error("disk gone"));
+
+    manager = new AgentManager((r) => completed.push(r.status));
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true, isolation: "worktree" });
+    const record = manager.getRecord(id)!;
+    await vi.advanceTimersByTimeAsync(0);
+    manager.abort(id, "user");
+    await vi.advanceTimersByTimeAsync(GRACE);
+    expect(completed).toEqual(["stopped"]);
+
+    rejectRun(new Error("boom"));
+    await record.promise;
+    expect(record.worktreeResult).toMatchObject({ hasChanges: true, path: "/tmp/wt", failure: "disk gone" });
+    expect(record.result).toContain("disk gone");
+    expect(record.status).toBe("stopped");
+    expect(completed).toEqual(["stopped"]);
+  });
+
+  it("blocks a second resume until a force-settled resumed run's late cleanup finishes", async () => {
+    const completed: string[] = [];
+    vi.mocked(isWorktreeIsolationEnabled).mockReturnValue(true);
+    vi.mocked(createWorktree).mockResolvedValue({
+      path: "/tmp/wt",
+      branch: "b",
+      baseSha: "abc",
+      workPath: "/tmp/wt",
+      repoPath: "/repo",
+      pi: mockPi,
+    } as any);
+    vi.mocked(cleanupWorktree).mockResolvedValue({ hasChanges: true, branch: "saved-branch", path: "/tmp/wt" } as any);
+
+    let resolveRun!: (v: unknown) => void;
+    vi.mocked(runAgent).mockImplementationOnce(() => new Promise((resolve) => { resolveRun = resolve; }) as any);
+
+    manager = new AgentManager((r) => completed.push(r.status));
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true, isolation: "worktree" });
+    const record = manager.getRecord(id)!;
+    await vi.advanceTimersByTimeAsync(0);
+    resolveRun({ responseText: "first", session: mockSession(), aborted: false, steered: false });
+    await record.promise;
+    expect(record.worktreeResult?.branch).toBe("saved-branch");
+
+    let resolveResume!: (v: unknown) => void;
+    vi.mocked(resumeAgent).mockImplementationOnce(() => new Promise((resolve) => { resolveResume = resolve; }) as any);
+    expect(await manager.resume(id, "again", undefined, { isBackground: true })).toBeDefined();
+    expect(record.worktreeResult).toBeUndefined();
+
+    manager.abort(id, "user");
+    await vi.advanceTimersByTimeAsync(GRACE);
+    expect(completed).toEqual(["completed", "stopped"]);
+    expect(cleanupWorktree).toHaveBeenCalledTimes(1);
+    expect(await manager.resume(id, "early", undefined, { isBackground: true })).toBeUndefined();
+
+    resolveResume({ text: "late resume", failure: undefined });
+    await record.promise;
+    expect(cleanupWorktree).toHaveBeenCalledTimes(2);
+    expect(record.worktreeResult?.branch).toBe("saved-branch");
+    expect(record.status).toBe("stopped");
+    expect(completed).toEqual(["completed", "stopped"]);
+
+    vi.mocked(resumeAgent).mockImplementationOnce(() => new Promise(() => {}) as any);
+    expect(await manager.resume(id, "again 2", undefined, { isBackground: true })).toBeDefined();
+    expect(record.status).toBe("running");
   });
 
   it("copies the streamed response text into record.result when no result exists", async () => {

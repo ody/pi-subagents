@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { EffectiveCapabilities } from "./config/capability-policy.js";
+import type { WorktreeCleanupResult, WorktreeInfo } from "./platform/worktree.js";
 import type { LifetimeUsage, SessionLike } from "./usage.js";
 
 export type { ThinkingLevel };
@@ -94,8 +95,8 @@ export interface AgentRecord {
   joinMode?: JoinMode;
   resultConsumed?: boolean;
   pendingSteers?: string[];
-  worktree?: { path: string; branch: string; baseSha: string; workPath: string };
-  worktreeResult?: { hasChanges: boolean; branch?: string; path?: string; failure?: string };
+  worktree?: WorktreeInfo;
+  worktreeResult?: WorktreeCleanupResult;
   toolCallId?: string;
   outputFile?: string;
   sessionFile?: string;

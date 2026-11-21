@@ -634,7 +634,13 @@ There are two independent pools.
 
 The two are deliberately **not** one limit. A foreground agent blocks the parent anyway. The parent could have done that work itself without paying a slot. Charging it to the background pool would therefore let a saturated pool starve the main session.
 
-Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume of a record whose earlier run has not settled, or whose worktree save is still running.
+Foreground resumes count against `maxConcurrentForeground`. A foreground resume of a top-level agent takes a foreground slot and queues when the pool is full, like a foreground spawn. A *background* resume takes a background slot and queues behind other background agents. A resume uses the pool of its own call, not the pool of the agent's earlier runs.
+
+The manager refuses a resume in three cases:
+
+- The record's earlier run has not settled.
+- The worktree save is still running.
+- The isolated worktree path is gone.
 
 Stopping a resume from `/agents` or the conversation viewer stops that resume. A foreground resume emits `agent:started`, then `agent:completed` or `agent:failed`, and appends a `agent:record` entry.
 
@@ -1141,11 +1147,27 @@ The agent gets a full, isolated copy of the repository. The extension removes th
 - **Changes made:** the extension commits changes to a new branch (`pi-agent-<id>`), and the result names the branch and the `git merge` command for it. The branch is the only artifact. The worktree path is gone, so nothing points into it
 - **Agent committed its own work:** the extension creates the branch at the agent's HEAD, preserving its commits (it commits uncommitted leftovers on top first)
 
+The cleanup outcome reaches the record on every ending: a completed run, a failed run, and a stopped run. Each one gains the branch, the failure, or the worktree path in `record.result`. A forced stop reports the worktree state at stop time. When the run ends later, the extension appends the cleanup outcome to `record.result` and sends no second notification.
+
 The agent's system prompt names the worktree as an isolated copy and tells it to work only there. This holds even if other instructions name the main checkout. Otherwise an inherited parent prompt or a task prompt mentioning the project path walks it straight back out of the copy. This is a directive, not a sandbox. An agent with shell access can still `cd` out, so don't rely on `isolation` alone to protect the main checkout.
 
 The automatic preservation commit uses `--no-verify` and `--no-gpg-sign`, so local hooks and signing config (a missing agent, for example) can't block it. Git creates the commit without a signature and without hooks. Re-sign it before you push. The commit is local-only and never pushed, and pre-push/server-side hooks still apply.
 
-If the commit or the branch step fails, the extension keeps the worktree on disk. The result reports the git error and the worktree path, and never reports "no changes". The extension removes a worktree in two cases only. Either a branch points at the agent's work, or the worktree has no changes and HEAD equals the base.
+Preservation covers tracked edits and untracked files that `.gitignore` does not match. Ignored files never reach the branch, and they are disposable. A successful removal deletes them with the worktree. An agent that writes only ignored output leaves no branch.
+
+If the commit or the branch step fails, the extension keeps the worktree on disk. The result reports the git error and the worktree path, and never reports "no changes".
+
+An unexpected cleanup exception does the same. The result carries `hasChanges: true`, the worktree path, and the error, so a lost worktree is never reported as clean.
+
+A worktree path that is gone before cleanup produces an unknown-changes outcome. The result names the path and says it no longer exists, so its change state is unknown. It never reports "no changes", and the extension creates no branch.
+
+A worktree that survives `git worktree remove` and `git worktree prune` produces a removal error. The result names the path and the git error. A branch saved before removal stays in the outcome, so one result can name both the branch and the removal failure. A clean worktree that stays behind keeps `hasChanges: false` and gains only the path and the error.
+
+The extension removes a worktree in two cases only. Either a branch points at the agent's work, or the worktree has no changes and HEAD equals the base.
+
+A retained worktree supports a resume. The extension resumes an isolated agent only while its original worktree path exists, and refuses once removal succeeded. A refused resume leaves the prior result and its worktree note intact.
+
+A permitted resume keeps that path and uses the same cleanup lifecycle. Its cleanup saves or removes the worktree again and writes that outcome to the result. So a resumed run can resume again only if its own cleanup keeps the path.
 
 If the extension cannot create the worktree, the `agent` call fails with a clear error instead of running unisolated. Typical causes: not a git repo, no commits, or `git worktree add` failing. `isolation: "worktree"` is a strict guarantee, not a hint. The extension reports the call as a failed tool call, not as a subagent that ran and returned that message. The model therefore doesn't retry it as if the agent had merely reported a problem. Initialize git and commit at least once, or omit `isolation`.
 

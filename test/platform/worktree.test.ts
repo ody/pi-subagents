@@ -8,6 +8,7 @@ import {
   cleanupWorktree,
   createWorktree,
   isWorktreeIsolationEnabled,
+  isWorktreeRetained,
   pruneWorktrees,
   setWorktreeIsolationEnabled,
 } from "../../src/platform/worktree.js";
@@ -52,6 +53,12 @@ function initGitRepo(): string {
   return dir;
 }
 
+function commitGitignore(dir: string): void {
+  writeFileSync(join(dir, ".gitignore"), "ignored.log\n");
+  execFileSync("git", ["add", ".gitignore"], { cwd: dir, stdio: "pipe" });
+  execFileSync("git", ["commit", "-m", "add gitignore"], { cwd: dir, stdio: "pipe" });
+}
+
 describe("worktree", () => {
   let repoDir: string;
   let pi: ExtensionAPI;
@@ -79,6 +86,14 @@ describe("worktree", () => {
       expect(existsSync(join(wt!.path, "README.md"))).toBe(true);
 
       try { execFileSync("git", ["worktree", "remove", "--force", wt!.path], { cwd: repoDir, stdio: "pipe" }); } catch { }
+    });
+
+    it("records the repo path it was created from", async () => {
+      const wt = (await createWorktree(pi, repoDir, "repo-path"))!;
+      expect(wt.repoPath).toBe(repoDir);
+      expect(wt.pi).toBe(pi);
+
+      try { execFileSync("git", ["worktree", "remove", "--force", wt.path], { cwd: repoDir, stdio: "pipe" }); } catch { }
     });
 
     it("returns undefined for non-git directory", async () => {
@@ -177,6 +192,20 @@ describe("worktree", () => {
     });
   });
 
+  describe("isWorktreeRetained", () => {
+    it("is true while the path exists and false once cleanup removes it", async () => {
+      const wt = (await createWorktree(pi, repoDir, "retained-1"))!;
+      expect(isWorktreeRetained(wt)).toBe(true);
+
+      await cleanupWorktree(pi, repoDir, wt, "test cleanup");
+      expect(isWorktreeRetained(wt)).toBe(false);
+    });
+
+    it("is false for a path that never existed", () => {
+      expect(isWorktreeRetained({ path: join(repoDir, "missing-worktree") })).toBe(false);
+    });
+  });
+
   describe("cleanupWorktree", () => {
     it("removes worktree when no changes made", async () => {
       const wt = (await createWorktree(pi, repoDir, "clean-1"))!;
@@ -185,6 +214,7 @@ describe("worktree", () => {
       const result = await cleanupWorktree(pi, repoDir, wt, "test cleanup");
       expect(result.hasChanges).toBe(false);
       expect(result.branch).toBeUndefined();
+      expect(result.removalFailure).toBeUndefined();
       expect(existsSync(wt.path)).toBe(false);
     });
 
@@ -210,6 +240,49 @@ describe("worktree", () => {
       expect(log).toContain("pi-agent: added new file");
 
       try { execFileSync("git", ["branch", "-D", result.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { }
+    });
+
+    it("preserves tracked and non-ignored untracked work but not ignored files", async () => {
+      commitGitignore(repoDir);
+      const wt = (await createWorktree(pi, repoDir, "ignored-1"))!;
+      expect(wt).toBeDefined();
+
+      writeFileSync(join(wt.path, "README.md"), "# Test repo\n\ntracked edit\n");
+      writeFileSync(join(wt.path, "agent-file.txt"), "agent wrote this");
+      writeFileSync(join(wt.path, "ignored.log"), "build output");
+
+      const result = await cleanupWorktree(pi, repoDir, wt, "ignored files stay out");
+
+      expect(result.hasChanges).toBe(true);
+      expect(result.branch).toBe("pi-agent-ignored-1");
+
+      const trackedContent = execFileSync("git", ["show", `${result.branch}:README.md`], {
+        cwd: repoDir, stdio: "pipe",
+      }).toString();
+      expect(trackedContent).toContain("tracked edit");
+
+      const files = execFileSync("git", ["ls-tree", "-r", "--name-only", result.branch!], {
+        cwd: repoDir, stdio: "pipe",
+      }).toString();
+      expect(files).toContain("agent-file.txt");
+      expect(files).not.toContain("ignored.log");
+      expect(existsSync(wt.path)).toBe(false);
+    });
+
+    it("discards ignored files and keeps no branch when an agent only writes ignored output", async () => {
+      commitGitignore(repoDir);
+      const wt = (await createWorktree(pi, repoDir, "ignored-only"))!;
+      expect(wt).toBeDefined();
+
+      writeFileSync(join(wt.path, "ignored.log"), "build output");
+      expect(existsSync(join(wt.path, "ignored.log"))).toBe(true);
+
+      const result = await cleanupWorktree(pi, repoDir, wt, "ignored output only");
+
+      expect(result.hasChanges).toBe(false);
+      expect(result.branch).toBeUndefined();
+      expect(existsSync(wt.path)).toBe(false);
+      expect(existsSync(join(wt.path, "ignored.log"))).toBe(false);
     });
 
     it("commits changes even when a pre-commit hook rejects (--no-verify)", async () => {
@@ -277,12 +350,18 @@ describe("worktree", () => {
       try { execFileSync("git", ["branch", "-D", result2.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { }
     });
 
-    it("handles already-deleted worktree gracefully", async () => {
+    it("reports unknown changes and names the path when the worktree is already gone", async () => {
       const wt = (await createWorktree(pi, repoDir, "gone-1"))!;
       rmSync(wt.path, { recursive: true, force: true });
 
       const result = await cleanupWorktree(pi, repoDir, wt, "already gone");
-      expect(result.hasChanges).toBe(false);
+
+      expect(result.hasChanges).toBe(true);
+      expect(result.unknownChanges).toBe(true);
+      expect(result.path).toBe(wt.path);
+      expect(result.branch).toBeUndefined();
+      expect(result.failure).toBeUndefined();
+      expect(result.removalFailure).toBeUndefined();
     });
 
     it("truncates commit message at 200 chars", async () => {
@@ -300,7 +379,7 @@ describe("worktree", () => {
       try { execFileSync("git", ["branch", "-D", result.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { }
     });
 
-    it("falls back to pruning when `git worktree remove` fails", async () => {
+    it("reports a removal failure and the path when pruning leaves the worktree in place", async () => {
       const wt = (await createWorktree(pi, repoDir, "remove-fails"))!;
       const failing = failingPi(
         args => args[0] === "worktree" && args[1] === "remove",
@@ -310,8 +389,37 @@ describe("worktree", () => {
       const result = await cleanupWorktree(failing, repoDir, wt, "removal fails");
 
       expect(result.hasChanges).toBe(false);
+      expect(result.branch).toBeUndefined();
+      expect(result.removalFailure).toBe("boom");
+      expect(result.path).toBe(wt.path);
+      expect(existsSync(wt.path)).toBe(true);
       expect(vi.mocked(failing.exec).mock.calls.some(([, args]) => args[0] === "worktree" && args[1] === "prune")).toBe(true);
       try { execFileSync("git", ["worktree", "remove", "--force", wt.path], { cwd: repoDir, stdio: "pipe" }); } catch { }
+    });
+
+    it("keeps the saved branch alongside a removal failure", async () => {
+      const wt = (await createWorktree(pi, repoDir, "remove-fails-changed"))!;
+      writeFileSync(join(wt.path, "changed.txt"), "agent output");
+      const failing = failingPi(
+        args => args[0] === "worktree" && args[1] === "remove",
+        { code: 1, killed: false },
+      );
+
+      const result = await cleanupWorktree(failing, repoDir, wt, "removal fails with work");
+
+      expect(result.hasChanges).toBe(true);
+      expect(result.branch).toBe("pi-agent-remove-fails-changed");
+      expect(result.removalFailure).toBe("boom");
+      expect(result.path).toBe(wt.path);
+      expect(result.failure).toBeUndefined();
+      expect(existsSync(wt.path)).toBe(true);
+      const branches = execFileSync("git", ["branch", "--list", result.branch!], {
+        cwd: repoDir, stdio: "pipe",
+      }).toString();
+      expect(branches).toContain(result.branch!);
+
+      try { execFileSync("git", ["worktree", "remove", "--force", wt.path], { cwd: repoDir, stdio: "pipe" }); } catch { }
+      try { execFileSync("git", ["branch", "-D", result.branch!], { cwd: repoDir, stdio: "pipe" }); } catch { }
     });
   });
 
@@ -339,17 +447,6 @@ describe("cleanupWorktree — failure path", () => {
   afterEach(async () => {
     try { await pruneWorktrees(pi, repoDir); } catch { }
     rmSync(repoDir, { recursive: true, force: true });
-  });
-
-  it("short-circuits when the worktree directory is already gone", async () => {
-    const wt = (await createWorktree(pi, repoDir, "vanished"))!;
-    expect(wt).toBeDefined();
-    rmSync(wt.path, { recursive: true, force: true });
-
-    const result = await cleanupWorktree(pi, repoDir, wt, "agent that vanished");
-
-    expect(result.hasChanges).toBe(false);
-    expect(result.branch).toBeUndefined();
   });
 
   it("keeps a worktree with a broken git link and reports the failure and path", async () => {

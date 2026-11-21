@@ -14,7 +14,11 @@ A resumed session retains its original working directory. A retained worktree su
 
 ## Decision
 
-`src/platform/worktree.ts` owns worktree creation, preservation, and removal whenever isolation applies under ADR 0029. It also owns the lifecycle of retained-path resumes. It runs Git through `pi.exec`.
+`src/platform/worktree.ts` owns worktree creation, preservation, and removal whenever isolation applies under ADR 0029. It runs Git through `pi.exec`. It also reports whether a worktree path still exists.
+
+`src/manager/worktree-outcome.ts` owns the single result writer and the cleanup call that every run ending shares. `src/manager/agent-resume.ts` owns the resume gate.
+
+A worktree record carries the repository path and the `pi` handle that its cleanup needs. A resumed run can then clean up without the arguments of the original start call.
 
 - Preservation covers tracked edits and non-ignored untracked files. Ignored files are disposable.
 - A preservation branch references the worktree HEAD after any preservation commit. Branch creation precedes removal.
@@ -23,6 +27,7 @@ A resumed session retains its original working directory. A retained worktree su
 - After removal and prune, a remaining worktree produces a removal error and its path. That error does not change the branch or `hasChanges` outcome.
 - One result writer stores `worktreeResult` and appends branch, failure, and path outcomes to `record.result`. It covers normal completion, early stop, and run failure.
 - An unexpected cleanup exception produces `hasChanges: true`, the worktree path, and the error through that writer.
+- The forced-settle stop-time note (ADR 0033) is the one result text outside this writer. It describes the worktree state at stop time.
 - After a forced settle, late cleanup updates `record.result` and `worktreeResult` without another settle, lifecycle event, or notification (ADR 0033).
 - Resume requires the original retained worktree path. That resumed run uses the same cleanup lifecycle. The extension refuses resume after successful removal.
 

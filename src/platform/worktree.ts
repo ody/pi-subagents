@@ -10,6 +10,8 @@ export interface WorktreeInfo {
   branch: string;
   baseSha: string;
   workPath: string;
+  repoPath: string;
+  pi: ExtensionAPI;
 }
 
 let worktreeIsolationEnabled = SETTING_SPECS.worktreeIsolation.default;
@@ -27,6 +29,8 @@ export interface WorktreeCleanupResult {
   branch?: string;
   path?: string;
   failure?: string;
+  unknownChanges?: boolean;
+  removalFailure?: string;
 }
 
 async function git(pi: ExtensionAPI, cwd: string, args: string[], timeout: number): Promise<string> {
@@ -59,10 +63,21 @@ export async function createWorktree(
 
   try {
     await git(pi, cwd, ["worktree", "add", "--detach", worktreePath, "HEAD"], 30000);
-    return { path: worktreePath, branch, baseSha, workPath: subdir ? join(worktreePath, subdir) : worktreePath };
+    return {
+      path: worktreePath,
+      branch,
+      baseSha,
+      workPath: subdir ? join(worktreePath, subdir) : worktreePath,
+      repoPath: cwd,
+      pi,
+    };
   } catch {
     return undefined;
   }
+}
+
+export function isWorktreeRetained(worktree: Pick<WorktreeInfo, "path">): boolean {
+  return existsSync(worktree.path);
 }
 
 export async function cleanupWorktree(
@@ -72,7 +87,7 @@ export async function cleanupWorktree(
   agentDescription: string,
 ): Promise<WorktreeCleanupResult> {
   if (!existsSync(worktree.path)) {
-    return { hasChanges: false };
+    return { hasChanges: true, path: worktree.path, unknownChanges: true };
   }
 
   try {
@@ -87,8 +102,10 @@ export async function cleanupWorktree(
       const currentSha = await git(pi, worktree.path, ["rev-parse", "HEAD"], 5000);
 
       if (currentSha === worktree.baseSha) {
-        await removeWorktree(pi, cwd, worktree.path);
-        return { hasChanges: false };
+        const removalFailure = await removeWorktree(pi, cwd, worktree.path);
+        return removalFailure
+          ? { hasChanges: false, path: worktree.path, removalFailure }
+          : { hasChanges: false };
       }
     }
 
@@ -101,12 +118,13 @@ export async function cleanupWorktree(
     }
     worktree.branch = branchName;
 
-    await removeWorktree(pi, cwd, worktree.path);
+    const removalFailure = await removeWorktree(pi, cwd, worktree.path);
 
     return {
       hasChanges: true,
       branch: worktree.branch,
       path: worktree.path,
+      ...(removalFailure ? { removalFailure } : {}),
     };
   } catch (err) {
     return {
@@ -117,18 +135,28 @@ export async function cleanupWorktree(
   }
 }
 
-async function removeWorktree(pi: ExtensionAPI, cwd: string, worktreePath: string): Promise<void> {
+async function removeWorktree(
+  pi: ExtensionAPI,
+  cwd: string,
+  worktreePath: string,
+): Promise<string | undefined> {
+  let failure: string | undefined;
   try {
     await git(pi, cwd, ["worktree", "remove", "--force", worktreePath], 10000);
-  } catch {
+  } catch (err) {
+    failure = err instanceof Error ? err.message : String(err);
+  }
+  if (failure || existsSync(worktreePath)) {
     try {
       await git(pi, cwd, ["worktree", "prune"], 5000);
-    } catch {}
+    } catch (err) {
+      failure ??= err instanceof Error ? err.message : String(err);
+    }
   }
+  if (!existsSync(worktreePath)) return undefined;
+  return failure ?? `git worktree remove and prune left the path \`${worktreePath}\` in place`;
 }
 
 export async function pruneWorktrees(pi: ExtensionAPI, cwd: string): Promise<void> {
-  try {
-    await git(pi, cwd, ["worktree", "prune"], 5000);
-  } catch {}
+  await git(pi, cwd, ["worktree", "prune"], 5000).catch(() => {});
 }
