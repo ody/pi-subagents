@@ -161,7 +161,7 @@ async function startMentionedType(
 }
 
 export function registerMentionInput(pi: ExtensionAPI, deps: MentionInputDeps): void {
-  const { manager, settings, isAgentMentionsEnabled } = deps;
+  const { settings, isAgentMentionsEnabled } = deps;
 
   pi.on("input", async (event, ctx) => {
     if (event.source === "extension" || !isAgentMentionsEnabled()) return { action: "continue" };
@@ -175,20 +175,30 @@ export function registerMentionInput(pi: ExtensionAPI, deps: MentionInputDeps): 
       return { action: "transform", text: mention.message, ...(event.images && { images: event.images }) };
     }
 
-    const resolved = manager.resolveMention(mention.handle);
-
-    if (resolved && !canDispatchDirectly) return { action: "continue" };
-
-    if (resolved?.kind === "live") {
-      const result = await dispatchLiveMention(pi, ctx, deps, resolved.record, mention);
-      if (result) return result;
-    }
-
-    if (resolved?.kind === "tombstone") return resumeTombstone(pi, ctx, deps, resolved.entry, mention);
-
-    const type = resolveHandleToType(mention.handle, getAvailableTypes());
-    if (!type) return { action: "continue" };
-
-    return startMentionedType(pi, ctx, deps, type, mention);
+    return dispatchMention(pi, ctx, deps, mention, canDispatchDirectly);
   });
+}
+
+async function dispatchMention(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  deps: MentionInputDeps,
+  mention: Mention,
+  canDispatchDirectly: boolean,
+) {
+  const resolved = deps.manager.resolveMention(mention.handle);
+
+  if (resolved && !canDispatchDirectly) return { action: "continue" as const };
+
+  if (resolved?.kind === "live") {
+    const result = await dispatchLiveMention(pi, ctx, deps, resolved.record, mention);
+    if (result) return result;
+  }
+
+  if (resolved?.kind === "tombstone") return resumeTombstone(pi, ctx, deps, resolved.entry, mention);
+
+  const type = resolveHandleToType(mention.handle, getAvailableTypes());
+  if (!type) return { action: "continue" as const };
+
+  return startMentionedType(pi, ctx, deps, type, mention);
 }
