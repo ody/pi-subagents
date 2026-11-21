@@ -612,7 +612,7 @@ describe("cross-extension RPC", () => {
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
       expect(reply).toHaveBeenCalledWith({ success: true, data: { id: "agent-42" } });
       expect(manager.spawn).toHaveBeenCalledWith(
-        deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: null }),
+        deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: undefined }),
       );
     });
 

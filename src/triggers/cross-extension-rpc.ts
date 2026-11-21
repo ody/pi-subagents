@@ -1,8 +1,10 @@
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { policyEventPayload } from "../config/capability-policy-config.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
 import type { SpawnOptions } from "../manager/agent-spawn.js";
 import { RpcError, type RpcErrorCode } from "../rpc-error.js";
 import type { AgentConfig, AgentRecord, StopCause } from "../types.js";
+import type { FunnelOptions, FunnelSpawn } from "./spawn-funnel.js";
 
 export interface EventBus {
   on(event: string, handler: (data: unknown) => void): () => void;
@@ -42,7 +44,7 @@ export const RPC_SPAWN_OPTIONS = [
 const rpcSpawnOptionSet: ReadonlySet<string> = new Set(RPC_SPAWN_OPTIONS);
 
 export interface SpawnCapable {
-  spawn(pi: unknown, ctx: unknown, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>): string;
+  spawn: FunnelSpawn;
   awaitStartup(id: string): Promise<void>;
   abort(id: string, cause: StopCause): boolean;
   getRecord(id: string): Pick<AgentRecord, "parentAgentId" | "filtered" | "modelReplaced" | "stopCause"> | undefined;
@@ -52,8 +54,8 @@ export interface SpawnCapable {
 
 export interface RpcDeps {
   events: EventBus;
-  pi: unknown;
-  getCtx: () => unknown | undefined;
+  pi: ExtensionAPI;
+  getCtx: () => ExtensionContext | undefined;
   manager: SpawnCapable;
 }
 
@@ -103,11 +105,11 @@ function handleRpc<P extends { requestId: string }>(
       const reply: { success: true; data?: unknown } = { success: true };
       if (data !== undefined) reply.data = data;
       events.emit(`${channel}:reply:${params.requestId}`, reply);
-    } catch (err: any) {
+    } catch (err) {
       events.emit(`${channel}:reply:${params.requestId}`, {
         success: false,
         code: err instanceof RpcError ? err.code : "internal",
-        error: err?.message ?? String(err),
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   });
@@ -121,7 +123,7 @@ export function registerRpcHandlers(deps: RpcDeps): RpcHandle {
     return { version: PROTOCOL_VERSION, features: RPC_FEATURES, policy: policyEventPayload(cwd) };
   });
 
-  const unsubSpawn = handleRpc<{ requestId: string; type: string; prompt: string; options?: any }>(
+  const unsubSpawn = handleRpc<{ requestId: string; type: string; prompt: string; options?: FunnelOptions }>(
     events, "agent:rpc:spawn", async ({ type, prompt, options }) => {
       const ctx = getCtx();
       if (!ctx) throw new RpcError("no_session", "No active session");

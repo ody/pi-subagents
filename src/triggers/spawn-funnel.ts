@@ -1,9 +1,12 @@
+import type { Api, Model } from "@earendil-works/pi-ai";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import { resolveCapability } from "../config/capability-policy.js";
-import { resolveModel } from "../config/model-resolver.js";
+import { type ModelRegistry, resolveModel } from "../config/model-resolver.js";
 import { scopeModel } from "../config/model-scope.js";
 import { resolveEffectiveMaxTurns } from "../config/runner-defaults.js";
 import type { AgentManager } from "../manager/agent-manager.js";
+import type { SpawnOptions } from "../manager/agent-spawn.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { RpcError } from "../rpc-error.js";
 import { resolveIsolation } from "../tool/invocation-config.js";
@@ -14,13 +17,32 @@ export interface SpawnFunnelDeps {
   reloadCustomAgents: (strict?: boolean) => void;
 }
 
+type OptionalSpawnOptions = Partial<Omit<SpawnOptions, "model">>;
+
+export type FunnelOptions = OptionalSpawnOptions & { model?: Model<Api> | string };
+
+type ScopedOptions = OptionalSpawnOptions & { model?: Model<Api> };
+
+export type FunnelSpawn = (
+  piRef: ExtensionAPI,
+  ctxRef: ExtensionContext,
+  type: string,
+  prompt: string,
+  options: FunnelOptions,
+  rawAgentConfig?: Partial<AgentConfig>,
+) => string;
+
 export interface SpawnFunnel {
-  spawnResolved: (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => string;
-  spawnTopLevel: (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => string;
+  spawnResolved: FunnelSpawn;
+  spawnTopLevel: FunnelSpawn;
   resolveAgentRef: (ref: string) => AgentRecord | undefined;
 }
 
-function resolvePin(registry: any, callerModel: any, configModel: string | undefined): { pinned: any; modelInput: string | undefined } {
+function resolvePin(
+  registry: ModelRegistry | undefined,
+  callerModel: Model<Api> | string | undefined,
+  configModel: string | undefined,
+): { pinned: Model<Api> | undefined; modelInput: string | undefined } {
   if (callerModel != null) {
     const modelInput = typeof callerModel === "string" ? callerModel : `${callerModel.provider}/${callerModel.id}`;
     if (!registry) throw new RpcError("model_registry_unavailable", `Model override "${modelInput}" provided but ctx.modelRegistry is unavailable`);
@@ -37,7 +59,7 @@ function resolvePin(registry: any, callerModel: any, configModel: string | undef
 export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
   const { manager, reloadCustomAgents } = deps;
 
-  const capabilityFor = (ctxRef: any, type: string, options: any, config?: AgentConfig, raw?: Partial<AgentConfig>, ephemeral?: boolean) =>
+  const capabilityFor = (ctxRef: ExtensionContext, type: string, options: FunnelOptions, config?: AgentConfig, raw?: Partial<AgentConfig>, ephemeral?: boolean) =>
     resolveCapability({
       type,
       cwd: ctxRef?.cwd ?? process.cwd(),
@@ -48,11 +70,11 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       notify: (message, level) => ctxRef?.ui?.notify?.(message, level),
     });
 
-  const scopedOptions = (ctxRef: any, label: string, options: any, configModel: string | undefined) => {
+  const scopedOptions = (ctxRef: ExtensionContext, label: string, options: FunnelOptions, configModel: string | undefined): ScopedOptions => {
     const registry = ctxRef?.modelRegistry;
     const callerModel = options?.model;
     const { pinned, modelInput } = resolvePin(registry, callerModel, configModel);
-    if (pinned == null || !registry) return options;
+    if (pinned == null || !registry) return { ...options, model: undefined };
     const scoped = scopeModel({
       pinned,
       sessionModel: ctxRef.model,
@@ -63,17 +85,18 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
       modelInput,
     });
     if (!scoped.ok) throw new RpcError("model_out_of_scope", scoped.message);
-    if (scoped.replaced === undefined) return callerModel === pinned ? options : { ...options, model: pinned };
-    ctxRef.ui?.notify?.(scoped.notice, "warning");
+    if (scoped.replaced === undefined) return { ...options, model: pinned };
+    if (scoped.notice) ctxRef.ui?.notify?.(scoped.notice, "warning");
     return { ...options, model: scoped.model, modelReplaced: scoped.replaced };
   };
 
-  const spawnResolved = (piRef: any, ctxRef: any, type: string, prompt: string, rawOptions: any, rawAgentConfig?: Partial<AgentConfig>) => {
+  const spawnResolved: FunnelSpawn = (piRef, ctxRef, type, prompt, rawOptions, rawAgentConfig) => {
     const inline: AgentConfig | undefined = rawOptions?.agentConfig;
     if (inline) {
       const options = scopedOptions(ctxRef, inline.displayName ?? type, rawOptions, inline.model);
       return manager.spawn(piRef, ctxRef, type, prompt, {
         ...options,
+        description: options.description ?? type,
         capability: capabilityFor(ctxRef, type, options, inline, rawAgentConfig ?? (options.ephemeral ? undefined : inline), Boolean(options.ephemeral)),
         isolation: resolveIsolation(inline.isolation, options?.isolation, isWorktreeIsolationEnabled()),
         maxTurns: resolveEffectiveMaxTurns(type, options.maxTurns, inline),
@@ -86,16 +109,16 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     const options = scopedOptions(ctxRef, config?.displayName ?? dispatch.type, rawOptions, config?.model);
     return manager.spawn(piRef, ctxRef, dispatch.type, prompt, {
       ...options,
+      description: options.description ?? dispatch.type,
       capability: capabilityFor(ctxRef, dispatch.type, options),
       isolation: resolveIsolation(getAgentConfig(dispatch.type)?.isolation, options?.isolation, isWorktreeIsolationEnabled()),
       maxTurns: options?.maxTurns ?? resolveEffectiveMaxTurns(dispatch.type, options?.maxTurns),
     });
   };
 
-  const spawnTopLevel = (piRef: any, ctxRef: any, type: string, prompt: string, options: any, rawAgentConfig?: Partial<AgentConfig>) => {
-    const safeOptions = { ...(options ?? {}) };
-    delete safeOptions.signalCause;
-    if (safeOptions.signal) safeOptions.signalCause = "extension";
+  const spawnTopLevel: FunnelSpawn = (piRef, ctxRef, type, prompt, options, rawAgentConfig) => {
+    const { signalCause: _ignored, ...rest } = options ?? {};
+    const safeOptions: FunnelOptions = rest.signal ? { ...rest, signalCause: "extension" } : rest;
     return spawnResolved(piRef, ctxRef, type, prompt, safeOptions, rawAgentConfig);
   };
 
