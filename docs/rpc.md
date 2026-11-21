@@ -49,7 +49,7 @@ The spawn reply is `{ id, filtered?, modelReplaced? }`, where `filtered` lists w
 
 Two things that are not obvious from the table:
 
-- **The runtime requires nothing.** `description` is non-optional in TypeScript and never validated. A spawn with no `options` at all is legal and works because the RPC handler and `spawnTopLevel` both substitute `{}`.
+- **The runtime requires nothing.** `description` is optional and falls back to the spawn `type`. Nothing validates it. A spawn with no `options` at all is legal and works because the RPC handler and `spawnTopLevel` both substitute `{}`.
 - **`signal` and the `on*` callbacks are function values.** They work only because the bus is in-process. A caller that genuinely serializes its payload cannot use them, and they arrive as `undefined` rather than failing.
 
 ### Inline agent definitions
