@@ -10,18 +10,10 @@ export interface WidgetLayout {
   hidden?: { running: number; finished: number };
 }
 
-export function layoutWidgetBody(sections: WidgetSections, maxBody: number): WidgetLayout {
-  const { finished, running, queued, pinned } = sections;
-  const totalBody = finished.length + running.length * 2 + (queued ? 1 : 0);
-
-  if (totalBody <= maxBody) {
-    const body: string[] = [...finished];
-    for (const pair of running) body.push(...pair);
-    if (queued) body.push(queued);
-    closeLastConnector(body, running.length > 0 && !queued);
-    return { body };
-  }
-
+function keepWithinBudget(
+  { finished, running, queued, pinned }: WidgetSections,
+  maxBody: number,
+): { keptFinished: Set<number>; keptRunning: Set<number> } {
   let budget = maxBody - 1;
   const keptFinished = new Set<number>();
   const keptRunning = new Set<number>();
@@ -46,7 +38,22 @@ export function layoutWidgetBody(sections: WidgetSections, maxBody: number): Wid
     keptFinished.add(index);
     budget--;
   });
+  return { keptFinished, keptRunning };
+}
 
+export function layoutWidgetBody(sections: WidgetSections, maxBody: number): WidgetLayout {
+  const { finished, running, queued } = sections;
+  const totalBody = finished.length + running.length * 2 + (queued ? 1 : 0);
+
+  if (totalBody <= maxBody) {
+    const body: string[] = [...finished];
+    for (const pair of running) body.push(...pair);
+    if (queued) body.push(queued);
+    closeLastConnector(body, running.length > 0 && !queued);
+    return { body };
+  }
+
+  const { keptFinished, keptRunning } = keepWithinBudget(sections, maxBody);
   const body: string[] = [];
   finished.forEach((line, index) => {
     if (keptFinished.has(index)) body.push(line);
