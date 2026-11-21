@@ -1,5 +1,5 @@
-import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import { defineTool, type ExtensionAPI, type ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type TSchema, Type } from "@sinclair/typebox";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import { isTopLevelAgent } from "../manager/agent-manager-rules.js";
@@ -61,7 +61,9 @@ export function formatSteerState(record: AgentRecord, showCost: boolean): string
 export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlToolsDeps): void {
   const { manager, notifier, settings, resolveAgentRef, usageReporting } = deps;
 
-  function registerToolReportingUsage(tool: any): void {
+  function registerToolReportingUsage<TParams extends TSchema, TDetails, TState>(
+    tool: ToolDefinition<TParams, TDetails, TState>,
+  ): void {
     pi.registerTool(withUsageReporting(tool, usageReporting));
   }
 

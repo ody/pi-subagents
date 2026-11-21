@@ -1,3 +1,5 @@
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { TSchema } from "@sinclair/typebox";
 import type { RuntimeSettings } from "./config/runtime-settings.js";
 
 export type LifetimeUsage = { input: number; output: number; cacheWrite: number; cacheRead?: number; cost?: number };
@@ -95,14 +97,14 @@ export interface UsageReportingDeps {
   pendingUsage: Pick<PendingUsagePool, "drain">;
 }
 
-export function withUsageReporting<T extends { execute: (...args: any[]) => any }>(
-  tool: T,
+export function withUsageReporting<TParams extends TSchema, TDetails, TState>(
+  tool: ToolDefinition<TParams, TDetails, TState>,
   { settings, pendingUsage }: UsageReportingDeps,
-): T {
+): ToolDefinition<TParams, TDetails, TState> {
   return {
     ...tool,
-    execute: async (toolCallId: string | undefined, ...rest: any[]) => {
-      const result = await tool.execute(toolCallId, ...rest);
+    execute: async (toolCallId, params, signal, onUpdate, ctx) => {
+      const result = await tool.execute(toolCallId, params, signal, onUpdate, ctx);
       if (!settings.reportUsage || !toolCallId) return result;
       const usage = pendingUsage.drain();
       return usage ? { ...result, usage } : result;
