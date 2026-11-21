@@ -34,6 +34,7 @@ Each entry: the rule an agent must not break, and its ADR.
 - **Session persistence.** A nested agent never persists a session. [ADR 0027](docs/decisions/0027-remember-agents.md)
 - **Usage reporting.** Subagent usage reaches pi's totals only as `usage` on tool results, and only with `reportUsage` on. [ADR 0028](docs/decisions/0028-report-usage-to-session.md)
 - **Worktree switch.** With `worktreeIsolation` off, no path creates a worktree, and a worktree request downgrades without refusal. [ADR 0029](docs/decisions/0029-worktree-isolation-switch.md)
+- **Worktree ownership.** `src/platform/worktree.ts` owns worktree creation, preservation, and removal. Never remove Git-visible work before a branch preserves it, and never resume into a removed worktree. [ADR 0047](docs/decisions/0047-worktree-code-ownership.md)
 - **Status presentation.** Every surface takes an agent's status icon and class from the one mapping in `src/ui/agent-format.ts`, and outcome rules use the class. [ADR 0036](docs/decisions/0036-agent-status-presentation.md)
 - **Agents widget.** The widget is the only widget that lists agents, draws at most 12 lines, and shows nested agents only while running. [ADR 0037](docs/decisions/0037-agents-widget.md)
 - **Widget selection.** `↓` at an empty prompt selects in the Agents widget. No separate fleet list or `fleetView` setting exists. [ADR 0038](docs/decisions/0038-agents-widget-selection.md)

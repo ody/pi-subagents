@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. pi-subagents owns its worktree lifecycle
+# 0047. pi-subagents owns its worktree lifecycle
 
 ## Context
 
