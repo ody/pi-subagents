@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { resolveModel } from "../config/model-resolver.js";
@@ -90,7 +90,7 @@ export function resolveAgentInvocationConfig(
 
 export function describeOverrides(
   overridden: ReturnType<typeof resolveAgentInvocationConfig>["overridden"],
-  model: Model<any> | undefined,
+  model: Model<Api> | undefined,
   modelRegistry: ExtensionContext["modelRegistry"],
 ): Pick<AgentInvocation, "pinnedModel" | "pinnedThinking" | "pinnedMaxTurns" | "pinnedRunInBackground"> {
   const pin = overridden?.model;

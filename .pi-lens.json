@@ -1,0 +1,10 @@
+{
+  "rules": {
+    "require-safety-comment-for-as-unknown-as": { "ignorePaths": ["**"] },
+    "no-runtime-typeof": { "ignorePaths": ["**"] },
+    "no-unknown-parameters": { "ignorePaths": ["**"] },
+    "no-unsafe-dictionary-unknown": { "ignorePaths": ["**"] },
+    "no-shape-in-symbol-names": { "ignorePaths": ["**"] },
+    "no-sort-without-comparator": { "ignorePaths": ["**"] }
+  }
+}

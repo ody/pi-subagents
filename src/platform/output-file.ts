@@ -68,7 +68,7 @@ export function streamToOutputFile(
       const entry = {
         isSidechain: true,
         agentId,
-        type: msg.role === "assistant" ? "assistant" : msg.role === "user" ? "user" : "toolResult",
+        type: msg.role === "assistant" || msg.role === "user" ? msg.role : "toolResult",
         message: msg,
         timestamp: new Date().toISOString(),
         cwd,

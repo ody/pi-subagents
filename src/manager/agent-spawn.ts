@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type GrantedCapability, isMintedVerdict } from "../config/capability-policy.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
@@ -26,7 +26,7 @@ export interface SpawnOptions {
   agentConfig?: AgentConfig;
   ephemeral?: { handleSeed: string };
   capability?: GrantedCapability;
-  model?: Model<any>;
+  model?: Model<Api>;
   modelReplaced?: string;
   maxTurns?: number;
   isolated?: boolean;
@@ -163,7 +163,8 @@ export async function spawnAndWait(
     blocking: true,
     onSpawned,
   });
-  const record = deps.agents.get(id)!;
+  const record = deps.agents.get(id);
+  if (!record) throw new Error(`Agent ${id} was not registered after spawn`);
 
   if (record.status === "queued") await record.startGate;
 

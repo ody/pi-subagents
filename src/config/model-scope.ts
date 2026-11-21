@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { isModelInScope, type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "./enabled-models.js";
 import { type ModelRegistry, resolveModel } from "./model-resolver.js";
 import { SETTING_SPECS } from "./settings-defaults.js";
@@ -72,7 +72,7 @@ export interface ModelRequest {
 export function resolvePinnedModel(
   request: ModelRequest,
   modelRegistry: ModelRegistry,
-): { ok: true; pinned: Model<any> | undefined } | { ok: false; message: string } {
+): { ok: true; pinned: Model<Api> | undefined } | { ok: false; message: string } {
   if (!request.modelInput) return { ok: true, pinned: undefined };
   const resolved = resolveModel(request.modelInput, modelRegistry);
   if (typeof resolved !== "string") return { ok: true, pinned: resolved };
@@ -82,13 +82,13 @@ export function resolvePinnedModel(
 export function resolveScopedModel(
   request: ModelRequest,
   env: {
-    sessionModel: Model<any> | undefined;
+    sessionModel: Model<Api> | undefined;
     cwd: string;
     modelRegistry: ModelRegistry;
     notify: (message: string, level: "warning") => void;
   },
   agentLabel: string,
-): { ok: false; message: string } | { ok: true; model: Model<any> | undefined; replaced: string | undefined } {
+): { ok: false; message: string } | { ok: true; model: Model<Api> | undefined; replaced: string | undefined } {
   const pinned = resolvePinnedModel(request, env.modelRegistry);
   if (!pinned.ok) return pinned;
   const scoped = scopeModel({

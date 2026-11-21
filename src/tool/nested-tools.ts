@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
   defineTool,
@@ -59,7 +59,7 @@ interface NestedSpawnOptions {
   agentConfig?: AgentConfig;
   ephemeral?: { handleSeed: string };
   capability: GrantedCapability;
-  model?: Model<any>;
+  model?: Model<Api>;
   maxTurns?: number;
   isolated?: boolean;
   inheritContext?: boolean;

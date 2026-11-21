@@ -60,7 +60,7 @@ export async function startBackgroundAgent(deps: BackgroundAgentDeps, input: Bac
 
   let id: string;
   const origBgOnSession = bgCallbacks.onSessionCreated;
-  bgCallbacks.onSessionCreated = (session: any) => {
+  bgCallbacks.onSessionCreated = (session) => {
     origBgOnSession(session);
     const rec = manager.getRecord(id);
     if (rec?.outputFile) {

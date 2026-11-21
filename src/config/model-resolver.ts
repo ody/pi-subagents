@@ -1,3 +1,5 @@
+import type { Api, Model } from "@earendil-works/pi-ai";
+
 export interface ModelEntry {
   id: string;
   name: string;
@@ -5,9 +7,9 @@ export interface ModelEntry {
 }
 
 export interface ModelRegistry {
-  find(provider: string, modelId: string): any;
-  getAll(): any[];
-  getAvailable?(): any[];
+  find(provider: string, modelId: string): Model<Api> | undefined;
+  getAll(): Model<Api>[];
+  getAvailable?(): Model<Api>[];
 }
 
 export function describeModel(
@@ -20,14 +22,14 @@ export function describeModel(
 }
 
 export function getModelLabelFromConfig(model: string): string {
-  const name = model.includes("/") ? model.split("/").pop()! : model;
+  const name = model.split("/").pop() ?? model;
   return name.replace(/-\d{8}$/, "");
 }
 
 export function resolveModel(
   input: string,
   registry: ModelRegistry,
-): any | string {
+): Model<Api> | string {
   const all = (registry.getAvailable?.() ?? registry.getAll()) as ModelEntry[];
   const availableSet = new Set(all.map(m => `${m.provider}/${m.id}`.toLowerCase()));
 

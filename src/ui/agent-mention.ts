@@ -24,7 +24,8 @@ export function mentionRoster(
   const targets: MentionTarget[] = [];
 
   for (const record of records) {
-    const handle = record.alias ?? record.handle!;
+    const handle = record.alias ?? record.handle;
+    if (handle === undefined) continue;
     taken.add(handle.toLowerCase());
     if (record.handle) taken.add(record.handle.toLowerCase());
     targets.push({ kind: "record", handle, record, typeLabel: record.displayName ?? record.agentConfig?.displayName ?? displayNameOf(record.type) });

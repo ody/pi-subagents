@@ -140,7 +140,7 @@ describe("getAgentConversation", () => {
     expect(out).toBe("[User]: from blocks");
   });
 
-  it("emits a [Tool Calls] block listing each toolCall by name or toolName, falling back to 'unknown'", () => {
+  it("emits a [Tool Calls] block listing each toolCall by name, falling back to 'unknown'", () => {
     const out = getAgentConversation(
       fakeSession([
         {
@@ -148,7 +148,7 @@ describe("getAgentConversation", () => {
           content: [
             { type: "text", text: "calling tools" },
             { type: "toolCall", name: "search" },
-            { type: "toolCall", toolName: "edit" },
+            { type: "toolCall", name: "edit" },
             { type: "toolCall" },
           ],
         },

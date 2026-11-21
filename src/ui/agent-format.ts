@@ -97,7 +97,9 @@ export function formatSessionTokens(
   const tokenStr = formatTokens(tokens);
   const annot: string[] = [];
   if (percent !== null) {
-    const color = percent >= 85 ? "error" : percent >= 70 ? "warning" : "dim";
+    let color: "error" | "warning" | "dim" = "dim";
+    if (percent >= 85) color = "error";
+    else if (percent >= 70) color = "warning";
     annot.push(theme.fg(color, `${Math.round(percent)}%`));
   }
   if (compactions > 0) {

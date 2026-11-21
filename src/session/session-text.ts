@@ -53,6 +53,8 @@ export function getAgentConversation(session: AgentSession): string {
       case "toolResult":
         parts.push(formatToolResult(msg));
         break;
+      default:
+        break;
     }
   }
 
@@ -71,7 +73,7 @@ function formatAssistantMessage(msg: Extract<SessionMessage, { role: "assistant"
   const toolCalls: string[] = [];
   for (const c of msg.content) {
     if (c.type === "text" && c.text) textParts.push(c.text);
-    else if (c.type === "toolCall") toolCalls.push(`  Tool: ${(c as any).name ?? (c as any).toolName ?? "unknown"}`);
+    else if (c.type === "toolCall") toolCalls.push(`  Tool: ${c.name ?? "unknown"}`);
   }
   const parts: string[] = [];
   if (textParts.length > 0) parts.push(`[Assistant]: ${textParts.join("\n")}`);

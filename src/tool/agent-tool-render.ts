@@ -29,9 +29,10 @@ export function renderAgentCall(
   theme: PiTheme,
   context: { isPartial: boolean; isError: boolean },
 ): Text {
-  const rowBackground = hasAgentBadge(args.subagent_type)
-    ? theme.getBgAnsi(context.isPartial ? "toolPendingBg" : context.isError ? "toolErrorBg" : "toolSuccessBg")
-    : "";
+  let backgroundName: "toolPendingBg" | "toolErrorBg" | "toolSuccessBg" = "toolSuccessBg";
+  if (context.isPartial) backgroundName = "toolPendingBg";
+  else if (context.isError) backgroundName = "toolErrorBg";
+  const rowBackground = hasAgentBadge(args.subagent_type) ? theme.getBgAnsi(backgroundName) : "";
   const desc = args.description ?? "";
   const name = renderAgentName(args.subagent_type, theme, {
     fallbackColor: "toolTitle",

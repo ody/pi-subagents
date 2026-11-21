@@ -3,7 +3,7 @@ import { type AgentDetails, formatTokens } from "../ui/agent-format.js";
 import { getLifetimeCost, getLifetimeTotal, type LifetimeUsage } from "../usage.js";
 
 export function textResult(msg: string, details?: AgentDetails) {
-  return { content: [{ type: "text" as const, text: msg }], details: details as any };
+  return { content: [{ type: "text" as const, text: msg }], details };
 }
 
 export function formatLifetimeTokens(o: { lifetimeUsage: LifetimeUsage }): string {
@@ -13,7 +13,7 @@ export function formatLifetimeTokens(o: { lifetimeUsage: LifetimeUsage }): strin
 
 export function buildDetails(
   base: Pick<AgentDetails, "displayName" | "description" | "subagentType" | "modelName" | "tags">,
-  record: { toolUses: number; startedAt: number; completedAt?: number; status: string; error?: string; id?: string; session?: any; lifetimeUsage: LifetimeUsage },
+  record: { toolUses: number; startedAt: number; completedAt?: number; status: string; error?: string; id?: string; lifetimeUsage: LifetimeUsage },
   activity?: AgentActivity,
   overrides?: Partial<AgentDetails>,
 ): AgentDetails {

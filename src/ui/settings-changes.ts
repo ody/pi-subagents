@@ -67,13 +67,11 @@ const PARSERS: Record<string, Parser> = {
   ),
   showCost: toggle("showCost", (enabled) => `Cost display ${enabledWord(enabled)}`),
   showModel: toggle("showModel", (enabled) => `Model display ${enabledWord(enabled)}`),
-  agentMentions: choice("agentMentions", (mode) =>
-    mode === "off"
-      ? "Agent mentions disabled"
-      : mode === "model"
-        ? "Agent mentions on — a conversation clone starts a mentioned agent off-screen"
-        : "Agent mentions on — a mentioned agent starts here, with no model call",
-  ),
+  agentMentions: choice("agentMentions", (mode) => {
+    if (mode === "off") return "Agent mentions disabled";
+    if (mode === "model") return "Agent mentions on — a conversation clone starts a mentioned agent off-screen";
+    return "Agent mentions on — a mentioned agent starts here, with no model call";
+  }),
   rememberAgents: toggle("rememberAgents", (enabled) => `Remember agents ${enabledWord(enabled)}`),
   ephemeralNesting: toggle("ephemeralNesting", (enabled) =>
     enabled

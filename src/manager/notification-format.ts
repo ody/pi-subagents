@@ -27,11 +27,10 @@ export function formatTaskNotification(record: AgentRecord, resultMaxLen: number
   const cost = showCost ? getLifetimeCost(record.lifetimeUsage) : 0;
   const costXml = cost > 0 ? `<estimated_cost_usd>${cost.toFixed(4)}</estimated_cost_usd>` : "";
 
-  const resultPreview = record.result
-    ? isResultCut(record, resultMaxLen)
-      ? record.result.slice(0, resultMaxLen) + "\n...(truncated, use agent_get_result for full output)"
-      : record.result
-    : "No output.";
+  let resultPreview = record.result || "No output.";
+  if (record.result && isResultCut(record, resultMaxLen)) {
+    resultPreview = record.result.slice(0, resultMaxLen) + "\n...(truncated, use agent_get_result for full output)";
+  }
 
   return [
     `<task-notification>`,
@@ -61,10 +60,8 @@ export function buildNotificationDetails(record: AgentRecord, resultMaxLen: numb
     durationMs: record.completedAt ? record.completedAt - record.startedAt : 0,
     outputFile: record.outputFile,
     error: record.error,
-    resultPreview: record.result
-      ? record.result.length > resultMaxLen
-        ? record.result.slice(0, resultMaxLen) + "…"
-        : record.result
-      : "No output.",
+    resultPreview: (record.result?.length ?? 0) > resultMaxLen
+      ? `${record.result?.slice(0, resultMaxLen)}…`
+      : record.result || "No output.",
   };
 }

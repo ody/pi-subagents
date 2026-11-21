@@ -1,4 +1,4 @@
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, resolveSpawnType } from "../agents/agent-types.js";
 import {
@@ -39,7 +39,7 @@ export type AgentCallResolution =
       ok: true;
       subagentType: SubagentType;
       displayName: string;
-      model: any;
+      model: Model<Api> | undefined;
       modelReplaced: string | undefined;
       thinking: ThinkingLevel | undefined;
       inheritContext: boolean;
@@ -124,7 +124,7 @@ function resolveCallModel(
   ctx: Pick<ExtensionContext, "model" | "modelRegistry" | "cwd"> & { ui: Pick<ExtensionContext["ui"], "notify"> },
   invocation: Pick<ReturnType<typeof resolveAgentInvocationConfig>, "modelInput" | "modelFromParams">,
   agentLabel: string,
-): { ok: false; message: string } | { ok: true; model: Model<any> | undefined; replaced: string | undefined } {
+): { ok: false; message: string } | { ok: true; model: Model<Api> | undefined; replaced: string | undefined } {
   if (params.resume) {
     const pinned = resolvePinnedModel(invocation, ctx.modelRegistry);
     return pinned.ok ? { ok: true, model: pinned.pinned ?? ctx.model, replaced: undefined } : pinned;

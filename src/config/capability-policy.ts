@@ -406,9 +406,18 @@ function lowerNames(entries: string[], cwd: string): string[] {
 }
 
 export function parentBound(parent: EffectiveCapabilities, cwd: string): CapabilityBound {
-  const extensionTools = parent.noExtensionTools ? [] : parent.extSelectors.length > 0 ? parent.extSelectors : ["ext:*"];
-  const extensions = parent.extensions === true ? undefined : parent.extensions === false ? [] : lowerNames(parent.extensions, cwd);
-  const skills = parent.skills === true ? parent.skillScope.allow : parent.skills === false ? [] : parent.skills;
+  let extensionTools = ["ext:*"];
+  if (parent.noExtensionTools) extensionTools = [];
+  else if (parent.extSelectors.length > 0) extensionTools = parent.extSelectors;
+
+  let extensions: string[] | undefined;
+  if (parent.extensions === false) extensions = [];
+  else if (parent.extensions !== true) extensions = lowerNames(parent.extensions, cwd);
+
+  let skills: string[] | undefined;
+  if (parent.skills === true) skills = parent.skillScope.allow;
+  else if (parent.skills === false) skills = [];
+  else skills = parent.skills;
   return {
     label: "parent",
     scope: {

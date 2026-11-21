@@ -1,9 +1,9 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-export function extractText(content: unknown[]): string {
+export function extractText(content: readonly { type: string; text?: string }[]): string {
   return content
-    .filter((c: any) => c.type === "text")
-    .map((c: any) => c.text ?? "")
+    .filter((c) => c.type === "text")
+    .map((c) => c.text ?? "")
     .join("\n");
 }
 

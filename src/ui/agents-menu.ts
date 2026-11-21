@@ -191,7 +191,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     } else if (choice === "Disable") {
       await disableAgent(ctx, name);
     } else if (choice === "Enable") {
-      await enableAgent(ctx, name);
+      enableAgent(ctx, name);
     }
   }
 
@@ -275,7 +275,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     ctx.ui.notify(`Disabled ${name} (${targetPath})`, "info");
   }
 
-  async function enableAgent(ctx: ExtensionCommandContext, name: string) {
+  function enableAgent(ctx: ExtensionCommandContext, name: string) {
     const file = locateUserAgentFile(name, getAgentConfig(name));
     if (!file) return;
 

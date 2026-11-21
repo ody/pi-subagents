@@ -2,7 +2,7 @@
 
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
-import type { Model } from "@earendil-works/pi-ai";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   type AgentSession,
@@ -35,10 +35,10 @@ import { collectResponseText, finalTurnError, getLastAssistantText } from "./ses
 import { preloadSkills } from "./skill-loader.js";
 
 export function resolveDefaultModel(
-  parentModel: Model<any> | undefined,
-  registry: { find(provider: string, modelId: string): Model<any> | undefined; getAvailable?(): Model<any>[] },
+  parentModel: Model<Api> | undefined,
+  registry: { find(provider: string, modelId: string): Model<Api> | undefined; getAvailable?(): Model<Api>[] },
   configModel?: string,
-): Model<any> | undefined {
+): Model<Api> | undefined {
   if (configModel) {
     const slashIdx = configModel.indexOf("/");
     if (slashIdx !== -1) {
@@ -47,7 +47,7 @@ export function resolveDefaultModel(
 
       const available = registry.getAvailable?.();
       const availableKeys = available
-        ? new Set(available.map((m: any) => `${m.provider}/${m.id}`))
+        ? new Set(available.map((m) => `${m.provider}/${m.id}`))
         : undefined;
       const isAvailable = (p: string, id: string) =>
         !availableKeys || availableKeys.has(`${p}/${id}`);
@@ -68,7 +68,7 @@ export interface ToolActivity {
 export interface RunOptions {
   pi: ExtensionAPI;
   agentId?: string;
-  model?: Model<any>;
+  model?: Model<Api>;
   maxTurns?: number;
   signal?: AbortSignal;
   isolated?: boolean;

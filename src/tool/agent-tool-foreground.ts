@@ -25,7 +25,7 @@ export interface ForegroundAgentInput {
   ctx: ExtensionContext;
   params: { prompt: string; description: string; name?: string };
   signal: AbortSignal | undefined;
-  onUpdate: AgentToolUpdateCallback<any> | undefined;
+  onUpdate: AgentToolUpdateCallback<AgentDetails> | undefined;
   call: Extract<AgentCallResolution, { ok: true }>;
   attachTranscript: (rec: AgentRecord | undefined, agentId: string) => void;
 }
@@ -79,14 +79,14 @@ export async function runForegroundAgent(deps: ForegroundAgentDeps, input: Foreg
     };
     onUpdate?.({
       content: [{ type: "text", text: `${fgState.toolUses} tool uses...` }],
-      details: details as any,
+      details,
     });
   };
 
   const fgCallbacks = createActivityTracker(streamUpdate);
 
   const origOnSession = fgCallbacks.onSessionCreated;
-  fgCallbacks.onSessionCreated = (session: any) => {
+  fgCallbacks.onSessionCreated = (session) => {
     origOnSession(session);
     if (queuedAhead !== undefined) {
       queuedAhead = undefined;

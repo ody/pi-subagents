@@ -7,7 +7,7 @@ export interface AgentTreeNode {
 }
 
 function bySiblingOrder(a: AgentRecord, b: AgentRecord): number {
-  return a.startedAt - b.startedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return a.startedAt - b.startedAt || a.id.localeCompare(b.id);
 }
 
 export function buildAgentTree(records: readonly AgentRecord[]): AgentTreeNode[] {
