@@ -212,7 +212,7 @@ Pi persists subagent sessions by default ([`rememberAgents`](#persistent-setting
 - The `@` list shows a remembered ephemeral agent under its display name, and never offers an ephemeral type as startable.
 - Names from an evicted agent stay reserved, so a later reviewer becomes `reviewer-2` rather than shadowing something you can still reach. The extension keeps the 100 most recent, and forgets all of them on `/new` and session switch. A resumed agent takes those names back, so `@reviewer` keeps meaning the same conversation.
 - An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead.
-- If someone has since deleted the session file, the mention says so and frees the handle. It does not silently send your message to a new agent.
+- If someone has since deleted the session file, the mention reports its path and keeps the handle and stored result.
 
 The grammar is deliberately narrow so nothing gets swallowed by accident:
 
