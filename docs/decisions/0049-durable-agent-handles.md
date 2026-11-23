@@ -27,7 +27,7 @@ Rebuild:
 
 Retention:
 
-- The extension never prunes child session files (ADR 0027). `rememberAgents: false` writes no handle, session file, or config to the entry.
+- The extension never prunes child session files (ADR 0027). An agent whose session is not persisted writes no handle, session file, or config to the entry.
 
 Rejected:
 
@@ -39,6 +39,6 @@ Done check: `npx vitest run test/manager/tombstone-rebuild.test.ts test/manager/
 
 ## Consequences
 
-- With `rememberAgents` on, session files hold each top-level agent's result and the built config of an ephemeral agent.
+- A persisted session's entry holds the agent's result and, for an ephemeral agent, its built config. `rememberAgents: false` and a `persist_session: false` agent file avoid that.
 - A tombstone holds a result string, so memory grows by at most the tombstone cap.
 - Child session files accumulate until pi or the user removes them. Revisit if pi publishes a session retention API.
