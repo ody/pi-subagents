@@ -550,7 +550,7 @@ Check status and retrieve results from a background agent.
 
 Cancelling a `wait: true` call (for example, with `Esc`) stops only the wait. The background agent keeps running, and its completion notification still arrives normally.
 
-The extension rebuilds tombstones from the active session branch on startup and tree navigation. It retains up to 100 of the newest tombstones. A live record takes precedence over a tombstone.
+The extension rebuilds tombstones from the active session branch on startup and tree navigation. Tree navigation removes settled top-level records absent from the active branch; running and queued agents remain. It retains up to 100 of the newest tombstones. A live record takes precedence over a tombstone. For equal completion times, the later branch entry wins.
 
 After the extension evicts an agent's record, `agent_get_result` still answers from the agent's tombstone. It resolves the ID, handle, or alias and reports the stored status, result, error, and stop cause. It omits the tool-use, token, and duration stats. It consumes nothing. `agent_steer` and `agent_stop` reply "not found" for a tombstone.
 

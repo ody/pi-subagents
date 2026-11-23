@@ -168,7 +168,7 @@ export default function (pi: ExtensionAPI) {
     getAvailableTypes().map(name => ({ name, description: getAgentConfig(name)?.description ?? name }));
 
   pi.on("session_tree", (_event, ctx) => {
-    manager.rebuildTombstones(ctx.sessionManager.getBranch());
+    manager.rebuildTombstones(ctx.sessionManager.getBranch(), true);
   });
 
   pi.on("session_shutdown", async () => {

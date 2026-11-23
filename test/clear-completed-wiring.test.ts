@@ -137,6 +137,23 @@ describe("issue #108: unread completed background agents survive session events"
     await lifecycle.get("session_shutdown")?.({}, ctx());
   });
 
+  it("replaces an abandoned completed live record with the active branch entry", async () => {
+    const { pi, tools, lifecycle } = makePi();
+    subagentsExtension(pi);
+    const context = ctx();
+    const id = await spawnCompletedBackgroundAgent(tools);
+    const recorded = pi.appendEntry.mock.calls.find(([type]: [string]) => type === "agent:record")?.[1];
+    expect(recorded?.id).toBe(id);
+    context.sessionManager.getBranch.mockReturnValue([{ type: "custom", customType: "agent:record", data: {
+      ...recorded, id: "branch-agent", handle: "general-purpose", sessionFile: "/sessions/branch-agent", result: "BRANCH-RESULT",
+    } }]);
+    await lifecycle.get("session_tree")({}, context);
+    const get = (agent_id: string) => tools.get("agent_get_result").execute("read", { agent_id }, undefined, undefined, context);
+    expect(textOf(await get(id))).toContain("Agent not found");
+    expect(textOf(await get("general-purpose"))).toContain("BRANCH-RESULT");
+    await lifecycle.get("session_shutdown")?.({}, context);
+  });
+
   it("rebuilds from the active branch on start and tree navigation", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);

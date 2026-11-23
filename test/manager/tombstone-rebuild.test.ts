@@ -16,8 +16,8 @@ function deps(): RetentionDeps {
   return { agents: new Map(), activities: new Map(), startups: new Map(), tombstones: new Map() };
 }
 
-function rebuild(state: RetentionDeps, entries: unknown[]): void {
-  rebuildTombstones(state, entries as Branch);
+function rebuild(state: RetentionDeps, entries: unknown[], treeChanged = false): void {
+  rebuildTombstones(state, entries as Branch, treeChanged);
 }
 
 describe("active branch tombstone rebuilding", () => {
@@ -53,6 +53,41 @@ describe("active branch tombstone rebuilding", () => {
     state.agents.set("live", { id: "live", handle: "HANDLE" } as AgentRecord);
     rebuild(state, [entry(), entry({ id: "live", handle: "other" })]);
     expect(state.tombstones.size).toBe(0);
+  });
+
+  it("does not resurrect an older id after its newer entry loses a handle collision", () => {
+    const state = deps();
+    rebuild(state, [entry({ id: "B", handle: "h2", completedAt: 1 }), entry({ id: "B", handle: "h1", completedAt: 2 }), entry({ id: "A", handle: "h1", completedAt: 3 })]);
+    expect([...state.tombstones.keys()]).toEqual(["h1"]);
+    expect(state.tombstones.get("h1")?.id).toBe("A");
+  });
+
+  it("prefers the later branch entry when completion times tie", () => {
+    const state = deps();
+    rebuild(state, [entry({ id: "first" }), entry({ id: "last" })]);
+    expect(state.tombstones.get("handle")?.id).toBe("last");
+  });
+
+  it("removes settled records outside the branch while keeping active and nested agents", () => {
+    const state = deps();
+    const session = { dispose: () => {} };
+    state.agents.set("old", { id: "old", handle: "handle", status: "completed", session } as unknown as AgentRecord);
+    state.agents.set("active", { id: "active", handle: "active", status: "completed", completedAt: 1 } as AgentRecord);
+    state.agents.set("running", { id: "running", handle: "running", status: "running" } as AgentRecord);
+    state.agents.set("queued", { id: "queued", handle: "queued", status: "queued" } as AgentRecord);
+    state.agents.set("nested", { id: "nested", parentAgentId: "running", status: "completed" } as AgentRecord);
+    rebuild(state, [entry({ id: "new" }), entry({ id: "active", handle: "active" })], true);
+    expect([...state.agents.keys()]).toEqual(["active", "running", "queued", "nested"]);
+    expect(state.tombstones.get("handle")?.id).toBe("new");
+    expect(state.tombstones.has("active")).toBe(false);
+  });
+
+  it("discards a later live run when the branch contains only an earlier run of the same agent", () => {
+    const state = deps();
+    state.agents.set("id", { id: "id", handle: "handle", status: "completed", startedAt: 2, completedAt: 3 } as AgentRecord);
+    rebuild(state, [entry({ result: "earlier" })], true);
+    expect(state.agents.has("id")).toBe(false);
+    expect(state.tombstones.get("handle")?.result).toBe("earlier");
   });
 
   it("retains the newest 100 tombstones", () => {

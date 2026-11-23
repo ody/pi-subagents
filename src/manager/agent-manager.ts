@@ -306,8 +306,8 @@ export class AgentManager {
     return resolveAgentMention(this.retentionDeps(), name);
   }
 
-  rebuildTombstones(branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>): void {
-    rebuildTombstoneEntries(this.retentionDeps(), branch);
+  rebuildTombstones(branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>, treeChanged = false): void {
+    rebuildTombstoneEntries(this.retentionDeps(), branch, treeChanged);
   }
 
   dropTombstone(handle: string): void {

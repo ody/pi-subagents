@@ -12,22 +12,37 @@ export interface RetentionDeps {
   isNotificationPending?: (id: string) => boolean;
 }
 
-export function rebuildTombstones(deps: RetentionDeps, branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>): void {
+function removeAbandonedRecords(deps: RetentionDeps, branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>): void {
+  const branchRuns = branch.flatMap(entry => {
+    if (entry.type !== "custom" || entry.customType !== "agent:record" || !entry.data || typeof entry.data !== "object") return [];
+    const data = entry.data as { id?: string; startedAt?: number; completedAt?: number };
+    return data.id ? [data] : [];
+  });
+  for (const [id, record] of deps.agents) {
+    if (record.parentAgentId !== undefined || record.status === "running" || record.status === "queued") continue;
+    if (branchRuns.some(run => run.id === id && run.startedAt === record.startedAt && run.completedAt === record.completedAt)) continue;
+    removeRecord(deps, id, record);
+  }
+}
+
+export function rebuildTombstones(deps: RetentionDeps, branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>, treeChanged = false): void {
+  if (treeChanged) removeAbandonedRecords(deps, branch);
   deps.tombstones.clear();
   const entries = branch.flatMap(entry => {
     if (entry.type !== "custom" || entry.customType !== "agent:record" || !entry.data || typeof entry.data !== "object") return [];
     const data = entry.data as Partial<AgentTombstone>;
     if (!data.handle || !data.sessionFile || !data.id) return [];
     return [{ ...data, completedAt: typeof data.completedAt === "number" ? data.completedAt : 0 } as AgentTombstone];
-  }).sort((a, b) => b.completedAt - a.completedAt);
+  }).reverse().sort((a, b) => b.completedAt - a.completedAt);
   const ids = new Set<string>();
   const handles = new Set<string>();
   const liveHandles = new Set([...deps.agents.values()].map(record => record.handle?.toLowerCase()));
   for (const entry of entries) {
     const normalizedHandle = entry.handle.toLowerCase();
-    if (ids.has(entry.id) || handles.has(normalizedHandle) || liveHandles.has(normalizedHandle) || deps.agents.has(entry.id)) continue;
+    const duplicate = ids.has(entry.id) || handles.has(normalizedHandle);
     ids.add(entry.id);
     handles.add(normalizedHandle);
+    if (duplicate || liveHandles.has(normalizedHandle) || deps.agents.has(entry.id)) continue;
     const { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig } = entry;
     deps.tombstones.set(handle, { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig });
     if (deps.tombstones.size === MAX_TOMBSTONES) break;
