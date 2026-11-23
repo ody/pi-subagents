@@ -444,6 +444,8 @@ interface ResumePoolCase {
   counter: keyof SlotCounts | undefined;
 }
 
+const POOL_NAMES = { runningBackground: "background", runningForeground: "foreground" } as const;
+
 const RESUME_POOLS: ResumePoolCase[] = [
   { name: "background pool", options: { isBackground: true }, setup: () => {}, counter: "runningBackground" },
   {
@@ -521,7 +523,7 @@ describe("AgentManager — resume run endings settle once", () => {
         expect(record.status).toBe("running");
         expect(record.isBackground).toBe(pool.options !== undefined);
         expect(record.blocking).toBe(pool.options === undefined);
-        expect(record.pool).toBe(pool.counter === "runningBackground" ? "background" : pool.counter === "runningForeground" ? "foreground" : undefined);
+        expect(record.pool).toBe(pool.counter && POOL_NAMES[pool.counter]);
         expect(slots(manager).runningBackground).toBe(pool.counter === "runningBackground" ? 1 : 0);
         expect(slots(manager).runningForeground).toBe(pool.counter === "runningForeground" ? 1 : 0);
       });

@@ -59,6 +59,37 @@ function writeAgents(cwd: string): void {
   );
 }
 
+function orchestratorReply(context: Context): FauxReply {
+  const results = toolResultTexts(context);
+  const spawned = results.find((r) => r.name === "agent")?.text ?? "";
+  const polled = results.find((r) => r.name === "agent_get_result")?.text;
+  if (polled !== undefined) return `orchestrator polled: ${polled}`;
+  if (!spawned) {
+    return agentCall({
+      subagent_type: "worker",
+      description: "leaf work",
+      prompt: "Do the leaf work.",
+      run_in_background: true,
+    });
+  }
+  const id = /Agent ID:\s*(\S+)/.exec(spawned)?.[1];
+  expect(id).toBeTruthy();
+  return fauxToolCall("agent_get_result", { agent_id: id as string, wait: true });
+}
+
+function backgroundPollingResponder(context: Context): FauxReply {
+  const text = firstUserText(context);
+  if (text.includes("Do the leaf work")) return WORKER_MARKER;
+  if (text.includes("Delegate this downward")) return orchestratorReply(context);
+  if (toolResultTexts(context).some((r) => r.name === "agent")) return "parent done";
+  return agentCall({
+    subagent_type: "orchestrator",
+    description: "delegate",
+    prompt: "Delegate this downward.",
+    run_in_background: false,
+  });
+}
+
 describe("nested delegation e2e (real pi-mono, faux model)", () => {
   let run: PrintModeRun | undefined;
   const tmpDirs: string[] = [];
@@ -153,37 +184,7 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
     const transcriptRoot = join(tmpdir(), `pi-subagents-${process.getuid?.() ?? 0}`, encodeCwd(cwd));
     rmSync(transcriptRoot, { recursive: true, force: true });
 
-    const respond = (context: Context): FauxReply => {
-      const text = firstUserText(context);
-
-      if (text.includes("Do the leaf work")) return WORKER_MARKER;
-
-      if (text.includes("Delegate this downward")) {
-        const results = toolResultTexts(context);
-        const spawned = results.find((r) => r.name === "agent")?.text ?? "";
-        const polled = results.find((r) => r.name === "agent_get_result")?.text;
-        if (polled !== undefined) return `orchestrator polled: ${polled}`;
-        if (spawned) {
-          const id = /Agent ID:\s*(\S+)/.exec(spawned)?.[1];
-          expect(id).toBeTruthy();
-          return fauxToolCall("agent_get_result", { agent_id: id as string, wait: true });
-        }
-        return agentCall({
-          subagent_type: "worker",
-          description: "leaf work",
-          prompt: "Do the leaf work.",
-          run_in_background: true,
-        });
-      }
-
-      if (toolResultTexts(context).some((r) => r.name === "agent")) return "parent done";
-      return agentCall({
-        subagent_type: "orchestrator",
-        description: "delegate",
-        prompt: "Delegate this downward.",
-        run_in_background: false,
-      });
-    };
+    const respond = backgroundPollingResponder;
 
     try {
       run = await runPrintMode({
