@@ -242,7 +242,9 @@ A global change that the project overrides still fires the event, with `layer: "
 
 `agent:ready` is the discovery signal, and the `session_start` handler in `src/index.ts` wires both the RPC handlers and the event itself on each `session_start` that finds them unregistered. `agent:settings_loaded` follows `agent:ready` in the same handler. It does not do this at factory time, on purpose. pi runs every extension factory *before* it applies an agent's `extensions:` filter. It only delivers lifecycle events to the survivors. A factory-time broadcast made a filtered-out session advertise a spawn service it could never provide: `ping` succeeded and every `spawn` answered `No active session`.
 
-The consequence is worth stating plainly: **a session that excludes pi-subagents is indistinguishable from a system that lacks pi-subagents.** It emits no `agent:ready` and answers nothing. Give discovery a timeout and treat expiry as "not available here" rather than waiting indefinitely. The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (the `session_shutdown` handler in `src/index.ts`), so a later `session_start` re-registers and re-emits.
+A session that excludes pi-subagents is indistinguishable from a system that lacks pi-subagents. It emits no `agent:ready` and answers nothing. Give discovery a timeout and treat expiry as "not available here" rather than waiting indefinitely.
+
+The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (the `session_shutdown` handler in `src/index.ts`), so a later `session_start` re-registers and re-emits.
 
 One more trap on the way in: an RPC-spawned agent emits **no `agent:created`**. The only two emit sites are the `agent` tool's background branch (`src/tool/agent-tool-background.ts`) and detached resume (`src/manager/background-resume.ts`). Your first event for your own agent is `agent:started` (the start callback of `AgentManager` in `src/index.ts`), so key your bookkeeping off the id that `spawn` handed you, not off `agent:created`.
 
