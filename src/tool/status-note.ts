@@ -46,7 +46,7 @@ export function getForegroundOutcomeNote(status: string, stopCause: StopCause | 
   }
 }
 
-export function partialOutputSuffix(record: AgentRecord): string {
+export function partialOutputSuffix(record: Pick<AgentRecord, "result">): string {
   const partial = record.result?.trim();
   return partial ? `\n\nPartial output before the failure:\n${partial}` : "";
 }

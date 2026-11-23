@@ -58,6 +58,7 @@ function topLevelTools(over: Partial<AgentToolDeps["settings"]>): ToolLike[] {
     notifier: {} as any,
     settings: { showCost: false },
     resolveAgentRef: () => undefined,
+    resolveAgentTombstone: () => undefined,
     usageReporting: { settings: { reportUsage: false }, pendingUsage: new Map() } as any,
   });
   return [createAgentTool(pi, deps) as ToolLike, ...registered];

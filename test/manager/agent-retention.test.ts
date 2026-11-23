@@ -31,6 +31,7 @@ function tombstone(overrides: Partial<AgentTombstone> = {}): AgentTombstone {
     description: "old session",
     sessionFile: "/sessions/explore.jsonl",
     completedAt: 1,
+    status: "completed",
     ...overrides,
   };
 }
@@ -81,6 +82,26 @@ describe("tombstone agent config", () => {
   it("leaves no tombstone for an agent with a parent, which has no handle", () => {
     const deps = remove({ parentAgentId: "parent", sessionFile: "/s/a.jsonl", agentConfig: config });
     expect(deps.tombstones.size).toBe(0);
+  });
+});
+
+describe("tombstone result fields", () => {
+  function remove(overrides: Partial<AgentRecord>): AgentTombstone | undefined {
+    const deps = retentionDeps([record({ handle: "audit", sessionFile: "/s/a.jsonl", ...overrides })]);
+    removeRecord(deps, "agent-id", deps.agents.get("agent-id") as AgentRecord);
+    return deps.tombstones.get("audit");
+  }
+
+  it("copies status and result from the record", () => {
+    expect(remove({ status: "completed", result: "found it" })).toMatchObject({ status: "completed", result: "found it" });
+  });
+
+  it("copies the error of a failed run", () => {
+    expect(remove({ status: "error", error: "boom", result: "half" })).toMatchObject({ status: "error", error: "boom", result: "half" });
+  });
+
+  it("copies the stop cause of a stopped run", () => {
+    expect(remove({ status: "stopped", stopCause: "user" })).toMatchObject({ status: "stopped", stopCause: "user" });
   });
 });
 
@@ -152,5 +173,10 @@ describe("retention sweep", () => {
   it("still tombstones a removed record with a handle and a session file", () => {
     const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl" })]);
     expect(deps.tombstones.get("audit")?.id).toBe("agent-id");
+  });
+
+  it("carries the result of a swept record onto its tombstone", () => {
+    const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl", result: "kept" })]);
+    expect(deps.tombstones.get("audit")).toMatchObject({ status: "completed", result: "kept" });
   });
 });

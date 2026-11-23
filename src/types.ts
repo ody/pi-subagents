@@ -62,6 +62,10 @@ export interface AgentTombstone {
   description: string;
   sessionFile: string;
   completedAt: number;
+  status: AgentRecord["status"];
+  result?: string;
+  error?: string;
+  stopCause?: StopCause;
   agentConfig?: AgentConfig;
 }
 

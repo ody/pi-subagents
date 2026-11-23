@@ -7,7 +7,7 @@ import { type CompletionNotifier, QUEUE_WAIT_POLL_MS } from "../manager/completi
 import { steerAgent } from "../session/agent-runner.js";
 import { SUBAGENT_TOOL_NAMES } from "../session/extension-scope.js";
 import { getAgentConversation } from "../session/session-text.js";
-import type { AgentRecord } from "../types.js";
+import type { AgentRecord, AgentTombstone } from "../types.js";
 import { formatCost, formatDuration, getDisplayName } from "../ui/agent-format.js";
 import { getLifetimeCost, getSessionContextPercent, type UsageReportingDeps, withUsageReporting } from "../usage.js";
 import { waitForRunEnd } from "./abortable.js";
@@ -19,6 +19,7 @@ export interface AgentControlToolsDeps {
   notifier: Pick<CompletionNotifier, "cancelNudge">;
   settings: Readonly<Pick<RuntimeSettings, "showCost">>;
   resolveAgentRef: (ref: string) => AgentRecord | undefined;
+  resolveAgentTombstone: (ref: string) => AgentTombstone | undefined;
   usageReporting: UsageReportingDeps;
 }
 
@@ -37,7 +38,20 @@ export function formatResultStats(record: AgentRecord, showCost: boolean): strin
   return statsParts.join(" | ");
 }
 
-export function resultBody(record: AgentRecord): string {
+export function tombstoneOutput(entry: AgentTombstone): string {
+  return (
+    `Agent: ${entry.id}\n` +
+    `Type: ${getDisplayName(entry.type)} | Status: ${entry.status}${getStatusNote(entry.status, entry.stopCause)}\n` +
+    `Description: ${entry.description}\n\n${resultBody(entry)}`
+  );
+}
+
+function conversationSection(record: AgentRecord): string {
+  const conversation = record.session ? getAgentConversation(record.session) : undefined;
+  return conversation ? `\n\n--- Agent Conversation ---\n${conversation}` : "";
+}
+
+export function resultBody(record: Pick<AgentRecord, "status" | "error" | "result">): string {
   if (record.status === "running") return "Agent is still running. Use wait: true or check back later.";
   if (record.status === "error") return `Error: ${record.error}${partialOutputSuffix(record)}`;
   return record.result?.trim() || "No output.";
@@ -59,7 +73,7 @@ export function formatSteerState(record: AgentRecord, showCost: boolean): string
 }
 
 export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlToolsDeps): void {
-  const { manager, notifier, settings, resolveAgentRef, usageReporting } = deps;
+  const { manager, notifier, settings, resolveAgentRef, resolveAgentTombstone, usageReporting } = deps;
 
   function registerToolReportingUsage<TParams extends TSchema, TDetails, TState>(
     tool: ToolDefinition<TParams, TDetails, TState>,
@@ -90,13 +104,17 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
     }),
     execute: async (_toolCallId, params, signal, _onUpdate, _ctx) => {
       const record = resolveAgentRef(params.agent_id);
+      if (!record) {
+        const entry = resolveAgentTombstone(params.agent_id);
+        if (entry) return textResult(tombstoneOutput(entry));
+      }
       if (!record || !isTopLevelAgent(record)) {
         return textResult(`Agent not found: "${params.agent_id}". It may have been cleaned up.`);
       }
 
       if (params.wait) await waitForRunEnd(record, signal, QUEUE_WAIT_POLL_MS);
 
-      let output =
+      const output =
         `Agent: ${record.id}\n` +
         `Type: ${getDisplayName(record)} | Status: ${record.status}${getStatusNote(record.status, record.stopCause)} | ${formatResultStats(record, settings.showCost)}\n` +
         `Description: ${record.description}\n\n${resultBody(record)}`;
@@ -106,14 +124,7 @@ export function registerAgentControlTools(pi: ExtensionAPI, deps: AgentControlTo
         notifier.cancelNudge(record.id);
       }
 
-      if (params.verbose && record.session) {
-        const conversation = getAgentConversation(record.session);
-        if (conversation) {
-          output += `\n\n--- Agent Conversation ---\n${conversation}`;
-        }
-      }
-
-      return textResult(output);
+      return textResult(params.verbose ? output + conversationSection(record) : output);
     },
   }));
 
