@@ -77,6 +77,24 @@ function controlledRuns() {
 }
 
 describe("AgentManager — spawn run endings settle once", () => {
+  it("keeps a shutdown stop when the runner settles late", async () => {
+    controlledRuns();
+    const completed: AgentRecord[] = [];
+    const subject = new AgentManager(record => completed.push(record), 1);
+    const id = subject.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });
+    const record = subject.getRecord(id)!;
+    subject.abortAll();
+    expect(record.status).toBe("stopped");
+    expect(record.stopCause).toBe("shutdown");
+    expect(completed).toHaveLength(0);
+    runs[0].resolve(result({ aborted: true }));
+    await record.promise;
+    expect(record.status).toBe("stopped");
+    expect(record.stopCause).toBe("shutdown");
+    expect(completed).toEqual([record]);
+    await subject.dispose();
+  });
+
   let manager: AgentManager;
   let completed: AgentRecord[];
 

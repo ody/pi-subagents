@@ -23,7 +23,7 @@ import { setMaxSubagentDepth } from "./tool/nested-tools.js";
 import { type RpcHandle, registerRpcHandlers } from "./triggers/cross-extension-rpc.js";
 import { registerMentionInput } from "./triggers/mention-input.js";
 import { createSpawnFunnel } from "./triggers/spawn-funnel.js";
-import { type AgentMentionMode, type JoinMode, type WidgetMode } from "./types.js";
+import { type AgentMentionMode, type AgentRecord, type JoinMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import { AgentWidget, type UICtx } from "./ui/agent-widget.js";
 import { registerAgentsCommand } from "./ui/agents-menu.js";
@@ -56,17 +56,7 @@ export default function (pi: ExtensionAPI) {
 
   registerNotificationRenderer(pi, { settings });
 
-  const manager = new AgentManager((record) => {
-    if (!isTopLevelAgent(record)) return;
-
-    const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
-    const eventData = buildEventData(record);
-    if (isError) {
-      pi.events.emit("agent:failed", eventData);
-    } else {
-      pi.events.emit("agent:completed", eventData);
-    }
-
+  function appendRecord(record: AgentRecord): void {
     pi.appendEntry("agent:record", {
       id: record.id, type: record.type, description: record.description,
       status: record.status, result: record.result, error: record.error,
@@ -76,6 +66,20 @@ export default function (pi: ExtensionAPI) {
         handle: record.handle, alias: record.alias, sessionFile: record.sessionFile, agentConfig: record.agentConfig,
       }),
     });
+  }
+
+  const manager = new AgentManager((record) => {
+    if (!isTopLevelAgent(record) || record.stopCause === "shutdown") return;
+
+    const isError = record.status === "error" || record.status === "stopped" || record.status === "aborted";
+    const eventData = buildEventData(record);
+    if (isError) {
+      pi.events.emit("agent:failed", eventData);
+    } else {
+      pi.events.emit("agent:completed", eventData);
+    }
+
+    appendRecord(record);
 
     notifier.onAgentComplete(record);
   }, undefined, (record) => {
@@ -176,7 +180,11 @@ export default function (pi: ExtensionAPI) {
     rpcHandle?.unsubConsume();
     rpcHandle = undefined;
     currentCtx = undefined;
+    const interrupted = manager.listAgents().filter(record =>
+      isTopLevelAgent(record) && (record.status === "running" || record.status === "queued"),
+    );
     manager.abortAll();
+    for (const record of interrupted) appendRecord(record);
     notifier.dispose();
     viewer.close();
     widget.dispose();

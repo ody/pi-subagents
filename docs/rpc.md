@@ -174,7 +174,9 @@ Fire-and-forget is the intended use. The reply carries nothing to act on. The ch
 
 Consumption is not terminal. A resume, foreground or background, un-consumes the record (`resume` in `src/manager/agent-resume.ts` sets `record.resultConsumed = false`) because the record is starting a new run. Only a new run clears consumption: an `@handle` steer of a running or queued agent leaves it unchanged.
 
-One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("agent:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It also carries optional `stopCause`. When the agent has a persisted session file, it carries `handle`, optional `alias`, and `sessionFile`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
+On every top-level settle, pi-subagents writes an `agent:record` session entry. On shutdown, it writes one stopped entry with `stopCause: "shutdown"` for each running or queued top-level agent. A late settle writes no second entry, emits no lifecycle event, and sends no notification.
+
+The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It also carries optional `stopCause`. When the agent has a persisted session file, it carries `handle`, optional `alias`, and `sessionFile`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
 
 ## Events
 
