@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. An agent's id is its pi session id
+# 0048. An agent's id is its pi session id
 
 ## Context
 

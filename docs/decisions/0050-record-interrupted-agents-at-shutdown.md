@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. A shutdown records the agents it interrupts
+# 0050. A shutdown records the agents it interrupts
 
 ## Context
 

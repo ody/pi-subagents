@@ -2,7 +2,7 @@
 
 ## Context
 
-`@handle` can reopen an agent's conversation after its in-memory record is gone. The manager evicts a record roughly ten minutes after it finishes (`src/manager/agent-retention.ts`) and keeps at most 100 tombstones. Only a session file on disk survives that.
+`@handle` can reopen an agent's conversation after its in-memory record is gone. The manager evicts a record roughly ten minutes after it finishes (`src/manager/agent-retention.ts`) and keeps at most 100 tombstones. A session file on disk survives that, and ADR 0049 rebuilds the tombstone from the session's `agent:record` entry.
 
 `rememberAgents` (default `true`) decides whether a top-level agent writes one. `runAgent` resolves it in `src/session/agent-runner.ts`: the agent file's `persist_session`, else `false` for a nested agent, else `rememberAgents`. The ephemeral agent builder currently sets `persistSession: false`, so an ephemeral agent never persists.
 
@@ -26,4 +26,4 @@ Done check: `npx vitest run test/agent-runner.test.ts test/ephemeral-agent.test.
 ## Consequences
 
 - Every top-level agent run, ephemeral runs included, leaves a file on disk that backup or data-loss tooling will see. Users who do not want that set `rememberAgents: false`.
-- Revisit if sessions need a retention limit, since nothing prunes them.
+- The extension never prunes session files (ADR 0049). Revisit if pi publishes a session retention API.

@@ -12,7 +12,7 @@ A run wedged inside a tool call never resolves its `runAgent` promise. A tool pr
 
 ## Decision
 
-Every run that leaves `queued` or `running` settles exactly once, through `settleRun` in `src/manager/agent-manager.ts`. Only `settleRun` sets `settled` or calls the completion callback. `AgentManager.reopenRun` is the one other writer: it clears `settled` when a resume starts a new run. `abortAll` at shutdown is the one exception to settling: it stops runs and does not settle them.
+Every run that leaves `queued` or `running` settles exactly once, through `settleRun` in `src/manager/agent-manager.ts`. Only `settleRun` sets `settled` or calls the completion callback. `AgentManager.reopenRun` is the one other writer: it clears `settled` when a resume starts a new run. `abortAll` at shutdown is the one exception to settling: it stops runs and does not settle them. The shutdown entry of ADR 0050 is the one `agent:record` entry written outside `settleRun`.
 
 - Every run, spawn or resume, sets `isBackground` and `blocking` from its own call. A resume is `blocking` exactly when it is foreground: the `agent` tool's `resume` and the nested resume. `poolFor` picks the run's pool, the run stores it, and a full pool queues the run.
 - A run that resolves sets its terminal status and `completedAt`, never replacing `stopped`. It then saves and removes its worktree and appends the branch or failure note, even after a forced settle.

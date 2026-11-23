@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Agent handles survive a session switch and a restart
+# 0049. Agent handles survive a session switch and a restart
 
 ## Context
 
