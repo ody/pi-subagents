@@ -174,7 +174,7 @@ Fire-and-forget is the intended use. The reply carries nothing to act on. The ch
 
 Consumption is not terminal. A resume, foreground or background, un-consumes the record (`resume` in `src/manager/agent-resume.ts` sets `record.resultConsumed = false`) because the record is starting a new run. Only a new run clears consumption: an `@handle` steer of a running or queued agent leaves it unchanged.
 
-One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("agent:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
+One related thing that lives nowhere else: on every top-level settle, pi-subagents writes a session entry — not an event — via `pi.appendEntry("agent:record", …)`. The call sits in the settle callback of `AgentManager` in `src/index.ts`. The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It also carries optional `stopCause`. When the agent has a persisted session file, it carries `handle`, optional `alias`, and `sessionFile`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
 
 ## Events
 
@@ -205,7 +205,7 @@ A run that starts after the reply needs a new request. It has no timeout paramet
 
 ## Protocol versions
 
-`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `[]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
+`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
 
 Version 4 reuses the original agent id when a tombstone reopens for a new run.
 
@@ -219,7 +219,7 @@ Version 3 contains these breaks against version 2:
 - `stopCause` is part of the stop flow.
 - `agent:settings_loaded` fires on `session_start`, right after `agent:ready`, and not from the extension factory.
 
-The feature list resets to `[]` on each version bump. Version 4 has no additive feature yet.
+The feature list resets to `[]` on each version bump. Version 4 includes `agent_record_session_fields`, which adds the optional fields to `agent:record`.
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `agent:settings_loaded` and `agent:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 

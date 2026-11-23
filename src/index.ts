@@ -71,6 +71,10 @@ export default function (pi: ExtensionAPI) {
       id: record.id, type: record.type, description: record.description,
       status: record.status, result: record.result, error: record.error,
       startedAt: record.startedAt, completedAt: record.completedAt,
+      ...(record.stopCause && { stopCause: record.stopCause }),
+      ...(record.sessionFile && {
+        handle: record.handle, alias: record.alias, sessionFile: record.sessionFile, agentConfig: record.agentConfig,
+      }),
     });
 
     notifier.onAgentComplete(record);

@@ -79,7 +79,7 @@ describe("cross-extension RPC", () => {
       events.emit("agent:rpc:ping", { requestId: "req-1" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: 4, features: [], policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
+      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: 4, features: ["agent_record_session_fields"], policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
     });
 
     it("documents the protocol version", () => {
