@@ -184,13 +184,12 @@ describe("nested delegation e2e (real pi-mono, faux model)", () => {
     const transcriptRoot = join(tmpdir(), `pi-subagents-${process.getuid?.() ?? 0}`, encodeCwd(cwd));
     rmSync(transcriptRoot, { recursive: true, force: true });
 
-    const respond = backgroundPollingResponder;
 
     try {
       run = await runPrintMode({
         prompt: "Delegate the work.",
         cwd,
-        respond,
+        respond: backgroundPollingResponder,
         live: false,
         beforeRun: () => { registerAgents(loadCustomAgents(cwd)); },
       });

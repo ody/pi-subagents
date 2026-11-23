@@ -152,21 +152,19 @@ function isLive(options: RunPrintModeOptions): boolean {
   return Boolean(options.live) || /^(1|true|yes)$/i.test(process.env.PI_E2E_LIVE ?? "");
 }
 
-function attempt(action: () => unknown): unknown {
+function ignoreErrors(action: () => unknown): void {
   try {
     action();
-    return undefined;
-  } catch (err) {
-    return err;
+  } catch {
+    return;
   }
 }
 
-async function attemptAsync(action: () => unknown): Promise<unknown> {
+async function ignoreErrorsAsync(action: () => unknown): Promise<void> {
   try {
     await action();
-    return undefined;
-  } catch (err) {
-    return err;
+  } catch {
+    return;
   }
 }
 
@@ -191,7 +189,7 @@ function enterWorkspace(options: RunPrintModeOptions, isolateGlobals: boolean): 
   }
 
   const restore = () => {
-    attempt(() => process.chdir(prevCwd));
+    ignoreErrors(() => process.chdir(prevCwd));
     if (isolateGlobals) {
       if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
       else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
@@ -341,13 +339,13 @@ async function promptUntilIdle({ session, prompt, hold, running, waitIdle, state
 }
 
 async function abortAndDispose(session: AgentSession, dispose: () => Promise<void>): Promise<void> {
-  attempt(() => session.abort());
-  await attemptAsync(dispose);
+  ignoreErrors(() => session.abort());
+  await ignoreErrorsAsync(dispose);
 }
 
 async function disposeSession(session: AgentSession, faux: ModelSetup["faux"], workspace: Workspace): Promise<void> {
-  await attemptAsync(() => session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" }));
-  attempt(() => session.dispose?.());
+  await ignoreErrorsAsync(() => session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" }));
+  ignoreErrors(() => session.dispose?.());
   faux?.unregister();
   workspace.restore();
 }
