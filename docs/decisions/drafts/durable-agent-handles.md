@@ -8,8 +8,6 @@
 
 The `agent:record` session entry is the one durable trace of a top-level agent. It sits on the branch that was active at the settle. Pi advises rebuilding state from `getBranch()`, because abandoned branches are alternative histories. A custom entry never reaches the model. The entry is part of the bus contract (ADR 0044), and an optional field is an additive change (ADR 0046).
 
-Pi fires `session_shutdown` before it tears the runtime down, for cleanup and saving state. It fires for a switch, a fork, and a reload as well as a quit, and the entry lands in the session that pi leaves. `abortAll` stops runs without settling them (ADR 0033), but a stopped run's promise can still resolve and reach its settle callback.
-
 Child session files appear under their spawning session in `/resume`. Pi owns session files, and the extension cannot tell which ones a user still wants.
 
 ## Decision
@@ -29,11 +27,6 @@ Rebuild:
 - `agent_get_result` resolves a tombstone by id, handle, or alias when no record matches. It reports the stored fields as it does for a record, and it consumes nothing. `agent_steer` and `agent_stop` reply "not found" for a tombstone.
 - A reopen whose session file is missing keeps the tombstone, and its notification names the path. A reopen follows the worktree rule of ADR 0047.
 
-Shutdown:
-
-- On `session_shutdown`, each running or queued top-level agent gets one `agent:record` entry with status `stopped` and `stopCause: "shutdown"`. It carries `sessionFile` when the run has one, and a queued run has none.
-- A run stopped with cause `shutdown` writes no entry when it settles late. This write is the one entry outside `settleRun`. It emits no lifecycle event and sends no notification.
-
 Retention:
 
 - The extension never prunes child session files (ADR 0027). `rememberAgents: false` writes no handle, session file, or config to the entry.
@@ -43,13 +36,11 @@ Rejected:
 - Rebuild from every branch: a handle can name an agent from an abandoned branch, and branches can reuse one handle.
 - Records that follow their `rootSessionId` across a switch: a record would outlive its session with an open `AgentSession`.
 - Pruning session files by age or with the parent: it can delete a session the user wants, and pi gives no hook for parent deletion.
-- Offering to resume interrupted runs at start: it needs a start prompt and worktree reconciliation, so it is its own decision.
 
-Done check: `npx vitest run test/manager/tombstone-rebuild.test.ts test/manager/agent-retention.test.ts test/triggers/cross-extension-rpc.test.ts` passes. It covers a rebuild from the active branch and again after `session_tree`, handle and id collisions, a live record winning, and `agent_get_result` from a tombstone. It also covers a missing session file, and the shutdown entry for a running and a queued agent with no duplicate on a late settle.
+Done check: `npx vitest run test/manager/tombstone-rebuild.test.ts test/manager/agent-retention.test.ts test/triggers/cross-extension-rpc.test.ts` passes. It covers a rebuild from the active branch and again after `session_tree`, handle and id collisions, a live record winning, and `agent_get_result` from a tombstone. It also covers a missing session file.
 
 ## Consequences
 
 - With `rememberAgents` on, session files hold each top-level agent's result and the built config of an ephemeral agent.
 - A tombstone holds a result string, so memory grows by at most the tombstone cap.
 - Child session files accumulate until pi or the user removes them. Revisit if pi publishes a session retention API.
-- Revisit the shutdown entry if pi stops flushing `appendEntry` during `session_shutdown`.
