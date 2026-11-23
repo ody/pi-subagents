@@ -152,14 +152,32 @@ function isLive(options: RunPrintModeOptions): boolean {
   return Boolean(options.live) || /^(1|true|yes)$/i.test(process.env.PI_E2E_LIVE ?? "");
 }
 
-export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintModeRun> {
-  const live = isLive(options);
-  const isolateGlobals = options.isolateGlobals ?? !live;
-  const timeoutMs = options.timeoutMs ?? 30_000;
+function attempt(action: () => unknown): unknown {
+  try {
+    action();
+    return undefined;
+  } catch (err) {
+    return err;
+  }
+}
 
+async function attemptAsync(action: () => unknown): Promise<unknown> {
+  try {
+    await action();
+    return undefined;
+  } catch (err) {
+    return err;
+  }
+}
+
+interface Workspace {
+  cwd: string;
+  restore: () => void;
+}
+
+function enterWorkspace(options: RunPrintModeOptions, isolateGlobals: boolean): Workspace {
   const ownsCwd = options.cwd == null;
   const cwd = options.cwd ?? mkdtempSync(join(tmpdir(), "subagents-print-"));
-
   const prevCwd = process.cwd();
   process.chdir(cwd);
 
@@ -172,58 +190,72 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
     process.env.HOME = hermeticDir;
   }
 
-  let faux: ReturnType<typeof registerFauxProvider> | undefined;
-  let model: Model<string> | undefined;
-  let modelRuntime: unknown;
-  if (live) {
-    const pin = options.live || undefined;
-    const provider = pin?.provider ?? process.env.PI_PROVIDER;
-    const modelId = pin?.model ?? process.env.PI_MODEL;
-    if (provider && modelId) {
-      model = (getModel as (p: string, m: string) => Model<string> | undefined)(provider, modelId);
-      if (!model) {
-        throw new Error(
-          `runPrintMode (live mode): model "${provider}/${modelId}" not found in the builtin catalog`,
-        );
-      }
+  const restore = () => {
+    attempt(() => process.chdir(prevCwd));
+    if (isolateGlobals) {
+      if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+      if (prevHome == null) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      if (hermeticDir) rmSync(hermeticDir, { recursive: true, force: true });
     }
-    modelRuntime = undefined;
-  } else {
-    if (!options.steps && !options.respond) {
-      throw new Error("runPrintMode (faux mode): provide `respond` or `steps`");
-    }
-    faux = registerFauxProvider({ provider: "faux", models: [{ id: "faux-1", contextWindow: 200_000 }] });
-    model = faux.getModel();
-    ({ modelRuntime } = fauxModelBackend(model));
-
-    if (options.steps) {
-      faux.setResponses(options.steps);
-    } else {
-      const respond = options.respond;
-      if (!respond) {
-        throw new Error("runPrintMode (faux mode): provide `respond` or `steps`");
-      }
-      const max = options.maxModelCalls ?? 16;
-      const factory: FauxResponseStep = async (context, _opts, state) =>
-        toAssistantMessage(await respond(context, state));
-      faux.setResponses(Array.from({ length: max }, () => factory));
-    }
-  }
-
-  const agentDir = getAgentDir();
-  const bus = createEventBus();
-  const running = new Set<string>();
-  let settled = 0;
-  bus.on("agent:started", (data) => { running.add((data as { id: string }).id); });
-  const onSettle = (data: unknown) => {
-    running.delete((data as { id: string }).id);
-    settled++;
+    if (ownsCwd) rmSync(cwd, { recursive: true, force: true });
   };
+  return { cwd, restore };
+}
+
+interface ModelSetup {
+  faux?: ReturnType<typeof registerFauxProvider>;
+  model?: Model<string>;
+  modelRuntime: unknown;
+}
+
+function liveModelSetup(options: RunPrintModeOptions): ModelSetup {
+  const pin = options.live || undefined;
+  const provider = pin?.provider ?? process.env.PI_PROVIDER;
+  const modelId = pin?.model ?? process.env.PI_MODEL;
+  if (!provider || !modelId) return { modelRuntime: undefined };
+  const model = (getModel as (p: string, m: string) => Model<string> | undefined)(provider, modelId);
+  if (!model) {
+    throw new Error(`runPrintMode (live mode): model "${provider}/${modelId}" not found in the builtin catalog`);
+  }
+  return { model, modelRuntime: undefined };
+}
+
+function fauxModelSetup(options: RunPrintModeOptions): ModelSetup {
+  const { steps, respond } = options;
+  if (!steps && !respond) {
+    throw new Error("runPrintMode (faux mode): provide `respond` or `steps`");
+  }
+  const faux = registerFauxProvider({ provider: "faux", models: [{ id: "faux-1", contextWindow: 200_000 }] });
+  const model = faux.getModel();
+  const { modelRuntime } = fauxModelBackend(model);
+  if (steps) {
+    faux.setResponses(steps);
+  } else if (respond) {
+    const factory: FauxResponseStep = async (context, _opts, state) =>
+      toAssistantMessage(await respond(context, state));
+    faux.setResponses(Array.from({ length: options.maxModelCalls ?? 16 }, () => factory));
+  }
+  return { faux, model, modelRuntime };
+}
+
+function trackRunningAgents(bus: EventBus): Set<string> {
+  const running = new Set<string>();
+  bus.on("agent:started", (data) => { running.add((data as { id: string }).id); });
+  const onSettle = (data: unknown) => { running.delete((data as { id: string }).id); };
   bus.on("agent:completed", onSettle);
   bus.on("agent:failed", onSettle);
+  return running;
+}
 
-  options.onBus?.(bus);
-
+async function createHostSession(
+  options: RunPrintModeOptions,
+  live: boolean,
+  host: { cwd: string; agentDir: string; bus: EventBus },
+  setup: ModelSetup,
+): Promise<AgentSession> {
+  const { cwd, agentDir, bus } = host;
   const loader = new DefaultResourceLoader({
     cwd,
     agentDir,
@@ -242,8 +274,8 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
   const { session } = await createAgentSession({
     cwd,
     agentDir,
-    model,
-    modelRuntime: modelRuntime as any,
+    model: setup.model,
+    modelRuntime: setup.modelRuntime as any,
     resourceLoader: loader,
     sessionManager: SessionManager.inMemory(cwd),
     settingsManager: live
@@ -251,114 +283,119 @@ export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintM
       : SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } }),
   });
   session.setSessionName("print-mode-host");
-
   await session.bindExtensions({});
+  return session;
+}
 
-  const waitIdle = () => requestWaitIdle(bus);
+function holdForBackgroundAgents(session: AgentSession, running: Set<string>, waitIdle: () => Promise<void>): void {
+  const agent = (session as any).agent;
+  if (!agent?.dequeueFollowUpMessages) return;
+  const original = agent.dequeueFollowUpMessages.bind(agent);
+  agent.dequeueFollowUpMessages = function patched() {
+    const messages = original();
+    if (messages.length > 0) return messages;
+    if (running.size > 0) return waitIdle().then(() => original());
+    return messages;
+  };
+}
 
-  const hold = options.hold ?? true;
-  if (hold) {
-    const agent = (session as any).agent;
-    if (agent?.dequeueFollowUpMessages) {
-      const original = agent.dequeueFollowUpMessages.bind(agent);
-      agent.dequeueFollowUpMessages = function patched() {
-        const messages = original();
-        if (messages.length > 0) return messages;
-        if (running.size > 0) {
-          return waitIdle().then(() => original());
-        }
-        return messages;
-      };
-    }
-  }
-
+function captureResponseText(session: AgentSession): { current: () => string; stop: () => void } {
   let responseText = "";
-  const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+  const stop = session.subscribe((event: AgentSessionEvent) => {
     if (event.type === "message_start") responseText = "";
-    if (
-      event.type === "message_update" &&
-      event.assistantMessageEvent.type === "text_delta"
-    ) {
+    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
       responseText += event.assistantMessageEvent.delta;
     }
   });
+  return { current: () => responseText, stop };
+}
 
+function timeoutAfter(ms: number, running: Set<string>): { promise: Promise<never>; clear: () => void } {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const promise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const stillRunning = running.size > 0 ? " (background subagents still running)" : "";
+      reject(new Error(`print-mode runner timed out after ${ms}ms${stillRunning}`));
+    }, ms);
+  });
+  return { promise, clear: () => clearTimeout(timer) };
+}
+
+interface PromptLoop {
+  session: AgentSession;
+  prompt: string;
+  hold: boolean;
+  running: Set<string>;
+  waitIdle: () => Promise<void>;
+  state: { failed: boolean };
+}
+
+async function promptUntilIdle({ session, prompt, hold, running, waitIdle, state }: PromptLoop): Promise<void> {
+  await session.prompt(prompt);
+  if (!hold) return;
+  while (!state.failed && running.size > 0) {
+    await waitIdle();
+    if (state.failed) break;
+    await session.prompt("Background agents have completed. Process their results.");
+  }
+}
+
+async function abortAndDispose(session: AgentSession, dispose: () => Promise<void>): Promise<void> {
+  attempt(() => session.abort());
+  await attemptAsync(dispose);
+}
+
+async function disposeSession(session: AgentSession, faux: ModelSetup["faux"], workspace: Workspace): Promise<void> {
+  await attemptAsync(() => session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" }));
+  attempt(() => session.dispose?.());
+  faux?.unregister();
+  workspace.restore();
+}
+
+export async function runPrintMode(options: RunPrintModeOptions): Promise<PrintModeRun> {
+  const live = isLive(options);
+  const isolateGlobals = options.isolateGlobals ?? !live;
+  const workspace = enterWorkspace(options, isolateGlobals);
+  const setup = live ? liveModelSetup(options) : fauxModelSetup(options);
+
+  const agentDir = getAgentDir();
+  const bus = createEventBus();
+  const running = trackRunningAgents(bus);
+  options.onBus?.(bus);
+
+  const session = await createHostSession(options, live, { cwd: workspace.cwd, agentDir, bus }, setup);
+  const waitIdle = () => requestWaitIdle(bus);
+  const hold = options.hold ?? true;
+  if (hold) holdForBackgroundAgents(session, running, waitIdle);
+
+  const response = captureResponseText(session);
   const onAbort = () => session.abort();
   options.signal?.addEventListener("abort", onAbort, { once: true });
 
-  const dispose = async () => {
-    try {
-      await session.extensionRunner?.emit({ type: "session_shutdown", reason: "quit" });
-    } catch {
-    }
-    try {
-      session.dispose?.();
-    } catch {
-    }
-    faux?.unregister();
-    try {
-      process.chdir(prevCwd);
-    } catch {
-    }
-    if (isolateGlobals) {
-      if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
-      else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
-      if (prevHome == null) delete process.env.HOME;
-      else process.env.HOME = prevHome;
-      if (hermeticDir) rmSync(hermeticDir, { recursive: true, force: true });
-    }
-    if (ownsCwd) rmSync(cwd, { recursive: true, force: true });
-  };
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let failed = false;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      const stillRunning = running.size > 0 ? " (background subagents still running)" : "";
-      reject(new Error(`print-mode runner timed out after ${timeoutMs}ms${stillRunning}`));
-    }, timeoutMs);
-  });
+  const dispose = () => disposeSession(session, setup.faux, workspace);
+  const state = { failed: false };
+  const timeout = timeoutAfter(options.timeoutMs ?? 30_000, running);
   try {
     await Promise.race([
-      (async () => {
-        await session.prompt(options.prompt);
-        if (hold) {
-          while (!failed && running.size > 0) {
-            await waitIdle();
-            if (failed) break;
-            await session.prompt("Background agents have completed. Process their results.");
-          }
-        }
-      })(),
-      timeout,
+      promptUntilIdle({ session, prompt: options.prompt, hold, running, waitIdle, state }),
+      timeout.promise,
     ]);
   } catch (err) {
-    failed = true;
-    try {
-      session.abort();
-    } catch {
-    }
-    try {
-      await dispose();
-    } catch {
-    }
+    state.failed = true;
+    await abortAndDispose(session, dispose);
     throw err;
   } finally {
-    clearTimeout(timer);
-    unsubscribe();
+    timeout.clear();
+    response.stop();
     options.signal?.removeEventListener("abort", onAbort);
   }
 
-  if (!responseText.trim()) {
-    responseText = lastAssistantText(session);
-  }
-
   return {
-    responseText: responseText.trim(),
+    responseText: (response.current().trim() ? response.current() : lastAssistantText(session)).trim(),
     parentSession: session,
     bus,
     waitIdle,
-    modelCalls: faux?.state.callCount ?? 0,
+    modelCalls: setup.faux?.state.callCount ?? 0,
     dispose,
   };
 }
