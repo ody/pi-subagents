@@ -950,7 +950,7 @@ describe("resuming an evicted agent by name", () => {
     const manager = tap.manager();
     const record = manager.getRecord(id)!;
     record.sessionFile = sessionPath();
-    writeFileSync(record.sessionFile, "");
+    writeFileSync(record.sessionFile, `${JSON.stringify({ type: "session", version: 3, id, timestamp: new Date().toISOString(), cwd: process.cwd() })}\n`);
     record.completedAt = Date.now() - 11 * 60_000;
     await waitForNudgeHold();
     await vi.advanceTimersByTimeAsync(60_000);
@@ -980,9 +980,22 @@ describe("resuming an evicted agent by name", () => {
       expect.anything(),
       "Explore",
       "anything else?",
-      expect.objectContaining({ resumeSessionFile: sessionPath() }),
+      expect.objectContaining({ resumeSessionFile: sessionPath(), agentId: id }),
     );
+    expect(manager.getRecord(id)).toBeDefined();
     expect(uiCtx.ui.notify).toHaveBeenCalledWith("Resuming @explore", "info");
+  });
+
+  it("takes the reopened id from the session header", async () => {
+    const { lifecycle, tools } = boot();
+    finishedRun(fakeSession());
+    await evict(await spawnBackground(tools));
+    const headerId = "0197a1b2-c3d4-7e5f-8a6b-1234567890ab";
+    writeFileSync(sessionPath(), `${JSON.stringify({ type: "session", version: 3, id: headerId, timestamp: new Date().toISOString(), cwd: process.cwd() })}\n`);
+    vi.mocked(runAgent).mockClear();
+    await send(lifecycle, "@explore continue");
+    await flush();
+    expect(vi.mocked(runAgent)).toHaveBeenCalledWith(expect.anything(), "Explore", "continue", expect.objectContaining({ agentId: headerId }));
   });
 
   it("hands the resumed agent the handle back instead of numbering it", async () => {

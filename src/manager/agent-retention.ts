@@ -38,6 +38,7 @@ export function resolveMention(deps: RetentionDeps, name: string): MentionResolu
   const byId = deps.agents.get(name);
   if (byId?.parentAgentId === undefined && byId !== undefined) return { kind: "live", record: byId };
   for (const entry of deps.tombstones.values()) {
+    if (deps.agents.has(entry.id)) continue;
     if (entry.handle.toLowerCase() === wanted || entry.alias?.toLowerCase() === wanted || entry.id === name) {
       return { kind: "tombstone", entry };
     }
@@ -50,7 +51,7 @@ export function dropTombstone(deps: RetentionDeps, handle: string): void {
 }
 
 export function listTombstones(deps: RetentionDeps): AgentTombstone[] {
-  return [...deps.tombstones.values()].sort((a, b) => b.completedAt - a.completedAt);
+  return [...deps.tombstones.values()].filter(entry => !deps.agents.has(entry.id)).sort((a, b) => b.completedAt - a.completedAt);
 }
 
 export function removeRecord(deps: RetentionDeps, id: string, record: AgentRecord): void {

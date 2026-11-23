@@ -14,7 +14,7 @@ This document is the contract reference ([ADR 0044](decisions/0044-bus-only-inte
 - The complete spawn-option surface.
 - Every error code.
 - The notification race.
-- What protocol version `3` does and does not promise.
+- What protocol version `4` does and does not promise.
 
 ## Spawn options
 
@@ -205,7 +205,9 @@ A run that starts after the reply needs a new request. It has no timeout paramet
 
 ## Protocol versions
 
-`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `3`. `features` is `RPC_FEATURES` in the same file, currently `[]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
+`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `[]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
+
+Version 4 reuses the original agent id when a tombstone reopens for a new run.
 
 Version 3 contains these breaks against version 2:
 
@@ -217,7 +219,7 @@ Version 3 contains these breaks against version 2:
 - `stopCause` is part of the stop flow.
 - `agent:settings_loaded` fires on `session_start`, right after `agent:ready`, and not from the extension factory.
 
-The feature list resets to `[]` on each version bump. Version 3 has no additive feature yet.
+The feature list resets to `[]` on each version bump. Version 4 has no additive feature yet.
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `agent:settings_loaded` and `agent:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 

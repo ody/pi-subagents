@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { getAgentConfig, getAvailableTypes, resolveSpawnType } from "../agents/agent-types.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults.js";
 import type { RuntimeSettings } from "../config/runtime-settings.js";
@@ -85,10 +85,13 @@ async function resumeTombstone(
   }
 
   try {
+    const header = SessionManager.open(entry.sessionFile).getHeader();
+    if (!header?.id) throw new Error("Session header has no id");
     const id = deps.spawnResolved(pi, ctx, type, mention.message, {
       description: entry.description,
       reclaim: { handle: entry.handle, alias: entry.alias },
       resumeSessionFile: entry.sessionFile,
+      sessionId: header.id,
       isBackground: true,
       ...(entry.agentConfig && { agentConfig: entry.agentConfig, ephemeral: { handleSeed: entry.handle } }),
     });

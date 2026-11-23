@@ -21,6 +21,7 @@ export interface SpawnOptions {
   description: string;
   name?: string;
   resumeSessionFile?: string;
+  sessionId?: string;
   reclaim?: { handle: string; alias?: string };
   agentConfig?: AgentConfig;
   ephemeral?: { handleSeed: string };
@@ -80,7 +81,8 @@ export function spawnAgent(
   }
   assertSignalCause("spawn", options.signal, options.signalCause);
 
-  const id = uuidv7();
+  const id = options.sessionId ?? uuidv7();
+  if (deps.agents.has(id)) throw new Error(`Agent ${id} already exists`);
   const record = newAgentRecord(id, type, options, options.capability, deps.takenHandles);
   deps.agents.set(id, record);
   deps.activities.set(id, {

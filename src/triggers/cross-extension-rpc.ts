@@ -15,7 +15,7 @@ export type RpcReply<T = void> =
   | { success: true; data?: T }
   | { success: false; code: RpcErrorCode; error: string };
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 
 export const RPC_FEATURES: readonly string[] = [];
 

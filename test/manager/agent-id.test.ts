@@ -200,6 +200,15 @@ describe("agent id is the pi session id", () => {
       expect(sessionHeaderId(file)).toBe(id);
     });
 
+    it("refuses to replace a held id", async () => {
+      register("held", false);
+      const { id, record } = await runProbe("held");
+      expect(() => manager.spawn({} as any, { cwd } as any, "held", "again", {
+        description: "duplicate", sessionId: id,
+      })).toThrow(`Agent ${id} already exists`);
+      expect(manager.getRecord(id)).toBe(record);
+    });
+
     it("gives two same-type agents started in one minute different session names", async () => {
       register("twin", false);
       const first = await runProbe("twin");

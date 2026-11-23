@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, type RetentionDeps, removeRecord, resolveMention, takenHandles } from "../../src/manager/agent-retention.js";
+import { cleanup, listTombstones, type RetentionDeps, removeRecord, resolveMention, takenHandles } from "../../src/manager/agent-retention.js";
 import type { AgentConfig, AgentRecord, AgentTombstone } from "../../src/types.js";
 
 function record(overrides: Partial<AgentRecord>): AgentRecord {
@@ -51,6 +51,15 @@ describe("agent retention lookups", () => {
     const resolved = resolveMention(retentionDeps([live], [tombstone()]), "explore");
 
     expect(resolved).toEqual({ kind: "live", record: live });
+  });
+
+  it("shadows a tombstone with a live record of the same id", () => {
+    const live = record({ handle: "new" });
+    const entry = tombstone({ id: live.id, alias: "old" });
+    const deps = retentionDeps([live], [entry]);
+    expect(resolveMention(deps, live.id)).toEqual({ kind: "live", record: live });
+    expect(resolveMention(deps, "old")).toBeUndefined();
+    expect(listTombstones(deps)).toEqual([]);
   });
 
   it("excludes nested records and resolves a tombstone by alias", () => {
