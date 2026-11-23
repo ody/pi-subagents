@@ -12,7 +12,7 @@ import { type MentionCloneOptions, runMentionClone } from "./mention-clone.js";
 import type { SpawnFunnel } from "./spawn-funnel.js";
 
 export interface MentionInputDeps {
-  manager: Pick<AgentManager, "resolveMention" | "steer" | "dropTombstone" | "awaitStartup">;
+  manager: Pick<AgentManager, "resolveMention" | "steer" | "awaitStartup">;
   settings: Readonly<Pick<RuntimeSettings, "agentMentionMode">>;
   isAgentMentionsEnabled: () => boolean;
   spawnResolved: SpawnFunnel["spawnResolved"];
@@ -68,8 +68,7 @@ async function resumeTombstone(
   const target = `@${entry.alias ?? entry.handle}`;
 
   if (!existsSync(entry.sessionFile)) {
-    deps.manager.dropTombstone(entry.handle);
-    ctx.ui.notify(`Could not resume ${target} — its session is gone.`, "warning");
+    ctx.ui.notify(`Could not resume ${target} — its session file is missing: ${entry.sessionFile}`, "warning");
     return handled;
   }
 

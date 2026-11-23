@@ -1194,11 +1194,11 @@ describe("resuming an evicted agent by name", () => {
     expect(result).toEqual({ action: "handled" });
     expect(vi.mocked(runAgent)).not.toHaveBeenCalled();
     expect(uiCtx.ui.notify).toHaveBeenCalledWith(
-      "Could not resume @explore — its session is gone.", "warning",
+      `Could not resume @explore — its session file is missing: ${sessionPath()}`, "warning",
     );
   });
 
-  it("forgets an unopenable session so the next mention starts fresh", async () => {
+  it("keeps an unopenable session for the next mention", async () => {
     const { lifecycle, tools } = bootDirect();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1215,11 +1215,14 @@ describe("resuming an evicted agent by name", () => {
     );
     await flush();
 
-    expect(vi.mocked(runAgent)).toHaveBeenCalledWith(
-      expect.anything(), "Explore", "start over",
-      expect.not.objectContaining({ resumeSessionFile: expect.anything() }),
+    expect(vi.mocked(runAgent)).not.toHaveBeenCalled();
+    expect(uiCtx.ui.notify).toHaveBeenCalledWith(
+      `Could not resume @explore — its session file is missing: ${sessionPath()}`, "warning",
     );
-    expect(uiCtx.ui.notify).toHaveBeenCalledWith("Started @explore", "info");
+    const result = await tools.get("agent_get_result").execute(
+      "tc", { agent_id: "explore" }, undefined, undefined, ctx(),
+    );
+    expect(textOf(result)).toContain("first answer");
   });
 });
 
