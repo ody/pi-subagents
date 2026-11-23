@@ -10,7 +10,7 @@ import type { SpawnOptions } from "../manager/agent-spawn.js";
 import { isWorktreeIsolationEnabled } from "../platform/worktree.js";
 import { RpcError } from "../rpc-error.js";
 import { resolveIsolation } from "../tool/invocation-config.js";
-import type { AgentConfig, AgentRecord } from "../types.js";
+import type { AgentConfig, AgentRecord, AgentTombstone } from "../types.js";
 
 export interface SpawnFunnelDeps {
   manager: Pick<AgentManager, "spawn" | "getRecord" | "resolveMention">;
@@ -36,6 +36,7 @@ export interface SpawnFunnel {
   spawnResolved: FunnelSpawn;
   spawnTopLevel: FunnelSpawn;
   resolveAgentRef: (ref: string) => AgentRecord | undefined;
+  resolveAgentTombstone: (ref: string) => AgentTombstone | undefined;
 }
 
 function resolvePin(
@@ -129,5 +130,11 @@ export function createSpawnFunnel(deps: SpawnFunnelDeps): SpawnFunnel {
     return resolved?.kind === "live" ? resolved.record : undefined;
   };
 
-  return { spawnResolved, spawnTopLevel, resolveAgentRef };
+  const resolveAgentTombstone = (ref: string): AgentTombstone | undefined => {
+    if (resolveAgentRef(ref)) return undefined;
+    const resolved = manager.resolveMention(ref);
+    return resolved?.kind === "tombstone" ? resolved.entry : undefined;
+  };
+
+  return { spawnResolved, spawnTopLevel, resolveAgentRef, resolveAgentTombstone };
 }

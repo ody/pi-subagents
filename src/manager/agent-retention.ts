@@ -73,6 +73,10 @@ function tombstone(deps: RetentionDeps, record: AgentRecord): void {
     description: record.description,
     sessionFile: record.sessionFile,
     completedAt: record.completedAt ?? Date.now(),
+    status: record.status,
+    result: record.result,
+    error: record.error,
+    stopCause: record.stopCause,
     agentConfig: record.agentConfig,
   });
   while (deps.tombstones.size > MAX_TOMBSTONES) {

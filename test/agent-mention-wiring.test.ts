@@ -1147,7 +1147,7 @@ describe("resuming an evicted agent by name", () => {
     expect(manager.getRecord(resumedId)?.description).toBe("find flaky tests");
   });
 
-  it("does not let the tools steer or read an agent that is gone", async () => {
+  it("lets agent_get_result read an evicted agent from its tombstone but not steer it", async () => {
     const { tools } = boot();
     finishedRun(fakeSession());
     await evict(await spawnBackground(tools));
@@ -1161,7 +1161,7 @@ describe("resuming an evicted agent by name", () => {
     );
 
     expect(textOf(steered)).toContain("Agent not found");
-    expect(textOf(read)).toContain("Agent not found");
+    expect(textOf(read)).toContain("first answer");
   });
 
   it("reports a session that is gone, rather than starting something else", async () => {

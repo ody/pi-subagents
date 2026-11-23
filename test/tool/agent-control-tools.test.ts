@@ -17,6 +17,7 @@ function setup(record: AgentRecord) {
     notifier: { cancelNudge },
     settings: { showCost: false },
     resolveAgentRef: (ref: string) => (ref === record.id || ref === record.handle ? record : undefined),
+    resolveAgentTombstone: () => undefined,
     usageReporting: { settings: { reportUsage: false }, pendingUsage: new Map() } as any,
   });
   const getResult = tools.find((tool) => tool.name === "agent_get_result");

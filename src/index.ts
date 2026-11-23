@@ -99,7 +99,7 @@ export default function (pi: ExtensionAPI) {
     if (settings.reportUsage) pendingUsage.add(usage);
   }, (id: string): boolean => notifier.isNotificationPending(id));
 
-  const { spawnResolved, spawnTopLevel, resolveAgentRef } = createSpawnFunnel({ manager, reloadCustomAgents });
+  const { spawnResolved, spawnTopLevel, resolveAgentRef, resolveAgentTombstone } = createSpawnFunnel({ manager, reloadCustomAgents });
 
 
   let currentCtx: ExtensionContext | undefined;
@@ -298,7 +298,7 @@ export default function (pi: ExtensionAPI) {
     agentTool: registeredAgentTool,
   });
 
-  registerAgentControlTools(pi, { manager, notifier, settings, resolveAgentRef, usageReporting });
+  registerAgentControlTools(pi, { manager, notifier, settings, resolveAgentRef, resolveAgentTombstone, usageReporting });
 
   registerAgentsCommand(pi, {
     manager,
