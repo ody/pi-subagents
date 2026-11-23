@@ -1,3 +1,4 @@
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { shutdownChildSession } from "../session/agent-session-shutdown.js";
 import type { AgentRecord, AgentTombstone, MentionResolution } from "../types.js";
 
@@ -9,6 +10,28 @@ export interface RetentionDeps {
   startups: Map<string, Promise<void>>;
   tombstones: Map<string, AgentTombstone>;
   isNotificationPending?: (id: string) => boolean;
+}
+
+export function rebuildTombstones(deps: RetentionDeps, branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>): void {
+  deps.tombstones.clear();
+  const entries = branch.flatMap(entry => {
+    if (entry.type !== "custom" || entry.customType !== "agent:record" || !entry.data || typeof entry.data !== "object") return [];
+    const data = entry.data as Partial<AgentTombstone>;
+    if (!data.handle || !data.sessionFile || !data.id) return [];
+    return [{ ...data, completedAt: typeof data.completedAt === "number" ? data.completedAt : 0 } as AgentTombstone];
+  }).sort((a, b) => b.completedAt - a.completedAt);
+  const ids = new Set<string>();
+  const handles = new Set<string>();
+  const liveHandles = new Set([...deps.agents.values()].map(record => record.handle?.toLowerCase()));
+  for (const entry of entries) {
+    const normalizedHandle = entry.handle.toLowerCase();
+    if (ids.has(entry.id) || handles.has(normalizedHandle) || liveHandles.has(normalizedHandle) || deps.agents.has(entry.id)) continue;
+    ids.add(entry.id);
+    handles.add(normalizedHandle);
+    const { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig } = entry;
+    deps.tombstones.set(handle, { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig });
+    if (deps.tombstones.size === MAX_TOMBSTONES) break;
+  }
 }
 
 export function takenHandles(deps: RetentionDeps): Set<string> {

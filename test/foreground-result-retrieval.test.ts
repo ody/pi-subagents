@@ -158,16 +158,4 @@ describe("issue #174: foreground agent that hits max_turns", () => {
     await parent.lifecycle.get("session_shutdown")?.({}, ctx());
   });
 
-  it("IS evicted by a session switch — its result was already delivered inline", async () => {
-    const { pi, tools, lifecycle } = makePi();
-    subagentsExtension(pi);
-    const { id } = await runForegroundSteeredAgent(tools);
-
-    await lifecycle.get("session_before_switch")?.();
-
-    const read = await tools.get("agent_get_result").execute("tc-read", { agent_id: id }, undefined, undefined, ctx());
-    expect(textOf(read)).toContain("Agent not found");
-
-    await lifecycle.get("session_shutdown")?.({}, ctx());
-  });
 });

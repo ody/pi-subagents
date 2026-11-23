@@ -137,19 +137,21 @@ describe("issue #108: unread completed background agents survive session events"
     await lifecycle.get("session_shutdown")?.({}, ctx());
   });
 
-  it("once read, a session switch DOES evict it — the fix stays surgical, no leak", async () => {
+  it("rebuilds from the active branch on start and tree navigation", async () => {
     const { pi, tools, lifecycle } = makePi();
     subagentsExtension(pi);
-    const id = await spawnCompletedBackgroundAgent(tools);
-
-    const first = await tools.get("agent_get_result").execute("tc-read1", { agent_id: id }, undefined, undefined, ctx());
-    expect(textOf(first)).toContain("THE-RESULT-PAYLOAD");
-
-    await lifecycle.get("session_before_switch")?.();
-
-    const second = await tools.get("agent_get_result").execute("tc-read2", { agent_id: id }, undefined, undefined, ctx());
-    expect(textOf(second)).toContain("Agent not found");
-
-    await lifecycle.get("session_shutdown")?.({}, ctx());
+    const context = ctx();
+    const entry = (id: string) => ({ type: "custom", customType: "agent:record", data: {
+      id, handle: id, type: "general-purpose", description: id, sessionFile: `/sessions/${id}`, completedAt: 1, status: "completed", result: id,
+    } });
+    context.sessionManager.getBranch.mockReturnValue([entry("first")]);
+    await lifecycle.get("session_start")({}, context);
+    const get = (id: string) => tools.get("agent_get_result").execute("read", { agent_id: id }, undefined, undefined, context);
+    expect(textOf(await get("first"))).toContain("first");
+    context.sessionManager.getBranch.mockReturnValue([entry("second")]);
+    await lifecycle.get("session_tree")({}, context);
+    expect(textOf(await get("first"))).toContain("Agent not found");
+    expect(textOf(await get("second"))).toContain("second");
+    await lifecycle.get("session_shutdown")({}, context);
   });
 });

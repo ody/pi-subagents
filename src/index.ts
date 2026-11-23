@@ -121,7 +121,7 @@ export default function (pi: ExtensionAPI) {
       widget.setUICtx(ctx.ui);
       widget.setInputCtx(ctx.ui);
     }
-    manager.clearCompleted(true);
+    manager.rebuildTombstones(ctx.sessionManager.getBranch());
     if (!rpcHandle) {
       rpcHandle = registerRpcHandlers({
         events: pi.events,
@@ -163,8 +163,8 @@ export default function (pi: ExtensionAPI) {
   const mentionTypes = (): TypeInfo[] =>
     getAvailableTypes().map(name => ({ name, description: getAgentConfig(name)?.description ?? name }));
 
-  pi.on("session_before_switch", () => {
-    manager.clearCompleted(true);
+  pi.on("session_tree", (_event, ctx) => {
+    manager.rebuildTombstones(ctx.sessionManager.getBranch());
   });
 
   pi.on("session_shutdown", async () => {

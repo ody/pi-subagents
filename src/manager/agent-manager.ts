@@ -10,7 +10,7 @@ import type { AgentActivity, AgentRecord, AgentTombstone, MentionResolution, Sto
 import type { LifetimeUsage } from "../usage.js";
 import { occupiesForegroundSlot, occupiesPoolSlot, type Pool } from "./agent-manager-rules.js";
 import { type ResumeDeps, type ResumeOptions, resume as resumeOperation } from "./agent-resume.js";
-import { cleanup as cleanupRecords, clearCompleted as clearCompletedRecords, dropTombstone as dropTombstoneEntry, takenHandles as getTakenHandles, listTombstones as listTombstoneEntries, type RetentionDeps, resolveMention as resolveAgentMention } from "./agent-retention.js";
+import { cleanup as cleanupRecords, clearCompleted as clearCompletedRecords, dropTombstone as dropTombstoneEntry, takenHandles as getTakenHandles, listTombstones as listTombstoneEntries, type RetentionDeps, rebuildTombstones as rebuildTombstoneEntries, resolveMention as resolveAgentMention } from "./agent-retention.js";
 import { type SpawnArgs, type SpawnDeps, type SpawnOptions, spawnAgent, spawnAndWait as spawnAndWaitOperation } from "./agent-spawn.js";
 import { awaitStartup as awaitStartupOperation, launch as launchAgent, type StartDeps } from "./agent-start.js";
 import { armQueuedAbort as armQueuedAbortOperation } from "./parent-signal.js";
@@ -169,7 +169,7 @@ export class AgentManager {
     record.detachParentSignal?.();
     record.detachParentSignal = undefined;
     if (record.outputCleanup) {
-      try { record.outputCleanup(); } catch {}
+      try { record.outputCleanup(); } catch (error) { console.error("Agent output cleanup failed:", error); }
       record.outputCleanup = undefined;
     }
 
@@ -179,7 +179,7 @@ export class AgentManager {
     else if (record.pool === "foreground") this.runningForeground--;
     if (!record.isBackground) record.resultConsumed = true;
 
-    try { this.onComplete?.(record); } catch {}
+    try { this.onComplete?.(record); } catch (error) { console.error("Agent completion callback failed:", error); }
     this.drainQueue();
   }
 
@@ -304,6 +304,10 @@ export class AgentManager {
 
   resolveMention(name: string): MentionResolution | undefined {
     return resolveAgentMention(this.retentionDeps(), name);
+  }
+
+  rebuildTombstones(branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>): void {
+    rebuildTombstoneEntries(this.retentionDeps(), branch);
   }
 
   dropTombstone(handle: string): void {

@@ -387,7 +387,7 @@ describe("resolving which agent a handle means", () => {
     const id = await spawnBackground(tools);
     await flush();
     managerRegistry().getRecord(id)!.resultConsumed = true;
-    await lifecycle.get("session_before_switch")();
+    managerRegistry().clearCompleted(true);
     expect(managerRegistry().getRecord(id)).toBeUndefined();
 
     vi.mocked(resumeAgent).mockClear();
