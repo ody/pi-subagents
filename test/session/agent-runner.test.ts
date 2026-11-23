@@ -379,7 +379,7 @@ describe("agent-runner final output capture", () => {
 
     await runAgent(ctx, "Explore", "go", { pi, agentId: "a1b2c3d4e5f6" });
 
-    expect(session.setSessionName).toHaveBeenCalledWith("Explore#a1b2c3d4");
+    expect(session.setSessionName).toHaveBeenCalledWith("Explore#c3d4e5f6");
   });
 });
 
@@ -739,7 +739,7 @@ describe("agent-runner session persistence", () => {
 
     await runAgent(ctx, "Explore", "go", { pi });
 
-    expect(sessionManagerInMemory).toHaveBeenCalledWith("/tmp");
+    expect(sessionManagerInMemory).toHaveBeenCalledWith("/tmp", { id: undefined });
     expect(sessionManagerCreate).not.toHaveBeenCalled();
   });
 

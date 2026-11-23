@@ -256,6 +256,10 @@ Press ctrl+o in pi to expand a completed result and show the full agent output i
 
 By default, foreground and background agents each stream their full conversation to a per-subagent transcript. The transcript is a JSON-lines file at `<os-tmpdir>/pi-subagents-<uid>/<cwd>/<session>/tasks/<agent-id>.output` (owner-only `0700`; the OS clears it on reboot).
 
+An agent's ID is a uuidv7 string. It is also the ID of the agent's pi session. The `.output` file name, the `agentId` field inside it and the session file header all hold the same value.
+
+The session name takes the last 8 characters of the ID (`general-purpose#1a2b3c4d`). The worktree branch and path use the full ID.
+
 - Set `output_transcript: false` on a custom agent to write no transcript path or file for it.
 - Set `outputTranscript: false` in `subagents.json` to make transcripts opt-in for the whole project. Frontmatter overrides the project default.
 
@@ -267,7 +271,7 @@ Background agent completion notifications render as styled boxes:
 ✓ Find auth files completed
   ↻3 · 3 tool uses · 12.4k token · 4.1s
   ⎿  Found 5 files related to authentication...
-  transcript: /tmp/pi-subagents-501/home-user-project/sess-1/tasks/agent-abc123.output
+  transcript: /tmp/pi-subagents-501/home-user-project/sess-1/tasks/0197a1b2-c3d4-7e5f-8a6b-1234567890ab.output
 ```
 
 Group completions render each agent as a separate block. The LLM receives structured `<task-notification>` XML for parsing, while the user sees the themed visual.

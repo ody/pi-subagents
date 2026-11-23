@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import { type Api, type Model, uuidv7 } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type GrantedCapability, isMintedVerdict } from "../config/capability-policy.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
@@ -81,7 +80,7 @@ export function spawnAgent(
   }
   assertSignalCause("spawn", options.signal, options.signalCause);
 
-  const id = randomUUID().slice(0, 17);
+  const id = uuidv7();
   const record = newAgentRecord(id, type, options, options.capability, deps.takenHandles);
   deps.agents.set(id, record);
   deps.activities.set(id, {

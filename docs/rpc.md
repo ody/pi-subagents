@@ -45,6 +45,8 @@ The RPC handler passes the raw `agentConfig` next to the normalized one. The pol
 
 The spawn reply is `{ id, filtered?, modelReplaced? }`, where `filtered` lists what the policy removed from an agent file's values, such as `tool bash`.
 
+**Agent ids.** An id is an opaque string in uuidv7 format ([ADR 0048](decisions/0048-agent-id-is-session-id.md)). Never parse it. It is also the id of the agent's pi session, and it names the `.output` transcript and the `pi-agent-<id>` worktree branch.
+
 **Model scope.** `modelReplaced` is the out-of-scope model, such as `anthropic/claude-opus-4-6`, that the scope check replaced with the session model. It appears only after a replacement. A caller-supplied out-of-scope `model` still fails the spawn with the allowed list.
 
 Two things that are not obvious from the table:

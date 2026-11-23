@@ -225,8 +225,9 @@ function createRunSessionManager(
   const sessionDir = configuredSessionDir ?? defaultSessionDir;
   if (options.resumeSessionFile) return SessionManager.open(options.resumeSessionFile, sessionDir);
   const persistSession = agentConfig?.persistSession ?? (options.nested ? false : getRememberAgents());
-  if (!persistSession) return SessionManager.inMemory(effectiveCwd);
+  if (!persistSession) return SessionManager.inMemory(effectiveCwd, { id: options.agentId });
   return SessionManager.create(effectiveCwd, sessionDir, {
+    id: options.agentId,
     parentSession: ctx.sessionManager?.getSessionFile?.(),
   });
 }
@@ -271,7 +272,7 @@ function optionalSessionFields(
 }
 
 function sessionNameFor(baseName: string, agentId: string | undefined): string {
-  return agentId ? `${baseName}#${agentId.slice(0, 8)}` : baseName;
+  return agentId ? `${baseName}#${agentId.slice(-8)}` : baseName;
 }
 
 export async function runAgent(
