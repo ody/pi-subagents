@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { AgentMentionMode, JoinMode, WidgetMode } from "../types.js";
-import { warn } from "../warnings.js";
+import { forgetWarning, warn, warnOnce } from "../warnings.js";
 import { policyEventPayload } from "./capability-policy-config.js";
 import { isValidSettingValue, SETTING_KEYS, SETTING_SPECS } from "./settings-defaults.js";
 import { globalSettingsPath, projectSettingsPath } from "./settings-paths.js";
@@ -65,10 +65,12 @@ export function sanitize(raw: unknown): SubagentsSettings {
 function readSettingsFile(path: string): SubagentsSettings {
   if (!existsSync(path)) return {};
   try {
-    return sanitize(JSON.parse(readFileSync(path, "utf-8")));
+    const settings = sanitize(JSON.parse(readFileSync(path, "utf-8")));
+    forgetWarning(`malformed-settings:${path}`);
+    return settings;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    warn(`[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
+    warnOnce(`malformed-settings:${path}`, `[pi-subagents] Ignoring malformed settings at ${path}: ${reason}`);
     return {};
   }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { setWarningSink, warn } from "../src/warnings.js";
+import { forgetWarning, setWarningSink, warn, warnOnce } from "../src/warnings.js";
 
 describe("warnings", () => {
   it("buffers messages until a sink is set, then delivers them in order", () => {
@@ -26,6 +26,24 @@ describe("warnings", () => {
     const second = vi.fn();
     setWarningSink(second);
     expect(second.mock.calls).toEqual([["held"]]);
+  });
+
+  it("delivers a keyed warning once", () => {
+    const sink = vi.fn();
+    setWarningSink(sink);
+    warnOnce("k", "same");
+    warnOnce("k", "same");
+    warnOnce("other", "different");
+    expect(sink.mock.calls).toEqual([["same"], ["different"]]);
+  });
+
+  it("delivers a keyed warning again after it is forgotten", () => {
+    const sink = vi.fn();
+    setWarningSink(sink);
+    warnOnce("k", "again");
+    forgetWarning("k");
+    warnOnce("k", "again");
+    expect(sink).toHaveBeenCalledTimes(2);
   });
 
   it("never calls console.warn", () => {

@@ -445,6 +445,28 @@ describe("settings persistence", () => {
       }
     });
 
+    it("warns once per malformed file however many times settings load", () => {
+      const spy = captureWarnings();
+      mkdirSync(join(projectDir, ".pi"), { recursive: true });
+      writeFileSync(projectFile(), "not valid json {{{");
+      loadSettings(projectDir);
+      loadSettings(projectDir);
+      effectiveSettings(projectDir);
+      expect(spy).toHaveBeenCalledTimes(1);
+    });
+
+    it("warns again when a fixed file breaks a second time", () => {
+      const spy = captureWarnings();
+      mkdirSync(join(projectDir, ".pi"), { recursive: true });
+      writeFileSync(projectFile(), "not valid json {{{");
+      loadSettings(projectDir);
+      writeFileSync(projectFile(), "{}");
+      loadSettings(projectDir);
+      writeFileSync(projectFile(), "not valid json {{{");
+      loadSettings(projectDir);
+      expect(spy).toHaveBeenCalledTimes(2);
+    });
+
     it("does NOT warn when a file is simply missing", () => {
       const spy = captureWarnings();
       try {
