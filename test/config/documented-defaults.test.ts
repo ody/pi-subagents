@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SETTING_KEYS, SETTING_SPECS, type SettingSpec } from "../../src/config/settings-defaults.js";
 
-describe("documented defaults (README:441)", () => {
+describe("documented defaults (docs/settings.md)", () => {
   beforeEach(() => {
     vi.resetModules();
   });
@@ -72,9 +72,9 @@ describe("documented defaults (README:441)", () => {
   }, HEAVY_REIMPORT_MS);
 });
 
-describe("README settings table", () => {
-  const readme = readFileSync(join(import.meta.dirname, "..", "..", "README.md"), "utf8");
-  const section = readme.slice(readme.indexOf("## Persistent Settings"), readme.indexOf("Two files, merged on load"));
+describe("docs/settings.md settings table", () => {
+  const doc = readFileSync(join(import.meta.dirname, "..", "..", "docs", "settings.md"), "utf8");
+  const section = doc.slice(doc.indexOf("## Settings table"), doc.indexOf("## Settings layers"));
   const rows = [...section.matchAll(/^\| `(\w+)` \| (.+?) \| `(.+?)` \|$/gm)].map((m) => ({
     key: m[1],
     values: m[2],
@@ -95,7 +95,7 @@ describe("README settings table", () => {
   });
 
   it("states the widgetMode default once, as all", () => {
-    expect(readme).not.toContain("`background` (default");
-    expect(readme).not.toContain("(`widgetMode: background`)");
+    expect(doc).not.toContain("`background` (default");
+    expect(doc).not.toContain("(`widgetMode: background`)");
   });
 });

@@ -90,7 +90,14 @@ Each entry: the rule an agent must not break, and its ADR.
 
 ## Documentation
 
-Update the doc in the same change as the behavior.
+Update the doc in the same change as the behavior. `README.md` orients a new user and links the rest.
 
-- `README.md`: features, install, tool parameters, commands, settings and defaults, and event table. It is the source of truth for defaults and setting names.
+- `README.md`: what the extension is, install, quick start, and the docs index. It stays under about 200 lines.
+- `docs/agent-tool.md`: the four tools and their parameters, ephemeral agents, background and foreground calls, join strategies, resume, turn limits, statuses, results and transcripts.
+- `docs/agents.md`: agent files, discovery order, frontmatter, name and color rules, caller overrides, tool and extension scoping, nested subagents, skill preloading, and the denylist.
+- `docs/ui.md`: the Agents widget, selection, the conversation viewer, agent mentions, the `/agents` menu, and completion notifications.
+- `docs/settings.md`: the settings table, layers and precedence, the per-setting reference, the capability policy, and model scope. It is the source of truth for default values and setting names.
+- `docs/worktrees.md`: worktree isolation, preservation, cleanup failures, resume and reopen, and the switches that turn it off.
 - `docs/rpc.md`: `pi.events` lifecycle events and the `agent:rpc:*` channels. Renaming an event, channel, or reply field is a docs change.
+
+Describe each setting, tool parameter, event and RPC channel in exactly one page, and link the others to it.
