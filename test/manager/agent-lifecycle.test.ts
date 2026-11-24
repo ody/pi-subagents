@@ -547,6 +547,30 @@ describe("AgentManager — spawn run endings settle once", () => {
       }
     });
 
+    it("keeps a reopen's worktree facts when it stops before acquiring the lease", async () => {
+      const state = { path: "/tmp/wt", branch: "pi-agent-x", baseSha: "abc", ownerToken: "token", workPath: "/tmp/wt", repoPath: "/tmp/repo", cwd: "/tmp/wt" };
+      const settledEntries: ReturnType<typeof isolationFields>[] = [];
+      let finishVerify!: (failure: string | undefined) => void;
+      vi.mocked(verifyWorktreeResume).mockImplementationOnce(
+        () => new Promise((resolve) => { finishVerify = resolve; }) as never,
+      );
+      vi.mocked(runAgent).mockClear();
+      manager = new AgentManager(record => { completed.push(record); settledEntries.push(isolationFields(record)); }, 1);
+      const id = manager.spawn(mockPi, mockCtx, "X", "continue", {
+        description: "d", isBackground: true, resumeWorktree: state, resumeSessionFile: "/session",
+      });
+      const record = manager.getRecord(id)!;
+      await vi.advanceTimersByTimeAsync(0);
+      expect(manager.abort(id, "user")).toBe(true);
+      finishVerify(undefined);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(record.status).toBe("stopped");
+      expect(record.worktree).toBeUndefined();
+      expect(settledEntries).toEqual([{ isolation: "worktree", worktree: state }]);
+      expect(runAgent).not.toHaveBeenCalled();
+    });
+
     it("does not add a worktree note on a forced settle without a worktree", async () => {
       manager = new AgentManager(record => completed.push(record), 1);
       const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true });

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -15,17 +15,22 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
 }
 
-const pi = {
-  exec: async (command: string, args: string[], options: { cwd: string; timeout: number }) => {
-    if (args[0] === "worktree" && args[1] === "remove") return { stdout: "", stderr: "busy", code: 1, killed: false };
-    try {
-      return { stdout: execFileSync(command, args, { cwd: options.cwd, timeout: options.timeout, encoding: "utf8", stdio: "pipe" }), stderr: "", code: 0, killed: false };
-    } catch (error) {
-      const err = error as { stderr?: Buffer; status?: number };
-      return { stdout: "", stderr: String(err.stderr ?? error), code: err.status ?? 1, killed: false };
-    }
-  },
-} as unknown as ExtensionAPI;
+function execApi(failWorktreeRemove: boolean): ExtensionAPI {
+  return {
+    exec: async (command: string, args: string[], options: { cwd: string; timeout: number }) => {
+      if (failWorktreeRemove && args[0] === "worktree" && args[1] === "remove") return { stdout: "", stderr: "busy", code: 1, killed: false };
+      try {
+        return { stdout: execFileSync(command, args, { cwd: options.cwd, timeout: options.timeout, encoding: "utf8", stdio: "pipe" }), stderr: "", code: 0, killed: false };
+      } catch (error) {
+        const err = error as { stderr?: Buffer; status?: number };
+        return { stdout: "", stderr: String(err.stderr ?? error), code: err.status ?? 1, killed: false };
+      }
+    },
+  } as unknown as ExtensionAPI;
+}
+
+const pi = execApi(true);
+const removingPi = execApi(false);
 
 describe("worktree lease lifecycle", () => {
   let repo: string;
@@ -115,5 +120,43 @@ describe("worktree lease lifecycle", () => {
     expect(completed.mock.calls[0][0].status).toBe("error");
     expect(readFileSync(lease, "utf8")).toBe(token);
     expect(retained.tombstones.get("audit")).toMatchObject({ id: "prior", worktree: state });
+  });
+
+  it("removes a retained worktree through the normal cleanup lifecycle after a reopen", async () => {
+    await releaseWorktreeLease(worktree);
+    const state = worktreeResumeState(worktree, worktree.path);
+    vi.mocked(runAgent).mockResolvedValue({ responseText: "done", session: { dispose: vi.fn() } as never, aborted: false, steered: false });
+    const completed = vi.fn();
+    manager = new AgentManager(completed);
+    const id = manager.spawn(removingPi, { cwd: repo } as never, "X", "resume", { description: "resume", isBackground: true, resumeWorktree: state, resumeSessionFile: "/session" });
+    await manager.awaitStartup(id);
+    const record = manager.getRecord(id)!;
+    await record.promise;
+
+    expect(runAgent).toHaveBeenCalledWith(expect.anything(), "X", "resume", expect.objectContaining({ cwd: worktree.path }));
+    expect(record.worktreeResult).toEqual({ hasChanges: false });
+    expect(existsSync(worktree.path)).toBe(false);
+    expect(existsSync(lease)).toBe(false);
+    expect(record.status).toBe("completed");
+    expect(completed).toHaveBeenCalledOnce();
+  });
+
+  it("saves a reopened worktree's changes to its branch and then removes it", async () => {
+    await releaseWorktreeLease(worktree);
+    const state = worktreeResumeState(worktree, worktree.path);
+    vi.mocked(runAgent).mockImplementation(async () => {
+      writeFileSync(join(worktree.path, "change.txt"), "change");
+      return { responseText: "done", session: { dispose: vi.fn() } as never, aborted: false, steered: false };
+    });
+    manager = new AgentManager(vi.fn());
+    const id = manager.spawn(removingPi, { cwd: repo } as never, "X", "resume", { description: "resume", isBackground: true, resumeWorktree: state, resumeSessionFile: "/session" });
+    await manager.awaitStartup(id);
+    const record = manager.getRecord(id)!;
+    await record.promise;
+
+    expect(record.worktreeResult).toMatchObject({ hasChanges: true, branch: state.branch, path: worktree.path });
+    expect(record.worktreeResult?.removalFailure).toBeUndefined();
+    expect(git(repo, "rev-parse", "--verify", state.branch)).toBeTruthy();
+    expect(existsSync(worktree.path)).toBe(false);
   });
 });
