@@ -125,7 +125,7 @@ Cancelling a `wait: true` call, for example with `Esc`, stops only the wait. The
 
 The extension rebuilds tombstones from the active session branch on startup and tree navigation. Tree navigation removes settled top-level records absent from the active branch; running and queued agents remain. It retains up to 100 of the newest tombstones. A live record takes precedence over a tombstone, and for equal completion times the later branch entry wins.
 
-After the extension evicts an agent's record, `agent_get_result` still answers from the agent's tombstone. It resolves the ID, handle, or alias, and reports the stored status, result, error, and stop cause. It omits the tool-use, token and duration stats. It consumes nothing. `agent_steer` and `agent_stop` reply "not found" for a tombstone.
+After the extension evicts an agent's record, `agent_get_result` still answers from the agent's tombstone. It resolves the ID, handle, or alias, and reports the stored status, result, error, and stop cause. It omits the tool-use, token and duration stats. The tombstone answer consumes nothing, and `agent_steer` and `agent_stop` reply "not found" for a tombstone.
 
 ## `agent_steer`
 
