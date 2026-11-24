@@ -19,7 +19,12 @@ pi marks a failed provider response with `stopReason: "error"` on the assistant 
 
 Rejected: matching rate-limit or quota text in `error`. Text can name a limit that did not end the run, and the wording changes between providers.
 
-Done check: `npx vitest run test/e2e/subagent-error-status-e2e.test.ts test/triggers/cross-extension-rpc.test.ts test/manager/run-outcome.test.ts test/manager/agent-lifecycle.test.ts test/session/session-text.test.ts test/lifecycle-events.test.ts` passes. The tests pin the field on a provider error with and without response text, its omission for each excluded case, a resume that clears an earlier stage, and the ping feature.
+Done check: `npx vitest run test/e2e/subagent-error-status-e2e.test.ts test/triggers/cross-extension-rpc.test.ts test/manager/run-outcome.test.ts test/manager/agent-lifecycle.test.ts test/session/session-text.test.ts test/lifecycle-events.test.ts` passes. The tests pin these cases:
+
+- The field on a provider error, with and without response text.
+- Its omission for each excluded case.
+- A resume that clears an earlier stage.
+- The ping feature.
 
 ## Consequences
 
