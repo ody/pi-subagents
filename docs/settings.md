@@ -29,7 +29,7 @@ The `policy` object is not a setting row. See [Capability policy](#capability-po
 
 ## Settings layers
 
-Two files, merged on load:
+Two files, merged on load. Every key is valid in both layers.
 
 - **Global:** `~/.pi/agent/subagents.json` — your machine-wide defaults.
 - **Project:** `<cwd>/.pi/subagents.json` — per-project overrides.
