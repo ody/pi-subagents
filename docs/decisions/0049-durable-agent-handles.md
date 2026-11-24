@@ -14,7 +14,7 @@ Tombstones are a function of the active branch's `agent:record` entries. No reco
 
 Entry shape:
 
-- The entry gains optional `handle`, `alias`, `sessionFile`, `agentConfig`, and `stopCause`. The extension writes `handle`, `alias`, `sessionFile`, and `agentConfig` only when the record has a session file. `agentConfig` is the config of an ephemeral agent (ADR 0023). A registered agent reopens by its type.
+- The entry gains optional `handle`, `alias`, `sessionFile`, `agentConfig`, `worktree`, and `stopCause`. The extension writes `handle`, `alias`, `sessionFile`, `agentConfig`, and `worktree` only when the record has a session file. `agentConfig` is the config of an ephemeral agent (ADR 0023). A registered agent reopens by its type. `worktree` is the resume state of an isolated run (ADR 0047): path, branch, base commit, repo path, worktree working path, and working directory. It never carries a `pi` handle.
 - `docs/rpc.md` lists every field except `agentConfig`, which is internal to the extension.
 
 Rebuild:
@@ -23,7 +23,7 @@ Rebuild:
 - A live record with the same handle wins, and the manager drops the tombstone.
 - A tombstone carries `status`, `result`, `error`, and `stopCause`. The sweep (ADR 0035) copies them from the record, and the rebuild copies them from the entry.
 - `agent_get_result` resolves a tombstone by id, handle, or alias when no record matches. It reports the stored fields as it does for a record, and it consumes nothing. `agent_steer` and `agent_stop` reply "not found" for a tombstone.
-- A reopen whose session file is missing keeps the tombstone, and its notification names the path. A reopen follows the worktree rule of ADR 0047.
+- A reopen whose session file is missing keeps the tombstone, and its notification names the path. A reopen follows the worktree rule of ADR 0047. The rebuilt tombstone copies a valid `worktree` field. The reopen follows [ADR 0052](0052-verified-worktree-reopen.md).
 
 Retention:
 
@@ -35,7 +35,7 @@ Rejected:
 - Records that follow their `rootSessionId` across a switch: a record would outlive its session with an open `AgentSession`.
 - Pruning session files by age or with the parent: it can delete a session the user wants, and pi gives no hook for parent deletion.
 
-Done check: `npx vitest run test/manager/tombstone-rebuild.test.ts test/manager/agent-retention.test.ts test/triggers/cross-extension-rpc.test.ts` passes. It covers a rebuild from the active branch and again after `session_tree`, handle and id collisions, a live record winning, and `agent_get_result` from a tombstone. It also covers a missing session file.
+Done check: `npx vitest run test/manager/tombstone-rebuild.test.ts test/manager/agent-retention.test.ts test/triggers/cross-extension-rpc.test.ts test/triggers/tombstone-reopen.test.ts test/agent-record-entry.test.ts` passes. It covers a rebuild from the active branch and again after `session_tree`. It also covers handle and id collisions, a live record winning, and `agent_get_result` from a tombstone. Coverage also includes the worktree entry field, a retained worktree reopen, a removed worktree, and a missing session file.
 
 ## Consequences
 

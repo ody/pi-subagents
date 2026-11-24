@@ -67,7 +67,22 @@ describe("agent:record entry", () => {
     captured.settle!(record({ sessionFile: undefined, stopCause: "user" }));
     const entry = pi.appendEntry.mock.calls[0][1] as Record<string, unknown>;
     expect(entry.stopCause).toBe("user");
-    for (const key of ["handle", "alias", "sessionFile", "agentConfig"]) expect(entry).not.toHaveProperty(key);
+    for (const key of ["handle", "alias", "sessionFile", "agentConfig", "worktree"]) expect(entry).not.toHaveProperty(key);
+  });
+
+  it("writes worktree resume state with a persisted session", () => {
+    const pi = boot();
+    const worktreeResume = { path: "/w", branch: "b", baseSha: "abc", workPath: "/w", repoPath: "/repo", cwd: "/w" };
+    captured.settle!(record({ sessionFile: "/sessions/agent.jsonl", worktreeResume }));
+    expect(pi.appendEntry).toHaveBeenCalledWith("agent:record", expect.objectContaining({ worktree: worktreeResume }));
+  });
+
+  it("omits worktree state without a session file", () => {
+    const pi = boot();
+    const worktreeResume = { path: "/w", branch: "b", baseSha: "abc", workPath: "/w", repoPath: "/repo", cwd: "/w" };
+    captured.settle!(record({ sessionFile: undefined, worktreeResume }));
+    const entry = pi.appendEntry.mock.calls[0][1] as Record<string, unknown>;
+    expect(entry).not.toHaveProperty("worktree");
   });
 
   it("does not write nested agents", () => {

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isolationFields } from "../../src/manager/agent-retention.js";
 import type { AgentRecord, StopCause } from "../../src/types.js";
 import { GrantingAgentManager as AgentManager } from "../harness/capability.js";
 
@@ -10,15 +11,22 @@ vi.mock("../../src/session/agent-runner.js", () => ({
   resumeAgent: vi.fn(),
 }));
 
-vi.mock("../../src/platform/worktree.js", () => ({
-  createWorktree: vi.fn(),
-  cleanupWorktree: vi.fn(() => ({ hasChanges: false })),
-  isWorktreeRetained: vi.fn(() => true),
-  pruneWorktrees: vi.fn(),
-  isWorktreeIsolationEnabled: vi.fn(() => true),
-}));
+vi.mock("../../src/platform/worktree.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/platform/worktree.js")>();
+  return {
+    ...actual,
+    createWorktree: vi.fn(),
+    cleanupWorktree: vi.fn(() => ({ hasChanges: false })),
+    isWorktreeRetained: vi.fn(() => true),
+    pruneWorktrees: vi.fn(),
+    isWorktreeIsolationEnabled: vi.fn(() => true),
+    verifyWorktreeResume: vi.fn(async () => undefined),
+    acquireWorktreeLease: vi.fn(async () => undefined),
+    releaseWorktreeLease: vi.fn(async () => undefined),
+  };
+});
 
-import { cleanupWorktree, createWorktree, isWorktreeRetained } from "../../src/platform/worktree.js";
+import { acquireWorktreeLease, cleanupWorktree, createWorktree, isWorktreeRetained, verifyWorktreeResume } from "../../src/platform/worktree.js";
 import { resumeAgent, runAgent } from "../../src/session/agent-runner.js";
 
 const mockPi = {} as any;
@@ -417,6 +425,21 @@ describe("AgentManager — spawn run endings settle once", () => {
       expect(completed).toHaveLength(1);
     });
 
+    it("persists cleanup uncertainty when forced settlement occurs during worktree creation", async () => {
+      let resolveWorktree!: (value: unknown) => void;
+      vi.mocked(createWorktree).mockImplementation(() => new Promise((resolve) => { resolveWorktree = resolve; }) as never);
+      const entries: ReturnType<typeof isolationFields>[] = [];
+      manager = new AgentManager(record => entries.push(isolationFields(record)), 1);
+      const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: true, isolation: "worktree" });
+      manager.abort(id, "user");
+      await vi.advanceTimersByTimeAsync(GRACE);
+      expect(entries).toEqual([{ isolation: "worktree", cleanupPending: true }]);
+      resolveWorktree(worktree);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(cleanupWorktree).toHaveBeenCalledTimes(1);
+      expect(entries).toHaveLength(1);
+    });
+
     it("saves the worktree when a run stops before it starts", async () => {
       let resolveWorktree!: (value: unknown) => void;
       vi.mocked(createWorktree).mockImplementation(
@@ -437,6 +460,91 @@ describe("AgentManager — spawn run endings settle once", () => {
       expect(record.worktreeResult?.branch).toBe("early-branch");
       expect(record.status).toBe("stopped");
       expect(completed).toHaveLength(1);
+    });
+
+    it("revalidates a queued reopen before acquiring its worktree", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "resume-queued-"));
+      try {
+        manager = new AgentManager(record => completed.push(record), 1);
+        const previousCalls = vi.mocked(runAgent).mock.calls.length;
+        const first = manager.spawn(mockPi, mockCtx, "X", "hold", { description: "d", isBackground: true });
+        const state = { path: cwd, branch: "pi-agent-x", baseSha: "abc", workPath: cwd, repoPath: "/repo", cwd };
+        const id = manager.spawn(mockPi, mockCtx, "X", "continue", {
+          description: "d", isBackground: true, cwd, resumeWorktree: state,
+          reclaim: { handle: "saved", result: "prior result" },
+        });
+        expect(manager.getRecord(id)?.status).toBe("queued");
+        vi.mocked(verifyWorktreeResume).mockResolvedValueOnce("worktree no longer belongs to the agent");
+        runs[0].resolve(result());
+        await manager.getRecord(first)?.promise;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(manager.getRecord(id)?.status).toBe("error");
+        expect(manager.getRecord(id)?.result).toBeUndefined();
+        expect(manager.getRecord(id)?.recoveryResult).toBe("prior result");
+        expect(manager.getRecord(id)?.worktree).toBeUndefined();
+        expect(cleanupWorktree).not.toHaveBeenCalled();
+        expect(runAgent).toHaveBeenCalledTimes(previousCalls + 1);
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    });
+
+    it("does not start or clean up a reopened run when its worktree lease is held", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "resume-contention-"));
+      let held = false;
+      vi.mocked(runAgent).mockClear();
+      vi.mocked(acquireWorktreeLease).mockClear();
+      vi.mocked(acquireWorktreeLease).mockImplementation(async () => {
+        if (held) throw new Error("worktree lease held");
+        held = true;
+      });
+      try {
+        manager = new AgentManager(record => completed.push(record), 2);
+        const state = { path: cwd, branch: "pi-agent-x", baseSha: "abc", ownerToken: "token", workPath: cwd, repoPath: "/repo", cwd };
+        const options = { description: "d", isBackground: true, cwd, resumeWorktree: state };
+        const first = manager.spawn(mockPi, mockCtx, "X", "first", options);
+        const second = manager.spawn(mockPi, mockCtx, "X", "second", options);
+        const firstRecord = manager.getRecord(first)!;
+        const secondRecord = manager.getRecord(second)!;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(acquireWorktreeLease).toHaveBeenCalledTimes(2);
+        expect(runAgent).toHaveBeenCalledTimes(1);
+        expect(secondRecord.status).toBe("error");
+        expect(secondRecord.error).toContain("worktree lease held");
+        expect(cleanupWorktree).not.toHaveBeenCalled();
+        runs[0].resolve(result());
+        await firstRecord.promise;
+        expect(cleanupWorktree).toHaveBeenCalledTimes(1);
+        expect(firstRecord.status).toBe("completed");
+      } finally {
+        vi.mocked(acquireWorktreeLease).mockReset();
+        vi.mocked(acquireWorktreeLease).mockResolvedValue(undefined);
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    });
+
+    it("reuses a retained worktree on resume without creating a copy", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "resume-worktree-"));
+      try {
+      const resumeState = { path: cwd, branch: "pi-agent-x", baseSha: "abc", workPath: cwd, repoPath: "/repo", cwd };
+      manager = new AgentManager(record => completed.push(record), 1);
+      const id = manager.spawn(mockPi, mockCtx, "X", "continue", {
+        description: "d", isBackground: true, cwd, resumeWorktree: resumeState,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const record = manager.getRecord(id)!;
+
+      expect(createWorktree).not.toHaveBeenCalled();
+      expect(runAgent).toHaveBeenCalledWith(mockCtx, "X", "continue", expect.objectContaining({ cwd, worktreeBase: "/repo" }));
+      expect(record.worktree).toMatchObject({ path: cwd, branch: "pi-agent-x", repoPath: "/repo", pi: mockPi });
+      expect(record.worktreeResume).toEqual(resumeState);
+
+      runs[0].resolve(result());
+      await record.promise;
+      expect(cleanupWorktree).toHaveBeenCalledWith(mockPi, "/repo", expect.objectContaining({ path: cwd }), "d");
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
     });
 
     it("does not add a worktree note on a forced settle without a worktree", async () => {
@@ -515,6 +623,21 @@ describe("AgentManager — resume run endings settle once", () => {
     completed.length = 0;
     return { id, record };
   }
+
+  it("does not claim pending cleanup when a queued live resume stops before acquisition", async () => {
+    manager = new AgentManager(record => completed.push(record), 1);
+    const { id, record } = await spawnSettled({ isBackground: true });
+    record.worktree = { path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt", repoPath: "/tmp/repo", pi: mockPi } as never;
+    record.worktreeResume = { path: "/tmp/wt", branch: "b", baseSha: "abc", workPath: "/tmp/wt", repoPath: "/tmp/repo", cwd: "/tmp/wt" } as never;
+    record.worktreeActive = true;
+    record.worktreeResult = { hasChanges: false };
+    manager.spawn(mockPi, mockCtx, "X", "hold", { description: "d", isBackground: true });
+    await manager.resume(id, "again", undefined, { isBackground: true });
+    expect(record.status).toBe("queued");
+    manager.abort(id, "user");
+    expect(isolationFields(record).cleanupPending).toBeUndefined();
+    expect(cleanupWorktree).not.toHaveBeenCalled();
+  });
 
   it("clears an earlier run's provider stage when a resume fails without one", async () => {
     manager = new AgentManager(record => completed.push(record), 1);
@@ -961,6 +1084,7 @@ describe("AgentManager — resume run endings settle once", () => {
     await record.promise;
     expect(record.worktreeResult).toBeDefined();
     expect(await manager.resume(id, "after", undefined, { isBackground: true })).toBe(record);
+    await vi.advanceTimersByTimeAsync(0);
     expect(resumes).toHaveLength(1);
     expect(slots(manager).runningBackground).toBe(1);
   });
@@ -1003,6 +1127,7 @@ describe("AgentManager — resume run endings settle once", () => {
     expect(record.worktreeResult).toMatchObject({ hasChanges: true, path: "/tmp/wt", failure: "disk gone" });
     expect(record.result).toContain("disk gone");
     expect(await manager.resume(id, "after", undefined, { isBackground: true })).toBe(record);
+    await vi.advanceTimersByTimeAsync(0);
     expect(resumes).toHaveLength(1);
     vi.mocked(cleanupWorktree).mockReset();
     vi.mocked(cleanupWorktree).mockReturnValue({ hasChanges: false } as any);
@@ -1021,12 +1146,27 @@ describe("AgentManager — resume run endings settle once", () => {
     return { id, record };
   }
 
+  it("refuses a live worktree resume when ownership verification fails", async () => {
+    const { id, record } = await resumeRetained();
+    const priorResult = record.result;
+    vi.mocked(verifyWorktreeResume).mockResolvedValueOnce("ownership changed");
+    await manager.resume(id, "again", undefined, { isBackground: true });
+    await record.promise;
+    expect(record.status).toBe("error");
+    expect(record.error).toContain("ownership changed");
+    expect(record.result).toBeUndefined();
+    expect(record.recoveryResult).toBe(priorResult);
+    expect(resumes).toHaveLength(0);
+    expect(cleanupWorktree).toHaveBeenCalledTimes(1);
+  });
+
   it("cleans up the worktree when a resumed run completes", async () => {
     const { id, record } = await resumeRetained();
     vi.mocked(cleanupWorktree).mockResolvedValueOnce({ hasChanges: true, branch: "again-branch", path: "/tmp/wt" } as any);
     const pending = manager.resume(id, "again", undefined, { isBackground: true });
-    resumes[0].resolve({ text: "second" });
     await pending;
+    await vi.advanceTimersByTimeAsync(0);
+    resumes[0].resolve({ text: "second" });
     await record.promise;
     expect(cleanupWorktree).toHaveBeenCalledTimes(2);
     expect(record.result).toContain("Changes saved to branch `again-branch`");
@@ -1040,8 +1180,9 @@ describe("AgentManager — resume run endings settle once", () => {
     const { id, record } = await resumeRetained();
     vi.mocked(cleanupWorktree).mockResolvedValueOnce({ hasChanges: true, path: "/tmp/wt", failure: "disk gone" } as any);
     const pending = manager.resume(id, "again", undefined, { isBackground: true });
-    resumes[0].reject(new Error("boom"));
     await pending;
+    await vi.advanceTimersByTimeAsync(0);
+    resumes[0].reject(new Error("boom"));
     await record.promise;
     expect(cleanupWorktree).toHaveBeenCalledTimes(2);
     expect(record.worktreeResult).toMatchObject({ hasChanges: true, path: "/tmp/wt", failure: "disk gone" });
@@ -1054,9 +1195,10 @@ describe("AgentManager — resume run endings settle once", () => {
     const { id, record } = await resumeRetained();
     vi.mocked(cleanupWorktree).mockResolvedValueOnce({ hasChanges: true, branch: "stopped-branch", path: "/tmp/wt" } as any);
     const pending = manager.resume(id, "again", undefined, { isBackground: true });
+    await pending;
+    await vi.advanceTimersByTimeAsync(0);
     expect(manager.abort(id, "user")).toBe(true);
     resumes[0].resolve({ text: "late" });
-    await pending;
     await record.promise;
     expect(cleanupWorktree).toHaveBeenCalledTimes(2);
     expect(record.status).toBe("stopped");
@@ -1068,8 +1210,9 @@ describe("AgentManager — resume run endings settle once", () => {
     const { id, record } = await resumeRetained();
     vi.mocked(cleanupWorktree).mockResolvedValueOnce({ hasChanges: false } as any);
     const pending = manager.resume(id, "again", undefined, { isBackground: true });
-    resumes[0].resolve({ text: "second" });
     await pending;
+    await vi.advanceTimersByTimeAsync(0);
+    resumes[0].resolve({ text: "second" });
     await record.promise;
     vi.mocked(isWorktreeRetained).mockReturnValue(false);
     const priorResult = record.result;

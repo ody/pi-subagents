@@ -2,6 +2,7 @@ import { type Api, type Model, uuidv7 } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type GrantedCapability, isMintedVerdict } from "../config/capability-policy.js";
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
+import type { WorktreeResumeState } from "../platform/worktree.js";
 import type { ToolActivity } from "../session/agent-runner.js";
 import { assignHandle, handleBase } from "../triggers/mention.js";
 import type { AgentActivity, AgentConfig, AgentInvocation, AgentRecord, IsolationMode, StopCause, SubagentType, ThinkingLevel } from "../types.js";
@@ -22,7 +23,7 @@ export interface SpawnOptions {
   name?: string;
   resumeSessionFile?: string;
   sessionId?: string;
-  reclaim?: { handle: string; alias?: string };
+  reclaim?: { handle: string; alias?: string; result?: string };
   agentConfig?: AgentConfig;
   ephemeral?: { handleSeed: string };
   capability?: GrantedCapability;
@@ -36,6 +37,7 @@ export interface SpawnOptions {
   bypassQueue?: boolean;
   blocking?: boolean;
   isolation?: IsolationMode;
+  resumeWorktree?: WorktreeResumeState;
   cwd?: string;
   invocation?: AgentInvocation;
   signal?: AbortSignal;
@@ -129,6 +131,7 @@ function newAgentRecord(
     promptMode: options.ephemeral ? options.agentConfig?.promptMode : undefined,
     agentConfig: options.ephemeral ? options.agentConfig : undefined,
     description: options.description,
+    recoveryResult: options.reclaim?.result,
     alias: isTopLevelAgent(options) ? options.reclaim?.alias : undefined,
     status: options.isBackground ? "queued" : "running",
     toolUses: 0,
@@ -146,6 +149,8 @@ function newAgentRecord(
     filtered: capability.filtered.length > 0 ? capability.filtered : undefined,
     modelReplaced: options.modelReplaced,
     capabilities: capability.capabilities,
+    ...(options.resumeSessionFile && { sessionFile: options.resumeSessionFile }),
+    ...(options.resumeWorktree && { worktreeResume: options.resumeWorktree }),
   };
 }
 

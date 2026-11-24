@@ -11,12 +11,16 @@ vi.mock("../../src/session/agent-runner.js", () => ({
   resumeAgent: vi.fn(),
 }));
 
-vi.mock("../../src/platform/worktree.js", () => ({
-  createWorktree: vi.fn(),
-  cleanupWorktree: vi.fn(() => ({ hasChanges: false })),
-  pruneWorktrees: vi.fn(),
-  isWorktreeIsolationEnabled: vi.fn(() => true),
-}));
+vi.mock("../../src/platform/worktree.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/platform/worktree.js")>();
+  return {
+    ...actual,
+    createWorktree: vi.fn(),
+    cleanupWorktree: vi.fn(() => ({ hasChanges: false })),
+    pruneWorktrees: vi.fn(),
+    isWorktreeIsolationEnabled: vi.fn(() => true),
+  };
+});
 
 import { isWorktreeIsolationEnabled } from "../../src/platform/worktree.js";
 import { resumeAgent, runAgent } from "../../src/session/agent-runner.js";

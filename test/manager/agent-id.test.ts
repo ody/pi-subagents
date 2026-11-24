@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -31,7 +32,7 @@ vi.mock("../../src/platform/output-file.js", async () => {
 
 import subagentsExtension from "../../src/index.js";
 import { createOutputFilePath, writeInitialEntry } from "../../src/platform/output-file.js";
-import { createWorktree } from "../../src/platform/worktree.js";
+import { cleanupWorktree, createWorktree } from "../../src/platform/worktree.js";
 import { resumeAgent, runAgent } from "../../src/session/agent-runner.js";
 import { createNestedSubagentTools } from "../../src/tool/nested-tools.js";
 
@@ -342,17 +343,26 @@ describe("agent id is the pi session id", () => {
       const id = "0197a1b2-c3d4-7e5f-8a6b-1234567890ab";
       const root = mkdtempSync(join(tmpdir(), "pi-agent-id-repo-"));
       try {
-        const exec = vi.fn(async (_cmd: string, args: string[]) => ({
-          code: 0,
-          stdout: args[0] === "rev-parse" && args[1] === "--show-toplevel" ? root : "abc123",
-          stderr: "",
-          killed: false,
-        }));
+        execFileSync("git", ["init"], { cwd: root, stdio: "pipe" });
+        execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@test.com", "commit", "--allow-empty", "-m", "initial"], { cwd: root, stdio: "pipe" });
+        const exec = vi.fn(async (cmd: string, args: string[], options: { cwd: string; timeout?: number }) => {
+          if (!options.cwd.startsWith(`${tmpdir()}/`)) throw new Error("Git test cwd must be under the temporary directory");
+          try {
+            const stdout = execFileSync(cmd, args, { cwd: options.cwd, timeout: options.timeout, encoding: "utf8", stdio: "pipe" });
+            return { code: 0, stdout, stderr: "", killed: false };
+          } catch (error: any) {
+            return { code: error.status ?? 1, stdout: error.stdout ?? "", stderr: error.stderr ?? "", killed: false };
+          }
+        });
+        const pi = { exec } as any;
+        const info = await createWorktree(pi, root, id);
 
-        const info = await createWorktree({ exec } as any, root, id);
-
-        expect(info?.branch).toBe(`pi-agent-${id}`);
-        expect(basename(info?.path ?? "")).toMatch(new RegExp(`^pi-agent-${id}-[0-9a-f]{8}$`));
+        try {
+          expect(info?.branch).toBe(`pi-agent-${id}`);
+          expect(basename(info?.path ?? "")).toMatch(new RegExp(`^pi-agent-${id}-[0-9a-f]{8}$`));
+        } finally {
+          if (info) await cleanupWorktree(pi, root, info, "test");
+        }
       } finally {
         rmSync(root, { recursive: true, force: true });
       }

@@ -1,4 +1,4 @@
-import { cleanupWorktree, type WorktreeCleanupResult } from "../platform/worktree.js";
+import { cleanupWorktree, isWorktreeRetained, releaseWorktreeLease, type WorktreeCleanupResult } from "../platform/worktree.js";
 import type { AgentRecord } from "../types.js";
 
 export async function cleanupWorktreeOutcome(record: AgentRecord, description: string): Promise<void> {
@@ -13,6 +13,15 @@ export async function cleanupWorktreeOutcome(record: AgentRecord, description: s
       path: worktree.path,
       failure: err instanceof Error ? err.message : String(err),
     };
+  }
+  if (worktree.leaseToken && isWorktreeRetained(worktree)) {
+    try {
+      await releaseWorktreeLease(worktree);
+    } catch (err) {
+      const failure = err instanceof Error ? err.message : String(err);
+      outcome.failure = outcome.failure ? `${outcome.failure}; ${failure}` : failure;
+      outcome.path = worktree.path;
+    }
   }
   applyWorktreeOutcome(record, outcome, worktree.repoPath);
 }

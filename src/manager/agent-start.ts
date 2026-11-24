@@ -1,6 +1,6 @@
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { describeModel } from "../config/model-resolver.js";
-import { createWorktree, isWorktreeIsolationEnabled } from "../platform/worktree.js";
+import { acquireWorktreeLease, createWorktree, isWorktreeIsolationEnabled, releaseWorktreeLease, restoreWorktree, verifyWorktreeResume, worktreeResumeState } from "../platform/worktree.js";
 import { RpcError } from "../rpc-error.js";
 import { runAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { NestedAgentManager } from "../tool/nested-tools.js";
@@ -77,8 +77,33 @@ export async function startAgent(
   deps.acquireSlot(pool);
 
   let worktreeCwd: string | undefined;
-  if (options.isolation === "worktree" && isWorktreeIsolationEnabled()) {
-    worktreeCwd = await enterWorktree(deps, pi, record, { baseCwd, customCwd });
+  if (options.resumeWorktree) {
+    const worktree = restoreWorktree(options.resumeWorktree, pi);
+    await acquireWorktreeLease(worktree);
+    try {
+      const failure = await verifyWorktreeResume(pi, options.resumeWorktree);
+      if (failure) throw new Error(`Cannot resume worktree: ${failure}`);
+      if (record.status !== "running") {
+        await releaseWorktreeLease(worktree);
+        deps.settleRun(record);
+        return;
+      }
+      worktreeCwd = options.resumeWorktree.cwd;
+      record.worktree = worktree;
+    } catch (err) {
+      if (worktree.leaseToken) await releaseWorktreeLease(worktree).catch(() => {});
+      throw err;
+    }
+    record.worktreeResume = options.resumeWorktree;
+    record.worktreeActive = true;
+    deps.worktreeRepos.add(options.resumeWorktree.repoPath);
+  } else if (options.isolation === "worktree" && isWorktreeIsolationEnabled()) {
+    record.worktreeAcquiring = true;
+    try {
+      worktreeCwd = await enterWorktree(deps, pi, record, { baseCwd, customCwd });
+    } finally {
+      record.worktreeAcquiring = false;
+    }
     if (record.status !== "running") {
       await cleanupWorktreeOutcome(record, options.description);
       deps.settleRun(record);
@@ -86,6 +111,10 @@ export async function startAgent(
     }
   }
 
+  if (options.resumeSessionFile) {
+    record.result = undefined;
+    record.recoveryResult = undefined;
+  }
   deps.onStart?.(record);
 
   const controller = record.abortController ?? new AbortController();
@@ -108,7 +137,7 @@ export async function startAgent(
     resumeSessionFile: options.resumeSessionFile,
     nested: options.parentAgentId !== undefined,
     cwd: worktreeCwd ?? customCwd,
-    worktreeBase: worktreeCwd ? baseCwd : undefined,
+    worktreeBase: options.resumeWorktree ? options.resumeWorktree.repoPath : worktreeCwd ? baseCwd : undefined,
     configCwd: options.configCwd ?? (customCwd !== undefined ? ctx.cwd : undefined),
     signal: controller.signal,
     notify: (message, level) => ctx.ui?.notify?.(message, level),
@@ -189,7 +218,10 @@ async function enterWorktree(
   }
   record.worktree = wt;
   deps.worktreeRepos.add(baseCwd);
-  return customCwd !== undefined ? wt.workPath : wt.path;
+  const worktreeCwd = customCwd !== undefined ? wt.workPath : wt.path;
+  record.worktreeResume = worktreeResumeState(wt, worktreeCwd);
+  record.worktreeActive = true;
+  return worktreeCwd;
 }
 
 function attachSession(deps: StartDeps, record: AgentRecord, session: AgentSession): void {

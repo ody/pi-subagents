@@ -11,6 +11,7 @@ import { SETTING_SPECS } from "./config/settings-defaults.js";
 import { buildEventData } from "./lifecycle-events.js";
 import { AgentManager } from "./manager/agent-manager.js";
 import { isTopLevelAgent } from "./manager/agent-manager-rules.js";
+import { isolationFields } from "./manager/agent-retention.js";
 import { createBackgroundResume } from "./manager/background-resume.js";
 import { CompletionNotifier } from "./manager/completion-notifier.js";
 import { setOutputTranscriptDefault } from "./platform/output-file.js";
@@ -59,11 +60,12 @@ export default function (pi: ExtensionAPI) {
   function appendRecord(record: AgentRecord): void {
     pi.appendEntry("agent:record", {
       id: record.id, type: record.type, description: record.description,
-      status: record.status, result: record.result, error: record.error,
+      status: record.status, result: record.result ?? record.recoveryResult, error: record.error,
       startedAt: record.startedAt, completedAt: record.completedAt,
       ...(record.stopCause && { stopCause: record.stopCause }),
       ...(record.sessionFile && {
         handle: record.handle, alias: record.alias, sessionFile: record.sessionFile, agentConfig: record.agentConfig,
+        ...isolationFields(record),
       }),
     });
   }

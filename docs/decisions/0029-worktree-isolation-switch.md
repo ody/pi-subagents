@@ -12,6 +12,7 @@ With the switch off, `isolationParam` drops the parameter from the `agent` and n
 
 - Off: no path creates a worktree. That covers the tool parameter, an agent file's `isolation`, and `agent:rpc:spawn`.
 - Off: the extension downgrades a requested worktree to a normal run instead of refusing it, and the result carries no note.
+- Off: a tombstone reopen into an already retained worktree still reuses that worktree. It creates none, so the switch does not apply.
 - Off: the extension removes the `isolation` parameter and the guideline in the tool description, so a model has nothing to read about it.
 - With `toolDescriptionMode: "custom"`, the guideline appears only through `{{isolationGuideline}}`, which is empty when the switch is off.
 - The downgrade applies at once. The schema and prose change on the next pi session.

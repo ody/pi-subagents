@@ -24,12 +24,14 @@ A worktree record carries the repository path and the `pi` handle that its clean
 - A preservation branch references the worktree HEAD after any preservation commit. Branch creation precedes removal.
 - A preservation failure leaves the worktree in place and reports its path and the error.
 - A missing worktree path produces an unknown-changes outcome and names that path. It never produces `hasChanges: false`.
-- After removal and prune, a remaining worktree produces a removal error and its path. That error does not change the branch or `hasChanges` outcome.
+- After removal, a remaining worktree produces a removal error and its path. That error does not change the branch or `hasChanges` outcome.
 - One result writer stores `worktreeResult` and appends branch, failure, and path outcomes to `record.result`. It covers normal completion, early stop, and run failure.
 - An unexpected cleanup exception produces `hasChanges: true`, the worktree path, and the error through that writer.
 - The forced-settle stop-time note (ADR 0033) is the one result text outside this writer. It describes the worktree state at stop time.
 - After a forced settle, late cleanup updates `record.result` and `worktreeResult` without another settle, lifecycle event, or notification (ADR 0033).
 - Resume requires the original retained worktree path. That resumed run uses the same cleanup lifecycle. The extension refuses resume after successful removal.
+- The `agent:record` entry persists the worktree path, branch, base commit, repo path, worktree working path, and the run's working directory. It never persists the `pi` handle. A rebuilt tombstone restores the handle from the current spawn and validates every persisted field.
+- A tombstone reopen reuses the retained worktree and creates none, so the `worktreeIsolation` switch does not block it. The reopen follows [ADR 0052](0052-verified-worktree-reopen.md).
 
 Rejected:
 
@@ -37,7 +39,7 @@ Rejected:
 - The worktrunk `wt` CLI: most of `cleanupWorktree` remains necessary. The CLI adds a backend dependency without removing the preservation logic.
 - Removing worktree isolation: agents lose isolated working copies and separate branch handoff.
 
-Done check: `npx vitest run test/platform/worktree.test.ts test/manager/agent-lifecycle.test.ts test/abort-forced-settle.test.ts test/e2e/worktree-isolation-e2e.test.ts` passes. Coverage includes preservation scope, cleanup failures, all result paths, retained-path resume, late cleanup, and spawn integration.
+Done check: `npx vitest run test/platform/worktree.test.ts test/manager/agent-lifecycle.test.ts test/abort-forced-settle.test.ts test/triggers/tombstone-reopen.test.ts test/e2e/worktree-isolation-e2e.test.ts` passes. Coverage includes preservation scope, cleanup failures, all result paths, retained-path resume, a reused worktree on tombstone reopen, and late cleanup. It also covers a removed worktree, missing saved state, and spawn integration.
 
 ## Consequences
 

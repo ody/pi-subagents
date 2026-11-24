@@ -213,6 +213,10 @@ Pi persists subagent sessions by default ([`rememberAgents`](#persistent-setting
 - Names from an evicted agent stay reserved, so a later reviewer becomes `reviewer-2` rather than shadowing something you can still reach. The extension keeps the 100 most recent, and forgets all of them on `/new` and session switch. A resumed agent takes those names back, so `@reviewer` keeps meaning the same conversation.
 - An agent whose session was only ever in memory leaves nothing to reopen, and the mention starts a fresh one instead.
 - If someone has since deleted the session file, the mention reports its path and keeps the handle and stored result.
+- A queued reopen that stops before it starts keeps the earlier result for recovery. Its stopped notification does not show that result as new output.
+- A reopened non-isolated session runs in its original working directory. If that directory is missing, the reopen refuses it.
+- A reopened [isolated](#worktree-isolation) session runs in its original worktree and uses the same worktree save and removal lifecycle as any other run. The `agent:record` entry stores the worktree path, branch, base commit, ownership token, repo path, and original working directory.
+- The reopen refuses a removed worktree, an entry with unknown isolation state, and a worktree that Git does not verify. It also refuses while cleanup may still run. In every case it keeps the handle and stored result, and the conversation does not run in the parent checkout.
 
 The grammar is deliberately narrow so nothing gets swallowed by accident:
 
@@ -1157,6 +1161,12 @@ The agent gets a full, isolated copy of the repository. The extension removes th
 
 The cleanup outcome reaches the record on every ending: a completed run, a failed run, and a stopped run. Each one gains the branch, the failure, or the worktree path in `record.result`. A forced stop reports the worktree state at stop time. When the run ends later, the extension appends the cleanup outcome to `record.result` and sends no second notification.
 
+A persisted isolated run stores its worktree path, branch, base commit, ownership token, repo path, and working directory in its `agent:record` entry. A later `@handle` reopen runs in that same worktree and uses the same cleanup lifecycle.
+
+Git locks each agent worktree with its ownership token and cleanup state. An exclusive lease prevents another pi process from using the same worktree. The reopen refuses an entry with a missing or mismatched lock. It also refuses a missing worktree, unknown isolation state, or cleanup that may not have finished. No refusal runs the conversation in the parent checkout.
+
+A crash can leave the lease behind. After confirming that no process or tool still uses the worktree, remove the lease file named in the refusal. The extension never removes a stale lease automatically.
+
 The agent's system prompt names the worktree as an isolated copy and tells it to work only there. This holds even if other instructions name the main checkout. Otherwise an inherited parent prompt or a task prompt mentioning the project path walks it straight back out of the copy. This is a directive, not a sandbox. An agent with shell access can still `cd` out, so don't rely on `isolation` alone to protect the main checkout.
 
 The automatic preservation commit uses `--no-verify` and `--no-gpg-sign`, so local hooks and signing config (a missing agent, for example) can't block it. Git creates the commit without a signature and without hooks. Re-sign it before you push. The commit is local-only and never pushed, and pre-push/server-side hooks still apply.
@@ -1165,11 +1175,13 @@ Preservation covers tracked edits and untracked files that `.gitignore` does not
 
 If the commit or the branch step fails, the extension keeps the worktree on disk. The result reports the git error and the worktree path, and never reports "no changes".
 
+Cleanup refuses an attached worktree or a HEAD that does not descend from the saved base. It leaves the worktree and its lease on disk for manual recovery.
+
 An unexpected cleanup exception does the same. The result carries `hasChanges: true`, the worktree path, and the error, so a lost worktree is never reported as clean.
 
 A worktree path that is gone before cleanup produces an unknown-changes outcome. The result names the path and says it no longer exists, so its change state is unknown. It never reports "no changes", and the extension creates no branch.
 
-A worktree that survives `git worktree remove` and `git worktree prune` produces a removal error. The result names the path and the git error. A branch saved before removal stays in the outcome, so one result can name both the branch and the removal failure. A clean worktree that stays behind keeps `hasChanges: false` and gains only the path and the error.
+A worktree that survives `git worktree remove` produces a removal error. The result names the path and the git error. A branch saved before removal stays in the outcome, so one result can name both the branch and the removal failure. A clean worktree that stays behind keeps `hasChanges: false` and gains only the path and the error.
 
 The extension removes a worktree in two cases only. Either a branch points at the agent's work, or the worktree has no changes and HEAD equals the base.
 

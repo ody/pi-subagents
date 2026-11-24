@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { EffectiveCapabilities } from "./config/capability-policy.js";
-import type { WorktreeCleanupResult, WorktreeInfo } from "./platform/worktree.js";
+import type { WorktreeCleanupResult, WorktreeInfo, WorktreeResumeState } from "./platform/worktree.js";
 import type { FailureStage } from "./session/session-text.js";
 import type { LifetimeUsage, SessionLike } from "./usage.js";
 
@@ -68,6 +68,9 @@ export interface AgentTombstone {
   error?: string;
   stopCause?: StopCause;
   agentConfig?: AgentConfig;
+  worktree?: WorktreeResumeState;
+  isolation?: "none" | "worktree";
+  cleanupPending?: boolean;
 }
 
 export type MentionResolution =
@@ -84,6 +87,7 @@ export interface AgentRecord {
   description: string;
   status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
   result?: string;
+  recoveryResult?: string;
   error?: string;
   failureStage?: FailureStage;
   stopCause?: StopCause;
@@ -102,6 +106,9 @@ export interface AgentRecord {
   resultConsumed?: boolean;
   pendingSteers?: string[];
   worktree?: WorktreeInfo;
+  worktreeResume?: WorktreeResumeState;
+  worktreeActive?: boolean;
+  worktreeAcquiring?: boolean;
   worktreeResult?: WorktreeCleanupResult;
   toolCallId?: string;
   outputFile?: string;

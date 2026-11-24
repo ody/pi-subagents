@@ -1,5 +1,5 @@
 import { normalizeMaxTurns } from "../config/runner-defaults.js";
-import { isWorktreeRetained } from "../platform/worktree.js";
+import { acquireWorktreeLease, isWorktreeRetained, releaseWorktreeLease, verifyWorktreeResume } from "../platform/worktree.js";
 import { resumeAgent, type ToolActivity } from "../session/agent-runner.js";
 import type { AgentActivity, AgentRecord, StopCause } from "../types.js";
 import { addUsage, type LifetimeUsage } from "../usage.js";
@@ -63,8 +63,8 @@ export async function resume(
   record.isBackground = isBackground;
   record.blocking = !isBackground;
   record.resultConsumed = false;
+  record.recoveryResult = record.result ?? record.recoveryResult;
   record.result = undefined;
-  record.worktreeResult = undefined;
   record.error = undefined;
   record.failureStage = undefined;
   record.stopCause = undefined;
@@ -124,48 +124,87 @@ function startResume(
   record.startGate = undefined;
   record.pool = pool;
   deps.acquireSlot(pool);
-  deps.onStart?.(record);
 
-  if (parentSignal?.aborted && options?.signalCause) deps.abort(id, options.signalCause);
-
-  try { options?.onStarted?.(); } catch { }
-
-  record.promise = resumeAgent(record.session, prompt, {
-    onToolActivity: (activity) => {
-      if (activity.type === "end") record.toolUses++;
-      deps.noteToolActivity(id, activity);
-      options?.onToolActivity?.(activity);
-    },
-    onAssistantUsage: (usage) => {
-      addUsage(record.lifetimeUsage, usage);
-      deps.onUsage?.(record, usage);
-      options?.onAssistantUsage?.(usage);
-    },
-    onCompaction: (info) => {
-      record.compactionCount++;
-      deps.onCompact?.(record, info);
-      options?.onCompaction?.(info);
-    },
-    signal: controller.signal,
-  })
-    .then(async ({ text, failure, failureStage }) => {
-      if (isCurrent()) {
-        recordRunOutcome(record, { text, failure, failureStage });
-        await cleanupWorktreeOutcome(record, record.description);
-        deps.settleRun(record);
-      }
-      return text;
+  const start = () => {
+    if (!record.session || record.status !== "running") return Promise.resolve("");
+    record.result = undefined;
+    record.recoveryResult = undefined;
+    record.worktreeResult = undefined;
+    deps.onStart?.(record);
+    if (parentSignal?.aborted && options?.signalCause) deps.abort(id, options.signalCause);
+    try { options?.onStarted?.(); } catch { }
+    return resumeAgent(record.session, prompt, {
+      onToolActivity: (activity) => {
+        if (activity.type === "end") record.toolUses++;
+        deps.noteToolActivity(id, activity);
+        options?.onToolActivity?.(activity);
+      },
+      onAssistantUsage: (usage) => {
+        addUsage(record.lifetimeUsage, usage);
+        deps.onUsage?.(record, usage);
+        options?.onAssistantUsage?.(usage);
+      },
+      onCompaction: (info) => {
+        record.compactionCount++;
+        deps.onCompact?.(record, info);
+        options?.onCompaction?.(info);
+      },
+      signal: controller.signal,
     })
-    .catch(async (err) => {
-      if (isCurrent()) {
-        if (record.status !== "stopped") {
-          record.status = "error";
-          record.error = err instanceof Error ? err.message : String(err);
+      .then(async ({ text, failure, failureStage }) => {
+        if (isCurrent()) {
+          recordRunOutcome(record, { text, failure, failureStage });
+          await cleanupWorktreeOutcome(record, record.description);
+          deps.settleRun(record);
         }
-        record.completedAt ??= Date.now();
-        await cleanupWorktreeOutcome(record, record.description);
-        deps.settleRun(record);
+        return text;
+      })
+      .catch(async (err) => {
+        if (isCurrent()) {
+          if (record.status !== "stopped") {
+            record.status = "error";
+            record.error = err instanceof Error ? err.message : String(err);
+          }
+          record.completedAt ??= Date.now();
+          await cleanupWorktreeOutcome(record, record.description);
+          deps.settleRun(record);
+        }
+        return "";
+      });
+  };
+
+  if (!record.worktree) {
+    record.promise = start();
+    return;
+  }
+  const worktree = record.worktree;
+  record.promise = (async () => {
+    await acquireWorktreeLease(worktree);
+    const failure = record.worktreeResume
+      ? await verifyWorktreeResume(worktree.pi, record.worktreeResume)
+      : "its saved worktree state is missing";
+    if (failure) {
+      await releaseWorktreeLease(worktree);
+      if (record.status !== "stopped") {
+        record.status = "error";
+        record.error = `Cannot resume worktree: ${failure}`;
       }
+      deps.settleRun(record);
       return "";
-    });
+    }
+    if (record.status !== "running") {
+      await releaseWorktreeLease(worktree);
+      deps.settleRun(record);
+      return "";
+    }
+    return start();
+  })().catch(async (err: unknown) => {
+    if (worktree.leaseToken) await releaseWorktreeLease(worktree).catch(() => {});
+    if (record.status !== "stopped") {
+      record.status = "error";
+      record.error = err instanceof Error ? err.message : String(err);
+    }
+    deps.settleRun(record);
+    return "";
+  });
 }

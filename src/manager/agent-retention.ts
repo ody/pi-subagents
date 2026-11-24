@@ -1,4 +1,5 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { parseWorktreeResumeState } from "../platform/worktree.js";
 import { shutdownChildSession } from "../session/agent-session-shutdown.js";
 import type { AgentRecord, AgentTombstone, MentionResolution } from "../types.js";
 
@@ -25,6 +26,30 @@ function removeAbandonedRecords(deps: RetentionDeps, branch: ReturnType<Extensio
   }
 }
 
+export function isolationFields(record: AgentRecord): Pick<AgentTombstone, "isolation" | "worktree" | "cleanupPending"> {
+  return {
+    isolation: record.worktreeResume || record.worktreeAcquiring ? "worktree" : "none",
+    ...(record.worktreeResume && { worktree: record.worktreeResume }),
+    ...((record.worktreeAcquiring || (record.worktreeActive && !record.worktreeResult)) && { cleanupPending: true }),
+  };
+}
+
+function tombstoneFromEntry(entry: AgentTombstone): AgentTombstone {
+  const { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig } = entry;
+  const worktree = parseWorktreeResumeState(entry.worktree);
+  const malformedWorktree = entry.worktree !== undefined && !worktree;
+  const malformedCleanup = entry.cleanupPending !== undefined && typeof entry.cleanupPending !== "boolean";
+  const isolation = !malformedWorktree && !malformedCleanup && (entry.isolation === "none" || entry.isolation === "worktree")
+    ? entry.isolation
+    : undefined;
+  return {
+    handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig,
+    ...(isolation && { isolation }),
+    ...(worktree && { worktree }),
+    ...(entry.cleanupPending === true && { cleanupPending: true }),
+  };
+}
+
 export function rebuildTombstones(deps: RetentionDeps, branch: ReturnType<ExtensionContext["sessionManager"]["getBranch"]>, treeChanged = false): void {
   if (treeChanged) removeAbandonedRecords(deps, branch);
   deps.tombstones.clear();
@@ -43,8 +68,7 @@ export function rebuildTombstones(deps: RetentionDeps, branch: ReturnType<Extens
     ids.add(entry.id);
     handles.add(normalizedHandle);
     if (duplicate || liveHandles.has(normalizedHandle) || deps.agents.has(entry.id)) continue;
-    const { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig } = entry;
-    deps.tombstones.set(handle, { handle, alias, id, type, description, sessionFile, completedAt, status, result, error, stopCause, agentConfig });
+    deps.tombstones.set(entry.handle, tombstoneFromEntry(entry));
     if (deps.tombstones.size === MAX_TOMBSTONES) break;
   }
 }
@@ -113,10 +137,11 @@ function tombstone(deps: RetentionDeps, record: AgentRecord): void {
     sessionFile: record.sessionFile,
     completedAt: record.completedAt ?? Date.now(),
     status: record.status,
-    result: record.result,
+    result: record.result ?? record.recoveryResult,
     error: record.error,
     stopCause: record.stopCause,
     agentConfig: record.agentConfig,
+    ...isolationFields(record),
   });
   while (deps.tombstones.size > MAX_TOMBSTONES) {
     const oldest = [...deps.tombstones.values()].reduce((a, b) => (a.completedAt <= b.completedAt ? a : b));

@@ -6,6 +6,7 @@ import type { RuntimeSettings } from "../config/runtime-settings.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { StartBackgroundResume } from "../manager/background-resume.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
+import { verifyWorktreeResume } from "../platform/worktree.js";
 import type { AgentRecord, AgentTombstone } from "../types.js";
 import { describeMention, handleBase, isReservedHandle, parseMention, resolveHandleToType } from "./mention.js";
 import { type MentionCloneOptions, runMentionClone } from "./mention-clone.js";
@@ -72,6 +73,12 @@ async function resumeTombstone(
     return handled;
   }
 
+  const worktreeFailure = await reopenRefusal(pi, entry);
+  if (worktreeFailure) {
+    ctx.ui.notify(`Could not resume ${target} — ${worktreeFailure}`, "warning");
+    return handled;
+  }
+
   let type = entry.type;
   if (!entry.agentConfig) {
     deps.reloadCustomAgents();
@@ -86,12 +93,16 @@ async function resumeTombstone(
   try {
     const header = SessionManager.open(entry.sessionFile).getHeader();
     if (!header?.id) throw new Error("Session header has no id");
+    if (entry.isolation === "none" && (!header.cwd || !existsSync(header.cwd))) {
+      throw new Error("Session working directory is missing");
+    }
     const id = deps.spawnResolved(pi, ctx, type, mention.message, {
       description: entry.description,
-      reclaim: { handle: entry.handle, alias: entry.alias },
+      reclaim: { handle: entry.handle, alias: entry.alias, result: entry.result },
       resumeSessionFile: entry.sessionFile,
       sessionId: header.id,
       isBackground: true,
+      ...(entry.worktree ? { cwd: entry.worktree.cwd, resumeWorktree: entry.worktree } : { cwd: header.cwd }),
       ...(entry.agentConfig && { agentConfig: entry.agentConfig, ephemeral: { handleSeed: entry.handle } }),
     });
     await deps.manager.awaitStartup(id);
@@ -103,6 +114,15 @@ async function resumeTombstone(
     );
   }
   return handled;
+}
+
+async function reopenRefusal(pi: ExtensionAPI, entry: AgentTombstone): Promise<string | undefined> {
+  if (entry.cleanupPending) return "its worktree cleanup may not have finished";
+  if (entry.isolation !== "worktree" && entry.worktree) return "its isolation state is inconsistent";
+  if (entry.isolation === "none") return undefined;
+  if (entry.isolation !== "worktree") return "its isolation state is unknown";
+  if (!entry.worktree) return "its saved worktree state is invalid";
+  return verifyWorktreeResume(pi, entry.worktree);
 }
 
 function startViaClone(

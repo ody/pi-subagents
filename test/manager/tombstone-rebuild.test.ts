@@ -62,6 +62,17 @@ describe("active branch tombstone rebuilding", () => {
     expect(state.tombstones.get("h1")?.id).toBe("A");
   });
 
+  it("copies a valid worktree resume state and drops a malformed one", () => {
+    const state = deps();
+    const worktree = { path: "/w", branch: "b", baseSha: "abc", ownerToken: "token", workPath: "/w", repoPath: "/repo", cwd: "/w" };
+    rebuild(state, [
+      entry({ handle: "kept", worktree }),
+      entry({ id: "bad", handle: "bad", completedAt: 2, worktree: { path: "/w" } as never }),
+    ]);
+    expect(state.tombstones.get("kept")?.worktree).toEqual(worktree);
+    expect(state.tombstones.get("bad")).not.toHaveProperty("worktree");
+  });
+
   it("prefers the later branch entry when completion times tie", () => {
     const state = deps();
     rebuild(state, [entry({ id: "first" }), entry({ id: "last" })]);

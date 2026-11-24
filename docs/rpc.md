@@ -20,7 +20,7 @@ This document is the contract reference ([ADR 0044](decisions/0044-bus-only-inte
 
 `agent:rpc:spawn` accepts only the keys in `RPC_SPAWN_OPTIONS` (`src/triggers/cross-extension-rpc.ts`). Any other key in `options` fails the spawn with `unknown_option`, and the error text names the key. The check runs before type, model and policy resolution, so nothing spawns. The spawn funnel in `src/triggers/spawn-funnel.ts` then resolves the type, model scope, capability verdict and isolation.
 
-The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`. Internal keys are not in the list: `parentAgentId`, `depth`, `maxSubagentDepth`, `configCwd`, `rootSessionId`, `resumeSessionFile`, `reclaim`, `blocking`, `capability`, `ephemeral`, `modelReplaced`, `signalCause`, `bypassQueue`, `invocation` and `onSessionCreated`. Tool and frontmatter spellings fail too, such as `run_in_background`, `max_turns`, `thinking` and `inherit_context`. Use `isBackground`, `maxTurns`, `thinkingLevel` and `inheritContext`.
+The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`. Internal keys are not in the list: `parentAgentId`, `depth`, `maxSubagentDepth`, `configCwd`, `rootSessionId`, `resumeSessionFile`, `resumeWorktree`, `reclaim`, `blocking`, `capability`, `ephemeral`, `modelReplaced`, `signalCause`, `bypassQueue`, `invocation` and `onSessionCreated`. Tool and frontmatter spellings fail too, such as `run_in_background`, `max_turns`, `thinking` and `inherit_context`. Use `isBackground`, `maxTurns`, `thinkingLevel` and `inheritContext`.
 
 | Field | Type | Notes |
 | --- | --- | --- |
@@ -176,7 +176,7 @@ Consumption is not terminal. A resume, foreground or background, un-consumes the
 
 On every top-level settle, pi-subagents writes an `agent:record` session entry. On shutdown, it writes one stopped entry with `stopCause: "shutdown"` for each running or queued top-level agent. A late settle writes no second entry, emits no lifecycle event, and sends no notification.
 
-The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It also carries optional `stopCause`. When the agent has a persisted session file, it carries `handle`, optional `alias`, and `sessionFile`. It exists for cross-extension history reconstruction. It is append-only history, not something to react to.
+The entry carries `id`, `type`, `description`, `status`, `result`, `error`, `startedAt` and `completedAt`. It also carries optional `stopCause`. When the agent has a persisted session file, it carries `handle`, optional `alias`, `sessionFile`, `isolation` (`none` or `worktree`), and, for an isolated run, `worktree`. It also carries `cleanupPending: true` while the run's worktree cleanup has not finished. A reopen refuses an entry with no `isolation` or with `cleanupPending` ([ADR 0052](decisions/0052-verified-worktree-reopen.md)). The `worktree` field holds `path`, `branch`, `baseSha`, `ownerToken`, `workPath`, `repoPath` and `cwd`. It exists for cross-extension history reconstruction and for a later `@handle` reopen. It is append-only history, not something to react to.
 
 ## Events
 
@@ -217,7 +217,7 @@ A run that starts after the reply needs a new request. It has no timeout paramet
 
 ## Protocol versions
 
-`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields", "agent_failed_provider_stage"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
+`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields", "agent_failed_provider_stage", "agent_record_worktree"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
 
 Version 4 reuses the original agent id when a tombstone reopens for a new run.
 
@@ -235,6 +235,7 @@ The feature list resets to `[]` on each version bump. Version 4 includes these f
 
 - `agent_record_session_fields` adds the optional session fields to `agent:record`.
 - `agent_failed_provider_stage` adds `failure` to `agent:failed` (see [Provider-stage failures](#provider-stage-failures)).
+- `agent_record_worktree` adds the optional `worktree` resume state to `agent:record`.
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `agent:settings_loaded` and `agent:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 
@@ -261,7 +262,9 @@ A session that excludes pi-subagents is indistinguishable from a system that lac
 
 The payload is `{}` — read nothing off it. Handlers are torn down and the flag reset on `session_shutdown` (the `session_shutdown` handler in `src/index.ts`), so a later `session_start` re-registers and re-emits.
 
-One more trap on the way in: an RPC-spawned agent emits **no `agent:created`**. The only two emit sites are the `agent` tool's background branch (`src/tool/agent-tool-background.ts`) and detached resume (`src/manager/background-resume.ts`). Your first event for your own agent is `agent:started` (the start callback of `AgentManager` in `src/index.ts`), so key your bookkeeping off the id that `spawn` handed you, not off `agent:created`.
+An RPC-spawned agent emits **no `agent:created`**.
+
+The only two emit sites are the `agent` tool's background branch (`src/tool/agent-tool-background.ts`) and detached resume (`src/manager/background-resume.ts`). Your first event for your own agent is `agent:started` (the start callback of `AgentManager` in `src/index.ts`), so key your bookkeeping off the id that `spawn` handed you, not off `agent:created`.
 
 ## What the tests pin
 

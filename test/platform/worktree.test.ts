@@ -5,17 +5,31 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  acquireWorktreeLease,
   cleanupWorktree,
   createWorktree,
   isWorktreeIsolationEnabled,
   isWorktreeRetained,
+  parseWorktreeResumeState,
   pruneWorktrees,
+  releaseWorktreeLease,
+  restoreWorktree,
   setWorktreeIsolationEnabled,
+  verifyWorktreeResume,
+  worktreeResumeState,
 } from "../../src/platform/worktree.js";
+
+const createdPaths = new Set<string>();
+
+afterEach(() => {
+  for (const path of createdPaths) rmSync(path, { recursive: true, force: true });
+  createdPaths.clear();
+});
 
 function mockPi(): ExtensionAPI {
   return {
     exec: async (command: string, args: string[], options?: { cwd?: string; timeout?: number }) => {
+      if (!options?.cwd?.startsWith(`${tmpdir()}/`)) throw new Error("Git test cwd must be under the temporary directory");
       try {
         const stdout = execFileSync(command, args, {
           cwd: options?.cwd,
@@ -23,6 +37,7 @@ function mockPi(): ExtensionAPI {
           stdio: ["pipe", "pipe", "pipe"],
           timeout: options?.timeout,
         });
+        if (args[0] === "worktree" && args[1] === "add") createdPaths.add(args[args.length - 2]);
         return { stdout, stderr: "", code: 0, killed: false };
       } catch (err: any) {
         return { stdout: err.stdout ?? "", stderr: err.stderr ?? "", code: err.status ?? 1, killed: false };
@@ -393,7 +408,7 @@ describe("worktree", () => {
       expect(result.removalFailure).toBe("boom");
       expect(result.path).toBe(wt.path);
       expect(existsSync(wt.path)).toBe(true);
-      expect(vi.mocked(failing.exec).mock.calls.some(([, args]) => args[0] === "worktree" && args[1] === "prune")).toBe(true);
+      expect(await verifyWorktreeResume(pi, worktreeResumeState(wt, wt.path))).toBeUndefined();
       try { execFileSync("git", ["worktree", "remove", "--force", wt.path], { cwd: repoDir, stdio: "pipe" }); } catch { }
     });
 
@@ -545,5 +560,156 @@ describe("worktree isolation switch", () => {
       await pruneWorktrees(pi, repoDir);
       rmSync(repoDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("worktree resume state", () => {
+  it("round-trips without the pi handle", () => {
+    const pi = mockPi();
+    const worktree = { path: "/w", branch: "b", baseSha: "abc", ownerToken: "token", workPath: "/w/sub", repoPath: "/repo", pi };
+    const state = worktreeResumeState(worktree, "/w/sub");
+
+    expect(state).toEqual({ path: "/w", branch: "b", baseSha: "abc", ownerToken: "token", workPath: "/w/sub", repoPath: "/repo", cwd: "/w/sub" });
+    expect(state).not.toHaveProperty("pi");
+    expect(restoreWorktree(state, pi)).toEqual(worktree);
+    expect(parseWorktreeResumeState(state)).toEqual(state);
+  });
+
+  it.each([
+    { label: "a non-object", value: "worktree" },
+    { label: "a legacy state without owner token", value: { path: "/w", branch: "b", baseSha: "abc", workPath: "/w", repoPath: "/repo", cwd: "/w" } },
+    { label: "a missing field", value: { path: "/w", branch: "b", baseSha: "abc", workPath: "/w", repoPath: "/repo" } },
+    { label: "an empty field", value: { path: "/w", branch: "", baseSha: "abc", workPath: "/w", repoPath: "/repo", cwd: "/w" } },
+    { label: "a non-string field", value: { path: "/w", branch: "b", baseSha: "abc", workPath: 1, repoPath: "/repo", cwd: "/w" } },
+  ])("rejects $label in persisted state", ({ value }) => {
+    expect(parseWorktreeResumeState(value)).toBeUndefined();
+  });
+
+  describe("verifyWorktreeResume", () => {
+    let repoDir: string;
+    const pi = mockPi();
+    beforeEach(() => { repoDir = initGitRepo(); });
+    afterEach(async () => {
+      await pruneWorktrees(pi, repoDir);
+      rmSync(repoDir, { recursive: true, force: true });
+    });
+
+    it("accepts a registered worktree of the saved repository", async () => {
+      const wt = (await createWorktree(pi, repoDir, "verify-ok"))!;
+      expect(await verifyWorktreeResume(pi, worktreeResumeState(wt, wt.path))).toBeUndefined();
+      await cleanupWorktree(pi, repoDir, wt, "verify");
+    });
+
+    it("cleans up a verified reopened worktree and preserves its changes on a branch", async () => {
+      const original = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf8" }).trim();
+      const wt = (await createWorktree(pi, repoDir, "verify-reopen"))!;
+      const saved = worktreeResumeState(wt, wt.path);
+      expect(await verifyWorktreeResume(pi, saved)).toBeUndefined();
+      writeFileSync(join(wt.path, "reopened.txt"), "reopened work");
+      await releaseWorktreeLease(wt);
+      const reopened = restoreWorktree(saved, pi);
+      await acquireWorktreeLease(reopened);
+      const result = await cleanupWorktree(pi, repoDir, reopened, "reopened");
+      expect(result).toMatchObject({ hasChanges: true, branch: saved.branch });
+      expect(existsSync(wt.path)).toBe(false);
+      expect(execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir, encoding: "utf8" }).trim()).toBe(original);
+      expect(execFileSync("git", ["show", `${saved.branch}:reopened.txt`], { cwd: repoDir, encoding: "utf8" })).toBe("reopened work");
+      expect(execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: repoDir, encoding: "utf8" })).not.toContain(wt.path);
+    });
+
+    it("preserves an unreferenced detached commit even when the saved base equals HEAD", async () => {
+      const wt = (await createWorktree(pi, repoDir, "verify-detached"))!;
+      writeFileSync(join(wt.path, "detached.txt"), "unreferenced work");
+      execFileSync("git", ["add", "detached.txt"], { cwd: wt.path });
+      execFileSync("git", ["commit", "-m", "detached"], { cwd: wt.path, stdio: "pipe" });
+      const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: wt.path, encoding: "utf8" }).trim();
+      const saved = worktreeResumeState(wt, wt.path);
+      expect(await verifyWorktreeResume(pi, { ...saved, baseSha: head })).toContain("ownership");
+      expect(await verifyWorktreeResume(pi, saved)).toBeUndefined();
+      await releaseWorktreeLease(wt);
+      const reopened = restoreWorktree(saved, pi);
+      await acquireWorktreeLease(reopened);
+      const result = await cleanupWorktree(pi, repoDir, reopened, "reopened");
+      expect(result).toMatchObject({ hasChanges: true, branch: saved.branch });
+      expect(execFileSync("git", ["rev-parse", saved.branch], { cwd: repoDir, encoding: "utf8" }).trim()).toBe(head);
+      expect(existsSync(wt.path)).toBe(false);
+    });
+
+    it("refuses the main checkout", async () => {
+      const state = { path: repoDir, branch: "b", baseSha: "abc", ownerToken: "token", workPath: repoDir, repoPath: repoDir, cwd: repoDir };
+      expect(await verifyWorktreeResume(pi, state)).toContain("is the main checkout");
+    });
+
+    it("refuses a base commit that is not in the worktree history", async () => {
+      const wt = (await createWorktree(pi, repoDir, "verify-sha"))!;
+      const reason = await verifyWorktreeResume(pi, { ...worktreeResumeState(wt, wt.path), baseSha: "0".repeat(40) });
+      expect(reason).toContain("Git could not verify");
+      await cleanupWorktree(pi, repoDir, wt, "verify");
+    });
+
+    it("refuses a removed worktree", async () => {
+      const gone = join(repoDir, "gone");
+      const state = { path: gone, branch: "b", baseSha: "abc", ownerToken: "token", workPath: gone, repoPath: repoDir, cwd: gone };
+      expect(await verifyWorktreeResume(pi, state)).toBe(`its worktree was removed: ${gone}`);
+    });
+
+    it("refuses altered ownership metadata and never cleans up the worktree", async () => {
+      const wt = (await createWorktree(pi, repoDir, "verify-binding"))!;
+      const saved = worktreeResumeState(wt, wt.path);
+      for (const altered of [
+        { ...saved, ownerToken: "wrong" },
+        { ...saved, branch: "other-branch" },
+        { ...saved, baseSha: "0".repeat(40) },
+      ]) {
+        expect(await verifyWorktreeResume(pi, altered)).toContain("ownership");
+        const result = await cleanupWorktree(pi, repoDir, restoreWorktree(altered, pi), "invalid");
+        expect(result.failure).toContain("ownership");
+        expect(result.unknownChanges).toBeUndefined();
+        expect(existsSync(wt.path)).toBe(true);
+      }
+      await cleanupWorktree(pi, repoDir, wt, "valid");
+    });
+
+    it("refuses an unlocked or attached worktree", async () => {
+      const wt = (await createWorktree(pi, repoDir, "verify-lock"))!;
+      const saved = worktreeResumeState(wt, wt.path);
+      execFileSync("git", ["worktree", "unlock", wt.path], { cwd: repoDir });
+      expect(await verifyWorktreeResume(pi, saved)).toContain("ownership");
+      execFileSync("git", ["switch", "-c", "attached"], { cwd: wt.path, stdio: "pipe" });
+      execFileSync("git", ["worktree", "lock", "--reason", `pi-agent ${JSON.stringify([wt.ownerToken, wt.baseSha, wt.branch])}`, wt.path], { cwd: repoDir });
+      expect(await verifyWorktreeResume(pi, saved)).toContain("ownership");
+      expect((await cleanupWorktree(pi, repoDir, wt, "invalid")).failure).toContain("ownership");
+      execFileSync("git", ["worktree", "unlock", wt.path], { cwd: repoDir });
+      execFileSync("git", ["worktree", "remove", "--force", wt.path], { cwd: repoDir });
+    });
+
+    it("refuses a saved directory outside the worktree", async () => {
+      const wt = (await createWorktree(pi, repoDir, "verify-outside"))!;
+      const reason = await verifyWorktreeResume(pi, worktreeResumeState(wt, repoDir));
+      expect(reason).toBe(`its saved directory is outside its worktree: ${repoDir}`);
+      await cleanupWorktree(pi, repoDir, wt, "verify");
+    });
+
+    it("refuses a directory that Git does not register as a worktree", async () => {
+      const plain = mkdtempSync(join(tmpdir(), "pi-wt-plain-"));
+      try {
+        const reason = await verifyWorktreeResume(pi, worktreeResumeState({ path: plain, branch: "b", baseSha: "abc", ownerToken: "token", workPath: plain, repoPath: repoDir, pi }, plain));
+        expect(reason).toBe(`Git does not register ${plain} as a worktree of ${repoDir}`);
+      } finally {
+        rmSync(plain, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a worktree registered to another repository", async () => {
+      const other = initGitRepo();
+      const wt = (await createWorktree(pi, repoDir, "verify-other"))!;
+      try {
+        const reason = await verifyWorktreeResume(pi, { ...worktreeResumeState(wt, wt.path), repoPath: other });
+        expect(reason).toBe(`Git does not register ${wt.path} as a worktree of ${other}`);
+      } finally {
+        await cleanupWorktree(pi, repoDir, wt, "verify");
+        rmSync(other, { recursive: true, force: true });
+      }
+    });
   });
 });

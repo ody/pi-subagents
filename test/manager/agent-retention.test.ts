@@ -92,6 +92,17 @@ describe("tombstone agent config", () => {
     const deps = remove({ parentAgentId: "parent", sessionFile: "/s/a.jsonl", agentConfig: config });
     expect(deps.tombstones.size).toBe(0);
   });
+
+  it("copies the worktree resume state onto the tombstone", () => {
+    const worktreeResume = { path: "/w", branch: "pi-agent-a", baseSha: "abc", workPath: "/w", repoPath: "/repo", cwd: "/w" };
+    const deps = remove({ handle: "audit", sessionFile: "/s/a.jsonl", worktreeResume });
+    expect(deps.tombstones.get("audit")?.worktree).toEqual(worktreeResume);
+  });
+
+  it("omits worktree state for a run without one", () => {
+    const deps = remove({ handle: "audit", sessionFile: "/s/a.jsonl" });
+    expect(deps.tombstones.get("audit")).not.toHaveProperty("worktree");
+  });
 });
 
 describe("tombstone result fields", () => {
@@ -187,5 +198,28 @@ describe("retention sweep", () => {
   it("carries the result of a swept record onto its tombstone", () => {
     const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl", result: "kept" })]);
     expect(deps.tombstones.get("audit")).toMatchObject({ status: "completed", result: "kept" });
+  });
+
+  it("preserves a prior result in the tombstone when a queued reopen stops", () => {
+    const deps = sweep([record({ completedAt: STALE, status: "stopped", handle: "audit", sessionFile: "/s/a.jsonl", recoveryResult: "previous result" })]);
+    expect(deps.tombstones.get("audit")?.result).toBe("previous result");
+  });
+
+  it("marks a swept record with no worktree as not isolated", () => {
+    const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl" })]);
+    expect(deps.tombstones.get("audit")).toMatchObject({ isolation: "none" });
+    expect(deps.tombstones.get("audit")?.cleanupPending).toBeUndefined();
+  });
+
+  it("marks a worktree record whose cleanup has not finished as pending", () => {
+    const worktreeResume = { path: "/w", branch: "b", baseSha: "a", workPath: "/w", repoPath: "/r", cwd: "/w" };
+    const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl", worktreeResume, worktreeActive: true })]);
+    expect(deps.tombstones.get("audit")).toMatchObject({ isolation: "worktree", worktree: worktreeResume, cleanupPending: true });
+  });
+
+  it("keeps a queued reopen's recovery state out of a cleanup claim", () => {
+    const worktreeResume = { path: "/w", branch: "b", baseSha: "a", workPath: "/w", repoPath: "/r", cwd: "/w" };
+    const deps = sweep([record({ completedAt: STALE, handle: "audit", sessionFile: "/s/a.jsonl", worktreeResume })]);
+    expect(deps.tombstones.get("audit")?.cleanupPending).toBeUndefined();
   });
 });
