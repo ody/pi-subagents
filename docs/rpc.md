@@ -187,12 +187,22 @@ The extension emits these events on `pi.events`. The four agent-lifecycle events
 | `agent:created` | `agent`-tool background spawn, or a detached resume. Not an RPC or `@handle` spawn | `id`, `type`, `description`, `isBackground` |
 | `agent:started` | The agent starts to run, also from the queue | `id`, `type`, `description` |
 | `agent:completed` | The agent finished | `id`, `type`, `description`, `status`, `result`, `error`, `durationMs`, `tokens`, `usage`, `toolUses`, `stopCause` (stopped runs only) |
-| `agent:failed` | The agent errored, stopped, or aborted, also from the queue or at start | Same fields as `agent:completed` |
+| `agent:failed` | The agent errored, stopped, or aborted, also from the queue or at start | Same fields as `agent:completed`, plus `failure` (provider-stage errors only) |
 | `agent:steered` | The extension accepted a steer, delivered or queued | `id`, `message` |
 | `agent:compacted` | The agent's session compacted | `id`, `type`, `description`, `reason`, `tokensBefore`, `compactionCount` |
 | `agent:ready` | The RPC handlers registered on `session_start` | `{}` |
 | `agent:settings_loaded` | Right after `agent:ready` | `settings`, `policy` (see [Settings events](#settings-events)) |
 | `agent:settings_changed` | A `/agents` setting change or reset | `settings`, `persisted`, `layer`, `policy` |
+
+### Provider-stage failures
+
+`agent:failed` carries `failure: { stage: "provider" }` when the run's status is `error` and the run's last assistant message has `stopReason: "error"` ([ADR 0051](decisions/0051-provider-stage-failures.md)). Use it to choose a fallback model.
+
+- The stage comes only from `stopReason`, never from `error` text or an HTTP status. It can appear with an empty `result`.
+- `failure` has no `kind`. pi exposes no structured cause, so quota exhaustion and throttling look the same.
+- `failure` is absent for a startup or configuration error, a thrown run, an output-limit stop with no text, `stopped` and `aborted`.
+- A resume clears the stage, so a later run never reports an earlier run's stage.
+- `agent:completed`, `agent:record` and RPC replies never carry `failure`.
 
 The extension also writes two session names. Neither goes on the bus:
 
@@ -207,7 +217,7 @@ A run that starts after the reply needs a new request. It has no timeout paramet
 
 ## Protocol versions
 
-`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
+`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields", "agent_failed_provider_stage"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
 
 Version 4 reuses the original agent id when a tombstone reopens for a new run.
 
@@ -221,7 +231,10 @@ Version 3 contains these breaks against version 2:
 - `stopCause` is part of the stop flow.
 - `agent:settings_loaded` fires on `session_start`, right after `agent:ready`, and not from the extension factory.
 
-The feature list resets to `[]` on each version bump. Version 4 includes `agent_record_session_fields`, which adds the optional fields to `agent:record`.
+The feature list resets to `[]` on each version bump. Version 4 includes these features:
+
+- `agent_record_session_fields` adds the optional session fields to `agent:record`.
+- `agent_failed_provider_stage` adds `failure` to `agent:failed` (see [Provider-stage failures](#provider-stage-failures)).
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions`, and `skills`, and the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems and the manager denies every spawn. `agent:settings_loaded` and `agent:settings_changed` carry the same object under `policy`, but a hand edit of `subagents.json` fires neither.
 

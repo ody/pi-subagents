@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectResponseText, finalTurnError, getAgentConversation, getLastAssistantText } from "../../src/session/session-text.js";
+import { collectResponseText, finalTurnFailure, getAgentConversation, getLastAssistantText } from "../../src/session/session-text.js";
 
 function fakeSession(messages: unknown[]) {
   return { messages } as never;
@@ -76,29 +76,29 @@ describe("getLastAssistantText", () => {
   });
 });
 
-describe("finalTurnError", () => {
-  it("returns the provider error message of a final 'error' stop", () => {
+describe("finalTurnFailure", () => {
+  it("returns the provider error message and stage of a final 'error' stop", () => {
     const session = fakeSession([
       { role: "assistant", stopReason: "error", errorMessage: " rate limited ", content: [] },
     ]);
-    expect(finalTurnError(session)).toBe("rate limited");
+    expect(finalTurnFailure(session)).toEqual({ failure: "rate limited", failureStage: "provider" });
   });
 
   it("falls back to a generic message when an error stop has no message", () => {
     const session = fakeSession([{ role: "assistant", stopReason: "error", content: [] }]);
-    expect(finalTurnError(session)).toBe("provider error with no output");
+    expect(finalTurnFailure(session)).toEqual({ failure: "provider error with no output", failureStage: "provider" });
   });
 
-  it("reports a 'length' stop that produced no text", () => {
+  it("reports a 'length' stop that produced no text without a provider stage", () => {
     const session = fakeSession([{ role: "assistant", stopReason: "length", content: [] }]);
-    expect(finalTurnError(session)).toBe("run hit the output token limit before producing any text");
+    expect(finalTurnFailure(session)).toEqual({ failure: "run hit the output token limit before producing any text" });
   });
 
   it("accepts a 'length' stop that produced text", () => {
     const session = fakeSession([
       { role: "assistant", stopReason: "length", content: [{ type: "text", text: "truncated" }] },
     ]);
-    expect(finalTurnError(session)).toBeUndefined();
+    expect(finalTurnFailure(session)).toEqual({});
   });
 
   it("judges only the final assistant message", () => {
@@ -106,7 +106,7 @@ describe("finalTurnError", () => {
       { role: "assistant", stopReason: "error", content: [] },
       { role: "assistant", stopReason: "stop", content: [{ type: "text", text: "ok" }] },
     ]);
-    expect(finalTurnError(session)).toBeUndefined();
+    expect(finalTurnFailure(session)).toEqual({});
   });
 
   it("ignores a failure before startIndex", () => {
@@ -114,7 +114,7 @@ describe("finalTurnError", () => {
       { role: "assistant", stopReason: "error", content: [] },
       { role: "user", content: "resume" },
     ]);
-    expect(finalTurnError(session, 1)).toBeUndefined();
+    expect(finalTurnFailure(session, 1)).toEqual({});
   });
 });
 

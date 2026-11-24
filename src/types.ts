@@ -2,6 +2,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { EffectiveCapabilities } from "./config/capability-policy.js";
 import type { WorktreeCleanupResult, WorktreeInfo } from "./platform/worktree.js";
+import type { FailureStage } from "./session/session-text.js";
 import type { LifetimeUsage, SessionLike } from "./usage.js";
 
 export type { ThinkingLevel };
@@ -84,6 +85,7 @@ export interface AgentRecord {
   status: "queued" | "running" | "completed" | "steered" | "aborted" | "stopped" | "error";
   result?: string;
   error?: string;
+  failureStage?: FailureStage;
   stopCause?: StopCause;
   settled?: boolean;
   pool?: "background" | "foreground";

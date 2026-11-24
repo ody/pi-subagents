@@ -148,9 +148,9 @@ export async function startAgent(
       options.onSessionCreated?.(session);
     },
   })
-    .then(async ({ responseText, session, aborted, steered, failure }) => {
+    .then(async ({ responseText, session, aborted, steered, failure, failureStage }) => {
       if (isCurrent()) {
-        recordRunOutcome(record, { text: responseText, aborted, steered, failure });
+        recordRunOutcome(record, { text: responseText, aborted, steered, failure, failureStage });
         record.session = session;
       }
 

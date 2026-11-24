@@ -55,7 +55,7 @@ const POOLS: PoolCase[] = [
 
 const mockSession = () => ({ dispose: vi.fn() } as any);
 
-const result = (extra: { aborted?: boolean; steered?: boolean; failure?: string } = {}) => ({
+const result = (extra: { aborted?: boolean; steered?: boolean; failure?: string; failureStage?: "provider" } = {}) => ({
   responseText: "done",
   session: mockSession(),
   aborted: false,
@@ -450,7 +450,7 @@ describe("AgentManager — spawn run endings settle once", () => {
 });
 
 interface ResumeRun {
-  resolve: (value: { text: string; failure?: string }) => void;
+  resolve: (value: { text: string; failure?: string; failureStage?: "provider" }) => void;
   reject: (reason: unknown) => void;
   signal: AbortSignal | undefined;
 }
@@ -516,6 +516,22 @@ describe("AgentManager — resume run endings settle once", () => {
     return { id, record };
   }
 
+  it("clears an earlier run's provider stage when a resume fails without one", async () => {
+    manager = new AgentManager(record => completed.push(record), 1);
+    const id = manager.spawn(mockPi, mockCtx, "X", "p", { description: "d", isBackground: false });
+    const record = manager.getRecord(id)!;
+    runs[runs.length - 1].resolve(result({ failure: "provider down", failureStage: "provider" }));
+    await record.promise;
+    expect(record.failureStage).toBe("provider");
+
+    const pending = manager.resume(id, "again");
+    resumes[0].resolve({ text: "", failure: "run hit the output token limit before producing any text" });
+    await pending;
+    await record.promise;
+    expect(record.status).toBe("error");
+    expect(record.failureStage).toBeUndefined();
+  });
+
   for (const pool of RESUME_POOLS) {
     describe(pool.name, () => {
       async function start() {
@@ -563,6 +579,14 @@ describe("AgentManager — resume run endings settle once", () => {
         await finish();
         expect(record.error).toBe("model failed");
         expect(record.result).toBe("partial");
+        expectSettledOnce("error");
+      });
+
+      it("keeps the provider stage of a resume's own failure", async () => {
+        const { record, finish } = await start();
+        resumes[0].resolve({ text: "", failure: "provider down", failureStage: "provider" });
+        await finish();
+        expect(record.failureStage).toBe("provider");
         expectSettledOnce("error");
       });
 

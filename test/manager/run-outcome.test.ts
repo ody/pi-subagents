@@ -40,6 +40,20 @@ describe("recordRunOutcome", () => {
     expect(aborted.error).toBeUndefined();
   });
 
+  it("stores the provider stage only with a failure the run did not abort", () => {
+    const failed = runningRecord();
+    recordRunOutcome(failed, { text: "", failure: "boom", failureStage: "provider" });
+    expect(failed.failureStage).toBe("provider");
+
+    const aborted = runningRecord();
+    recordRunOutcome(aborted, { text: "", aborted: true, failure: "boom", failureStage: "provider" });
+    expect(aborted.failureStage).toBeUndefined();
+
+    const stopped = runningRecord({ status: "stopped" });
+    recordRunOutcome(stopped, { text: "", failure: "boom", failureStage: "provider" });
+    expect(stopped.failureStage).toBeUndefined();
+  });
+
   it("keeps a stopped status and its error", () => {
     const record = runningRecord({ status: "stopped" });
     recordRunOutcome(record, { text: "partial", failure: "boom" });

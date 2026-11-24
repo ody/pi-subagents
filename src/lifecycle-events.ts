@@ -21,5 +21,6 @@ export function buildEventData(record: AgentRecord) {
     tokens,
     usage,
     ...(record.status === "stopped" && record.stopCause && { stopCause: record.stopCause }),
+    ...(record.status === "error" && record.failureStage && { failure: { stage: record.failureStage } }),
   };
 }

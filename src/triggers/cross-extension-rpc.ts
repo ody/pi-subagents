@@ -17,7 +17,7 @@ export type RpcReply<T = void> =
 
 export const PROTOCOL_VERSION = 4;
 
-export const RPC_FEATURES: readonly string[] = ["agent_record_session_fields"];
+export const RPC_FEATURES: readonly string[] = ["agent_record_session_fields", "agent_failed_provider_stage"];
 
 export const RPC_SPAWN_OPTIONS = [
   "description",

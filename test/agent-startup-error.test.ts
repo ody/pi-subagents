@@ -91,6 +91,7 @@ describe("Agent startup failures fail the tool call (#179)", () => {
       ).rejects.toThrow('Cannot run with isolation: "worktree"');
 
       expect(callsFor(pi.events.emit, "agent:failed")).toHaveLength(1);
+      expect(callsFor(pi.events.emit, "agent:failed")[0][1]).not.toHaveProperty("failure");
       expect(callsFor(pi.events.emit, "agent:completed")).toHaveLength(0);
       const records = callsFor(pi.appendEntry, "agent:record");
       expect(records).toHaveLength(1);

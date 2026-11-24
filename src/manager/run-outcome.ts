@@ -1,10 +1,10 @@
+import type { TurnFailure } from "../session/session-text.js";
 import type { AgentRecord } from "../types.js";
 
-export interface RunOutcome {
+export interface RunOutcome extends TurnFailure {
   text: string;
   aborted?: boolean;
   steered?: boolean;
-  failure?: string;
 }
 
 function terminalStatus({ aborted, steered, failure }: RunOutcome): AgentRecord["status"] {
@@ -16,7 +16,10 @@ function terminalStatus({ aborted, steered, failure }: RunOutcome): AgentRecord[
 export function recordRunOutcome(record: AgentRecord, outcome: RunOutcome): void {
   if (record.status !== "stopped") {
     record.status = terminalStatus(outcome);
-    if (outcome.failure && !outcome.aborted) record.error = outcome.failure;
+    if (outcome.failure && !outcome.aborted) {
+      record.error = outcome.failure;
+      record.failureStage = outcome.failureStage;
+    }
   }
   record.result = outcome.text;
   record.completedAt ??= Date.now();

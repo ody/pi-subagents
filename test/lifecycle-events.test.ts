@@ -30,6 +30,13 @@ describe("buildEventData", () => {
     expect(buildEventData(rec({ status: "error" }))).not.toHaveProperty("stopCause");
   });
 
+  it("carries the provider failure stage only for an error run", () => {
+    expect(buildEventData(rec({ status: "error", failureStage: "provider" })).failure).toEqual({ stage: "provider" });
+    expect(buildEventData(rec({ status: "error" }))).not.toHaveProperty("failure");
+    expect(buildEventData(rec({ status: "stopped", failureStage: "provider" }))).not.toHaveProperty("failure");
+    expect(buildEventData(rec({ status: "aborted", failureStage: "provider" }))).not.toHaveProperty("failure");
+  });
+
   it("omits usage when nothing was spent", () => {
     const data = buildEventData(rec());
     expect(data.usage).toBeUndefined();

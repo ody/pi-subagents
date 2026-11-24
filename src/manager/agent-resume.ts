@@ -66,6 +66,7 @@ export async function resume(
   record.result = undefined;
   record.worktreeResult = undefined;
   record.error = undefined;
+  record.failureStage = undefined;
   record.stopCause = undefined;
   record.completedAt = undefined;
   deps.reopenRun(record);
@@ -147,9 +148,9 @@ function startResume(
     },
     signal: controller.signal,
   })
-    .then(async ({ text, failure }) => {
+    .then(async ({ text, failure, failureStage }) => {
       if (isCurrent()) {
-        recordRunOutcome(record, { text, failure });
+        recordRunOutcome(record, { text, failure, failureStage });
         await cleanupWorktreeOutcome(record, record.description);
         deps.settleRun(record);
       }

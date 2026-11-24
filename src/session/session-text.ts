@@ -24,19 +24,29 @@ export function getLastAssistantText(session: AgentSession, startIndex = 0): str
   return "";
 }
 
-export function finalTurnError(session: AgentSession, startIndex = 0): string | undefined {
+export type FailureStage = "provider";
+
+export interface TurnFailure {
+  failure?: string;
+  failureStage?: FailureStage;
+}
+
+export function finalTurnFailure(session: AgentSession, startIndex = 0): TurnFailure {
   for (let i = session.messages.length - 1; i >= startIndex; i--) {
     const msg = session.messages[i];
     if (msg.role !== "assistant") continue;
     if (msg.stopReason === "error") {
-      return (msg as { errorMessage?: string }).errorMessage?.trim() || "provider error with no output";
+      return {
+        failure: msg.errorMessage?.trim() || "provider error with no output",
+        failureStage: "provider",
+      };
     }
     if (msg.stopReason === "length" && !extractText(msg.content).trim()) {
-      return "run hit the output token limit before producing any text";
+      return { failure: "run hit the output token limit before producing any text" };
     }
-    return undefined;
+    return {};
   }
-  return undefined;
+  return {};
 }
 
 export function getAgentConversation(session: AgentSession): string {

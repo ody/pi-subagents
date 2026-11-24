@@ -31,7 +31,7 @@ import { runInChildSessionContext } from "./child-context.js";
 import { buildParentContext } from "./context.js";
 import { extensionCanonicalNames, extensionConfigWarnings, installExtensionToolScope, parseExtSelectors, planExtensionLoad, resolveSessionToolScope } from "./extension-scope.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
-import { collectResponseText, finalTurnError, getLastAssistantText } from "./session-text.js";
+import { collectResponseText, finalTurnFailure, getLastAssistantText, type TurnFailure } from "./session-text.js";
 import { preloadSkills } from "./skill-loader.js";
 
 export function resolveDefaultModel(
@@ -96,12 +96,11 @@ export interface RunOptions {
   };
 }
 
-export interface RunResult {
+export interface RunResult extends TurnFailure {
   responseText: string;
   session: AgentSession;
   aborted: boolean;
   steered: boolean;
-  failure?: string;
 }
 
 function forwardAbortSignal(session: AgentSession, signal?: AbortSignal): () => void {
@@ -442,7 +441,7 @@ export async function runAgent(
     session,
     aborted: turns.aborted,
     steered: turns.steered,
-    failure: finalTurnError(session, startLen),
+    ...finalTurnFailure(session, startLen),
   };
 }
 
@@ -455,7 +454,7 @@ export async function resumeAgent(
     onCompaction?: (info: { reason: "manual" | "threshold" | "overflow"; tokensBefore: number }) => void;
     signal?: AbortSignal;
   } = {},
-): Promise<{ text: string; failure?: string }> {
+): Promise<TurnFailure & { text: string }> {
   const startLen = session.messages.length;
   const collector = collectResponseText(session);
   const cleanupAbort = forwardAbortSignal(session, options.signal);
@@ -474,7 +473,7 @@ export async function resumeAgent(
 
   return {
     text: collector.getText().trim() || getLastAssistantText(session, startLen),
-    failure: finalTurnError(session, startLen),
+    ...finalTurnFailure(session, startLen),
   };
 }
 

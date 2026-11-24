@@ -306,7 +306,7 @@ describe("capability policy configuration", () => {
     await handlers.get("agent:rpc:ping")?.({ requestId: "r1" });
     const reply = replies.find(r => r.channel === "agent:rpc:ping:reply:r1");
     expect(reply?.data.data.version).toBe(4);
-    expect(reply?.data.data.features).toEqual(["agent_record_session_fields"]);
+    expect(reply?.data.data.features).toEqual(["agent_record_session_fields", "agent_failed_provider_stage"]);
     expect(reply?.data.data.policy).toEqual(policyEventPayload(projectDir));
     expect(reply?.data.data.policy.global).toEqual({ tools: { allow: ["read"] } });
   });
