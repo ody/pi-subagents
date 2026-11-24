@@ -1,72 +1,76 @@
 # @ody/pi-subagents
 
-A [pi](https://pi.dev) extension that brings autonomous sub-agents to pi. Each agent runs in its own session, with its own tools, system prompt, model, and thinking level. Run agents in the background, block on them, steer them mid-run, resume them later, and define your own agent types.
-
-## What you get
-
-- **Four tools.** `agent` starts a run, `agent_get_result` reads it, `agent_steer` redirects it, and `agent_stop` ends it. See [The agent tools](docs/agent-tool.md).
-- **Background by default.** A spawn returns an id and notifies on completion. Two concurrency pools bound background and foreground work. See [Background and foreground](docs/agent-tool.md#background-and-foreground).
-- **Custom agent types.** Define agents in `.pi/agents/<name>.md`, with frontmatter for tools, extensions, skills, model, thinking level, and nesting. See [Writing agents](docs/agents.md).
-- **Nested subagents.** An agent can own scoped copies of the tools for its own children, within a depth cap. See [Nested subagents](docs/agents.md#nested-subagents).
-- **Agent mentions.** Type `@reviewer also check the RPC path` to message, resume, or start that agent without spending a turn in the main conversation. See [Agent mentions](docs/ui.md#agent-mentions).
-- **Live UI.** An above-editor widget, a selectable row per agent, and a conversation viewer with steering and stopping. See [UI and mentions](docs/ui.md).
-- **Git worktree isolation.** An agent can work in a temporary copy of the repository, and its changes land on a branch. See [Worktree isolation](docs/worktrees.md).
-- **One settings file per layer.** Global and project `subagents.json` files, a capability policy, and model scope. See [Settings reference](docs/settings.md).
-- **Integrations.** Lifecycle events on `pi.events`, plus five request/reply channels for other extensions. See [Integration](docs/rpc.md).
+A [pi](https://pi.dev) extension that lets the main agent hand work to sub-agents. Each sub-agent runs in its own session, with its own tools, model, and system prompt. Your main conversation stays small.
 
 ## Install
-
-Install from git:
 
 ```bash
 pi install git:github.com/ody/pi-subagents
 ```
 
-Or load a local checkout:
+This extension needs pi 1.0.0 or newer. To try a local checkout without installing, run `pi -e ./src/index.ts` from the repository.
 
-```bash
-pi install /path/to/pi-subagents
+## Run your first agent
+
+Ask pi in plain words:
+
+```text
+Use a sub-agent to find every file that handles authentication and summarize what each one does.
 ```
 
-Or load the extension entry for development:
-
-```bash
-pi -e ./src/index.ts
-```
-
-Requires pi **1.0.0 or newer**. The `peerDependencies` range declares it, so npm flags an older pi at install time.
-
-### Other hosts
-
-The maintainers develop and test this extension against pi. Third-party adapters report running it elsewhere, and their authors maintain them independently. We do not test them here, CI does not cover them, and compatibility may break with any release.
-
-## Quick start
-
-The main agent spawns sub-agents with the `agent` tool:
+The main agent calls the `agent` tool. With no `subagent_type`, the call builds a one-off agent from its own parameters, so you need no file:
 
 ```js
 agent({
-  subagent_type: "reviewer",
-  prompt: "Find all files that handle authentication",
+  prompt: "Find every file that handles authentication and summarize each one",
   description: "Find auth files",
 })
 ```
 
-Agents run in the background by default. The call returns an id immediately, and a completion notification carries a preview of the result. See [Background and foreground](docs/agent-tool.md#background-and-foreground) to block on a run instead.
+Here is what you see:
 
-Define the `reviewer` type in `.pi/agents/reviewer.md` first, or omit `subagent_type` to run a [one-off agent](docs/agent-tool.md#ephemeral-agents) built from the call's parameters.
+- **While it runs.** An Agents widget above the editor shows the run, with its tool uses and token count. Press `↓` at an empty prompt to select a row.
+- **When it ends.** The run goes to the background by default. A notification shows a preview of the result, and the main agent reads the full text with `agent_get_result`.
+- **To watch or steer.** Type `/agents` and select the run to open its conversation. `Enter` steers it, and pressing `x` twice stops it.
 
-## Documentation
+### Make a reusable agent
 
-| Page | Covers |
+Save a Markdown file as `.pi/agents/auditor.md`:
+
+```markdown
+---
+description: Security reviewer
+tools: read, grep, find
+---
+
+You are a security auditor. Report findings with file paths, line numbers, and severity.
+```
+
+The main agent starts it with `subagent_type: "auditor"`. You can also type `@auditor check the auth module` in the prompt. See [Writing agents](docs/agents.md) for every field.
+
+## How this extension thinks about sub-agents
+
+- **You write the agents.** The extension ships no agent definitions and no default agent. Every type comes from a file you own.
+- **Use a type only when it fits.** A call that names no type builds a one-off agent. The main agent picks a registered type only when its description matches the job.
+- **Delegation stays inside what the owner holds.** A sub-agent never gets more tools, extensions, or skills than its parent. Nesting stays off until an agent's `allowed_subagents` allows it, and a depth setting limits it.
+- **Settings can only narrow.** A capability policy limits every agent session. A project policy narrows the global one, and never widens it.
+- **Ownership limits control, not visibility.** The main agent steers and stops only the agents it started. You see every agent in the UI, nested ones included.
+- **Background is the default.** A run detaches and notifies you when it ends. Use `run_in_background: false` when the next step needs the answer.
+- **Nothing orchestrates for you.** There is no workflow engine. The main agent decides what to delegate and when, and other extensions integrate over the event bus only.
+- **A run settles once.** Every run ends in one final status, and a stopped run records who stopped it.
+
+The decision records in [docs/decisions/](docs/decisions/) hold the reasoning and are the current truth for this repository.
+
+## Go deeper
+
+| You want to | Read |
 | --- | --- |
-| [docs/agent-tool.md](docs/agent-tool.md) | The four tools and their parameters, ephemeral agents, background and foreground calls, join strategies, resume, graceful turn limits, run statuses, result rendering, and transcripts |
-| [docs/agents.md](docs/agents.md) | Agent files, discovery order, frontmatter fields, name and color rules, caller overrides, tool and extension scoping, nested subagents, skill preloading, the denylist, and unresolved types |
-| [docs/ui.md](docs/ui.md) | The Agents widget, selection mode, the conversation viewer, agent mentions, the `/agents` menu, and completion notifications |
-| [docs/settings.md](docs/settings.md) | The settings table, layer rules and precedence, the per-setting reference, the capability policy, and model scope |
-| [docs/worktrees.md](docs/worktrees.md) | Isolated runs, preservation commits, cleanup failures, resume and reopen, and the ways to turn worktrees off |
-| [docs/rpc.md](docs/rpc.md) | Lifecycle events, the `agent:rpc:*` channels, spawn options, error codes, protocol versions, and availability |
-| [docs/decisions/](docs/decisions/) | Architecture decision records, which are the current truth for this repository |
+| Know every `agent` parameter, join mode, resume rule, or run status | [The agent tools](docs/agent-tool.md) |
+| Write an agent file, scope its tools, nest agents, or preload skills | [Writing agents](docs/agents.md) |
+| Use the widget, the conversation viewer, `@mentions`, or the `/agents` menu | [UI and mentions](docs/ui.md) |
+| Change a default, set a capability policy, or limit models | [Settings reference](docs/settings.md) |
+| Run agents in isolated git worktrees | [Worktree isolation](docs/worktrees.md) |
+| Connect another extension through events or `agent:rpc:*` channels | [Integration](docs/rpc.md) |
 
 ## License
 
