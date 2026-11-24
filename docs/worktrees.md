@@ -14,7 +14,7 @@ The agent gets a full, isolated copy of the repository. The extension removes th
 
 The cleanup outcome reaches the record on every ending: a completed run, a failed run, and a stopped run. Each one gains the branch, the failure, or the worktree path in `record.result`. A forced stop reports the worktree state at stop time. When the run ends later, the extension appends the cleanup outcome to `record.result` and sends no second notification.
 
-The agent's system prompt names the worktree as an isolated copy and tells it to work only there. This holds even if other instructions name the main checkout; otherwise an inherited parent prompt or a task prompt mentioning the project path walks it straight back out of the copy. This is a directive, not a sandbox. An agent with shell access can still `cd` out, so do not rely on `isolation` alone to protect the main checkout.
+The agent's system prompt names the worktree as an isolated copy and tells it to work only there. This holds even if other instructions name the main checkout. Otherwise an inherited parent prompt, or a task prompt that mentions the project path, walks it straight back out of the copy. This is a directive, not a sandbox. An agent with shell access can still `cd` out, so do not rely on `isolation` alone to protect the main checkout.
 
 A worktree is a *copy*, so the agent cannot see uncommitted or staged changes in the main checkout. Never use it to review a working-tree or staged diff: the agent finds an empty `git diff` and reports nothing wrong.
 
@@ -36,9 +36,11 @@ A worktree path that is gone before cleanup produces an unknown-changes outcome.
 
 A worktree that survives `git worktree remove` produces a removal error. The result names the path and the git error. A branch saved before removal stays in the outcome, so one result can name both the branch and the removal failure. A clean worktree that stays behind keeps `hasChanges: false` and gains only the path and the error.
 
-The extension removes a worktree in two cases only: a branch points at the agent's work, or the worktree has no changes and HEAD equals the base.
+The extension removes a worktree in two cases only. Either a branch points at the agent's work, or the worktree has no changes and HEAD equals the base.
 
-If the extension cannot create the worktree, the `agent` call fails with a clear error instead of running unisolated. Typical causes are a directory that is not a git repository, a repository with no commits, or a failing `git worktree add`. `isolation: "worktree"` is a strict guarantee, not a hint, and the extension reports the call as a failed tool call rather than as a subagent that ran and returned that message. The model therefore does not retry it as if the agent had merely reported a problem. Initialize git and commit at least once, or omit `isolation`.
+If the extension cannot create the worktree, the `agent` call fails with a clear error instead of running unisolated. Typical causes are a directory that is not a git repository, a repository with no commits, or a failing `git worktree add`.
+
+`isolation: "worktree"` is a strict guarantee, not a hint. The extension reports the call as a failed tool call, not as a subagent that ran and returned that message. The model therefore does not retry it as if the agent had merely reported a problem. Initialize git and commit at least once, or omit `isolation`.
 
 ## Resume and reopen
 
@@ -46,7 +48,7 @@ A retained worktree supports a resume. A persisted isolated run stores its workt
 
 Git locks each agent worktree with its ownership token and cleanup state. An exclusive lease prevents another pi process from using the same worktree. The extension refuses a resume once removal succeeded, and leaves the prior result and its worktree note intact.
 
-A permitted resume keeps that path and uses the same cleanup lifecycle. Its cleanup saves or removes the worktree again and writes that outcome to the result, so a resumed run can resume again only if its own cleanup keeps the path.
+A permitted resume keeps that path and uses the same cleanup lifecycle. Its cleanup saves or removes the worktree again, and writes that outcome to the result. A resumed run can then resume again only if its own cleanup keeps the path.
 
 The reopen refuses an entry with a missing or mismatched lock. It also refuses a missing worktree, unknown isolation state, or cleanup that may not have finished. No refusal runs the conversation in the parent checkout.
 
@@ -56,7 +58,7 @@ A crash can leave the lease behind. After confirming that no process or tool sti
 
 Three levers, from narrowest to broadest:
 
-- **Per call:** omit `isolation`, or pass `isolation: "off"`. The explicit value exists because some models fill every optional parameter that the tool offers them, and with `worktree` as the only legal value they had no way to decline one.
+- **Per call:** omit `isolation`, or pass `isolation: "off"`. The explicit value exists because some models fill every optional parameter the tool offers. With `worktree` as the only legal value, they had no way to decline one.
 - **Per agent:** `isolation: off` in an [agent file](agents.md#frontmatter-fields). Frontmatter is authoritative, so this refuses a worktree even when the caller passes `isolation: "worktree"`. It is the only way to override a caller.
 - **Per project:** [`"worktreeIsolation": false`](settings.md#worktree-isolation) in `subagents.json`. Use it on a repo large enough that a copy costs real time and disk.
 
@@ -66,6 +68,6 @@ With worktree isolation off project-wide:
 - The extension refuses worktree creation on every other path too: agent files and cross-extension RPC. It downgrades a request to a normal run rather than failing the call, and adds no note to the result.
 - The extension builds the schema and the description at tool registration, so they appear or disappear in the next pi session. The refusal itself takes effect immediately.
 
-The extension gates schema and prose together on purpose. Leaving the bullet in would teach the model to pass a field that the schema no longer declares, and the extension would accept it silently and then drop it. A refused worktree carries no note on the result, so the model would have every reason to go on reporting a `pi-agent-*` branch that the extension never created.
+The extension gates schema and prose together on purpose. Leaving the bullet in would teach the model to pass a field that the schema no longer declares. The extension would accept it silently and then drop it. A refused worktree carries no note on the result. The model would then have every reason to go on reporting a `pi-agent-*` branch that the extension never created.
 
 A custom tool description should use the `{{isolationGuideline}}` placeholder rather than hardcoding the bullet, for the same reason. See [Tool description](settings.md#tool-description).

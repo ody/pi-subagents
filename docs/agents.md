@@ -19,7 +19,7 @@ Project-level agents override global ones with the same name, so you can customi
 - The global location follows pi's `PI_CODING_AGENT_DIR` env var. Set it to relocate all pi state: agents, skills and settings.
 - An agent's name is its frontmatter `name`, falling back to the filename. Two files can claim the same name. The later load wins, and the warning names the file that took over.
 
-A skill can ship agents in an `agents/` directory next to its `SKILL.md`, so it can dispatch work into a clean context without asking the user to install agent files. The extension finds skills the way pi does: any directory under `$PI_CODING_AGENT_DIR/skills/` that holds a `SKILL.md`, at any depth, following symlinks.
+A skill can ship agents in an `agents/` directory next to its `SKILL.md`. The skill can then dispatch work into a clean context without asking the user to install agent files. The extension finds skills the way pi does: any directory under `$PI_CODING_AGENT_DIR/skills/` that holds a `SKILL.md`, at any depth, following symlinks.
 
 Rules for skill agents:
 
@@ -81,7 +81,7 @@ All fields are optional. Omitted fields take the defaults in the table.
 | `output_transcript` | [`outputTranscript`](settings.md#output-transcript) | Write this subagent's `.output` transcript. When set, it overrides the `outputTranscript` default. `false` writes no transcript file or path. Governs only the transcript: independent of `persist_session` and `isolation: worktree` |
 | `session_dir` | pi default | Optional session directory when `persist_session: true`. Omitted uses pi's normal session location, and relative paths resolve from the agent cwd. A session outside the parent's session directory (this override, or `isolation: worktree`) appears separately in the list, so it shows as a root instead of nesting |
 | `allowed_subagents` | none | Opt in to scoped nested `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools. Omitted, empty, `none` or `false` means no nesting. `all` (or `"*"` / `true`) means any enabled agent. A comma-separated list means only those types. See [Nested subagents](#nested-subagents) |
-| `prompt_mode` | `replace` | `replace`: the body is the full system prompt, with no AGENTS.md or CLAUDE.md inheritance. `append`: the body is appended to the parent's prompt, which inherits the parent's AGENTS.md or CLAUDE.md. The extension tags a `replace` agent `(bare)` in the widget, the viewer, and the tool result |
+| `prompt_mode` | `replace` | `replace`: the body is the full system prompt, with no AGENTS.md or CLAUDE.md inheritance. `append`: the extension appends the body to the parent's prompt, which inherits the parent's AGENTS.md or CLAUDE.md. The extension tags a `replace` agent `(bare)` in the widget, the viewer, and the tool result |
 | `inherit_context` | `false` | Fork the parent conversation into the agent |
 | `run_in_background` | none | Default this agent to background (`true`) or foreground (`false`). A caller value overrides it. Omit to follow [`backgroundByDefault`](settings.md#background-by-default) |
 | `isolated` | `false` | Hermetic specialist mode: forces `extensions: false` and `skills: false`, and drops `ext:` selectors. Only built-in tools. Distinct from `isolation: worktree`, which isolates the filesystem |
@@ -105,7 +105,7 @@ The caller can override four fields of a named agent for one run: `model`, `thin
 
 A caller `max_turns` of `0` means unlimited and is not re-resolved from the file. Every other field binds the agent: `inherit_context`, `isolated` and `isolation` only fill what the file leaves unspecified, and `isolation: off` still refuses a worktree.
 
-`model` is the exception. A `model` passed to the `agent` tool takes effect even against a pin, so `model:` in an agent file means "this agent's model unless the caller says otherwise". Three consequences:
+`model` is the exception. A `model` passed to the `agent` tool takes effect even against a pin. So `model:` in an agent file means "this agent's model unless the caller says otherwise". Three consequences:
 
 - The extension discloses the displaced pin. The widget, the tool-result header and the conversation viewer render `opus 4.6 (over pinned anthropic/claude-haiku-4-5)`.
 - The tool schema does not advertise the capability. The `model` parameter tells the model to set it only when the user named one. It says nothing about pins or precedence, so it is a user-driven override rather than something the orchestrator reaches for on its own.
@@ -113,7 +113,7 @@ A caller `max_turns` of `0` means unlimited and is not re-resolved from the file
 
 ## Model resolution
 
-The extension matches a `model:` pin against pi's model registry tolerantly, so cosmetic id variations do not silently drop the agent back to the parent's model:
+The extension matches a `model:` pin against pi's model registry tolerantly. Cosmetic id variations therefore do not silently drop the agent back to the parent's model:
 
 - `.` and `-` are equivalent in version numbers (`claude-haiku-4.5` matches `claude-haiku-4-5`).
 - A trailing `-YYYYMMDD` date stamp is optional, in both directions.
@@ -157,13 +157,13 @@ Rules the examples do not make obvious:
 - Extension names match case-insensitively (`[Mcp]` equals `[mcp]`). Tool names in `ext:foo/bar` stay case-sensitive.
 - Extensions that register tools **lazily** work too. MCP-backed extensions typically cannot enumerate their tools until their servers connect, so they register from `session_start` or `before_agent_start` rather than at load. The extension re-derives subagent scoping as tools appear, so these surface normally, and `ext:` selectors keep narrowing correctly no matter when a tool shows up.
 - Extensions bound into a subagent see **both ends** of that session's lifecycle. `session_start` fires when the agent starts. `session_shutdown` fires with reason `quit` when the extension disposes of its session: on quit, and when it evicts the record about ten minutes after the agent finishes. Release per-session resources there, because anything left armed outlives the session it belongs to. Handlers get three seconds on quit, after which teardown proceeds regardless.
-- An installed **package** extension matches by its package short name (`@scope/pi-subagents` matches `[pi-subagents]`), in addition to its path-derived name (a package whose entry is `src/index.ts` also answers to `[src]`). Prefer the package name; the path-derived one is incidental.
+- An installed **package** extension matches by its package short name (`@scope/pi-subagents` matches `[pi-subagents]`), in addition to its path-derived name. A package whose entry is `src/index.ts` also answers to `[src]`. Prefer the package name; the path-derived one is incidental.
 - Plain `tools:` typos fail loudly: `tools: reed, grep` fires `tools-error:…` instead of silently producing an under-tooled agent.
 - `exclude_extensions:` wins over `extensions:` and over `ext:` selectors. An excluded extension never loads, and a `tools: ext:` entry cannot pull it back. Plain names only, no paths and no `*`. A name matching nothing fires an `extension-error:…` warning.
 - `exclude_extensions:` is **not a sandbox**. Excluded extensions' factory code still executes once during loading. Exclusion suppresses their tools and their bound lifecycle hooks, because `pi.on` handlers fire only for extensions bound to the session. It does not suppress other load-time side effects: a factory that subscribes directly to the shared `pi.events` bus stays live. Do not rely on it to contain an untrusted extension.
 - Array and string forms are equivalent: `[a, b]` equals `"a, b"`.
 
-The agent tool description lists every available agent with a `(Tools: …)` suffix, and the orchestrator reads that suffix when it decides where to route work. The suffix describes **built-in scope only**, because the extension resolves extension tools when the agent runs and cannot enumerate them when it builds the description:
+The agent tool description lists every available agent with a `(Tools: …)` suffix, and the orchestrator reads that suffix when it decides where to route work. The suffix describes **built-in scope only**. The extension resolves extension tools when the agent runs, and cannot enumerate them when it builds the description:
 
 | `tools:` | Suffix |
 | --- | --- |
@@ -237,7 +237,7 @@ skills: api-conventions, error-handling
 ---
 ```
 
-Discovery roots are checked in this order, and the first match wins:
+The extension checks discovery roots in this order, and the first match wins:
 
 | Scope | Path | Source |
 | --- | --- | --- |

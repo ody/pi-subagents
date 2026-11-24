@@ -1,6 +1,6 @@
 # Integration: events and RPC
 
-Another pi extension can spawn a subagent, listen for its completion, read the result, and stop the run, all over the `pi.events` bus, without importing this package. The surface is five request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`, `agent:rpc:wait_idle`) and nine lifecycle events.
+Another pi extension can spawn a subagent, listen for its completion, read the result, and stop the run. It does all of this over the `pi.events` bus, without importing this package. The surface is five request/reply channels (`agent:rpc:ping`, `agent:rpc:spawn`, `agent:rpc:stop`, `agent:rpc:consume`, `agent:rpc:wait_idle`) and nine lifecycle events.
 
 The bus is in-process. Every "RPC" call is a synchronous `pi.events.emit` into the same event loop, and every reply comes back the same way. That single fact explains most of what follows:
 
@@ -225,7 +225,7 @@ Every failure reaches the caller as `{ success: false, code, error }` (`handleRp
 | `shutdown` | `wait_idle` was pending when `session_shutdown` came |
 | `internal` | Any other failure, such as a spawn that reached the manager without a policy verdict |
 
-The in-session `agent_stop` tool diverges from this on the already-settled case. Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel replies with code `not_running`, and the tool reports its terminal status as a normal, non-error result.
+The in-session `agent_stop` tool diverges from this on the already-settled case. Both resolve to the same `manager.abort()` call and the same `isTopLevelAgent` ownership check. For a record that has already settled, the RPC channel replies with code `not_running`. The tool reports its terminal status as a normal, non-error result.
 
 The model's intent, "that agent should not be running", is already true, and an `isError: true` result is the wrong signal for "nothing to do". An extension, by contrast, can and should branch on an error envelope. Do not mirror the tool's wording back into the RPC reply, or a caller that branches on `not_running` silently stops seeing it.
 
@@ -236,7 +236,7 @@ Two more things the table cannot show:
 
 ## Ownership
 
-`isTopLevelAgent(record)` is `parentAgentId === undefined` (`isTopLevelAgent` in `src/manager/agent-manager-rules.ts`). `agent:rpc:stop` enforces it (`src/triggers/cross-extension-rpc.ts`): a nested child has an owner that is *waiting on it*, so aborting the child out from under that owner turns another extension's stop into a failed step. It is defence in depth rather than a live hole: no RPC hands out agent ids, so a caller has no ordinary way to name an agent it does not own.
+`isTopLevelAgent(record)` is `parentAgentId === undefined` (`isTopLevelAgent` in `src/manager/agent-manager-rules.ts`). `agent:rpc:stop` enforces it (`src/triggers/cross-extension-rpc.ts`). A nested child has an owner that is *waiting on it*. Aborting the child out from under that owner turns another extension's stop into a failed step. It is defence in depth rather than a live hole. No RPC hands out agent ids, so a caller has no ordinary way to name an agent it does not own.
 
 One asymmetry to know about:
 
@@ -258,11 +258,13 @@ A stop while the run waits in the queue, or during worktree creation, enters the
 
 A start that fails enters the same tail with status `error`. It fires `agent:failed` once and appends one `agent:record` entry. A direct start also rethrows to its caller.
 
-The forced entry copies the streamed response text into `record.result` when no result exists, so that event and the notification carry the partial output instead of an empty `result`. The forced entry also adds the worktree path when the run has a worktree. It does not save the worktree, because a tool process of the wedged run can still write to it; a later real settle saves it. Nothing about the reply envelope changes: `stop` still replies before the settle tail runs, forced or otherwise.
+The forced entry copies the streamed response text into `record.result` when no result exists. That event and the notification then carry the partial output instead of an empty `result`. The forced entry also adds the worktree path when the run has a worktree. It does not save the worktree, because a tool process of the wedged run can still write to it; a later real settle saves it.
+
+Nothing about the reply envelope changes: `stop` still replies before the settle tail runs, forced or otherwise.
 
 ## The notification race
 
-When a background agent finishes, pi-subagents sends the user a completion notification. If you have already shown the model that result yourself, the notification arrives on top of an answer the model already has, and it costs the parent a turn to dismiss. `agent:rpc:consume` is how you say you have handled it: the bus-side half of what `agent_get_result` does when it returns a result.
+When a background agent finishes, pi-subagents sends the user a completion notification. If you have already shown the model that result yourself, the notification arrives on top of an answer the model already has. It costs the parent a turn to dismiss. `agent:rpc:consume` is how you say you have handled it: the bus-side half of what `agent_get_result` does when it returns a result.
 
 **When you send it decides whether it works.** The timeline:
 
@@ -298,7 +300,7 @@ The extension emits these events on `pi.events`. The four agent-lifecycle events
 | `agent:settings_loaded` | Right after `agent:ready` | `settings`, `policy`, see [Settings events](#settings-events) |
 | `agent:settings_changed` | A `/agents` setting change or reset | `settings`, `persisted`, `layer`, `policy` |
 
-`tokens.total` is `input + output + cacheWrite`, and excludes `cacheRead`. Each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call, so summing per message would over-count it as a measure of work. Use `contextUsage.percent`, which the widget shows as `(NN%)`, for current context size.
+`tokens.total` is `input + output + cacheWrite`, and excludes `cacheRead`. Each turn's `cacheRead` is the cumulative cached prefix re-read on that one API call. Summing per message would therefore over-count it as a measure of work. Use `contextUsage.percent`, which the widget shows as `(NN%)`, for current context size.
 
 `usage` answers the other question: what the provider billed. It does include `cacheRead`, because the prefix really is re-read and re-charged on every call. It is a pi `Usage`, the same shape pi puts on `ToolResultEvent` and `AssistantMessage`, so `usage.cost.total` is where a listener already expects the money. Neither field derives from the other: `tokens` is a view model, `usage` is the data.
 
@@ -376,7 +378,7 @@ An RPC-spawned agent emits **no** `agent:created`. The only two emit sites are t
 
 ## What the tests pin
 
-This document has no test of its own, so it is worth knowing which claims are held in place:
+This document has no test of its own, so it is worth knowing which claims the tests pin:
 
 | Test | Level | Pins |
 | --- | --- | --- |

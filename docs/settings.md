@@ -163,7 +163,7 @@ Subagents run in their own pi sessions, so by default pi's footer, statusline an
 
 Three things to know about the numbers:
 
-- The extension reports every token component, `cacheRead` included. The cached prefix genuinely is re-read and re-billed on every call. pi counts it the same way for the session's own messages, and withholding it would make a subagent's rows count differently from every other row in one total. The extension's *own* token displays still leave it out: there it inflates a reading of how much work the agent did.
+- The extension reports every token component, `cacheRead` included. The cached prefix genuinely is re-read and re-billed on every call. pi counts it the same way for the session's own messages. Withholding it would make a subagent's rows count differently from every other row in one total. The extension's *own* token displays still leave it out: there it inflates a reading of how much work the agent did.
 - Cost is pi's own per-message figure, priced from the model's listed rates. A model pi has no rates for contributes zero rather than an estimate.
 - The context-window percentage does not change. pi derives it from assistant messages alone, so a delegating session's context does not appear to fill up faster.
 
@@ -194,7 +194,7 @@ This setting is independent of `reportUsage`: this one is what you read, that on
 ├─ ⠹ reviewer  inspect code · sonnet 4.6 · thinking: high · ↻3 · 8.2k token · 4.1s
 ```
 
-It is off by default because the row already carries the description, turns, tool uses, tokens and elapsed time. Every character it gains is one the description loses on a narrow terminal. The other surfaces show the pair either way: the `agent` tool result names the model beside its tags, and the conversation viewer's `↳` row spells out the canonical `provider/model-id`.
+It is off by default because the row already carries the description, turns, tool uses, tokens and elapsed time. Every character it gains is one the description loses on a narrow terminal. The other surfaces show the pair either way. The `agent` tool result names the model beside its tags, and the conversation viewer's `↳` row spells out the canonical `provider/model-id`.
 
 Both places report what the run *actually* used. The extension reads it back from the child session once pi has resolved its defaults and clamped the level to what the model supports. It does not report what the call asked for. Where those differ, the extension keeps the losing side beside the effective value rather than dropping it. The `agent` tool result and the viewer show every field where the caller displaced an agent file's value:
 
@@ -274,7 +274,7 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 - The extension narrows `skills: true` through the skill loader, and filters named skills before it preloads them. The same scope filters extension tools that register after spawn.
 - A denied extension still runs its factory once at load, and a denied skill's `SKILL.md` stays readable through `read` or `bash`. The policy removes tools and bound hooks, not file access.
 - The extension reads the policy at each spawn, so an edit applies without a restart.
-- A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names no built-in tool, discovered extension, or discovered skill only warns, as a warning toast once per agent start, and the spawn proceeds. Skills come from pi's full resource discovery: the default skill directories, `settings.json` skill paths, and installed packages. Discovery runs only when the policy has a skill entry.
+- A wrong type or shape, `*` in a deny list, an unknown key, or a `subagents.json` that does not parse is a malformed policy. The extension denies every spawn, and a warning names the file and entry. A well-formed entry that names no built-in tool, discovered extension, or discovered skill only warns, as a warning toast once per agent start. The spawn proceeds. Skills come from pi's full resource discovery: the default skill directories, `settings.json` skill paths, and installed packages. Discovery runs only when the policy has a skill entry.
 - A change from `/agents → Settings` keeps the `policy` of the file it writes. It refuses, with a warning, when that file exists and does not parse.
 - The `Ephemeral nesting` row appears in both layers and writes `policy.ephemeralNesting` only. It leaves every other part of `policy` as it was, and `r` removes the key.
 - The row shows the effective value. On the project layer it refuses to turn on while the global file has it off, because a project can only narrow.
@@ -302,7 +302,7 @@ The check runs on every path that starts an agent:
 - `@handle` mentions, including the clone fallback and tombstone reopens.
 - `agent:rpc:spawn`.
 
-`scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin outside the scope gives way to the session model, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one: winning the precedence contest against a pin does not buy it a replacement instead of an error.
+`scopeModels` is a guardrail against the orchestrator picking unexpected models at runtime, not a hard policy against user-level config. A frontmatter pin outside the scope gives way to the session model, with a visible warning. The extension hard-checks a caller-supplied `model` whether or not the agent file pins one. Winning the precedence contest against a pin does not buy it a replacement instead of an error.
 
 Nested spawns apply the same table against the parent's config root. The hard-error and replacement cases are identical, including the toast and the result note.
 

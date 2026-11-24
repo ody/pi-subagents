@@ -125,7 +125,7 @@ Both names share one namespace, so an alias can never shadow a live handle or th
 
 ### Starting a new agent
 
-In `model` mode the clone receives your message with a `<system-reminder>` appended. The reminder says the user wants to invoke agent X, and asks the model to invoke the agent and pass in the required context. The clone's model then makes the tool call. There is no tool forcing and no allowed-tools narrowing. The mention constrains *which* agent, not what it is told, so the model writes the agent's prompt with the conversation context a cold spawn lacks.
+In `model` mode the clone receives your message with a `<system-reminder>` appended. The reminder says the user wants to invoke agent X, and asks the model to invoke the agent and pass in the required context. The clone's model then makes the tool call. There is no tool forcing and no allowed-tools narrowing. The mention constrains *which* agent, not what it is told. So the model writes the agent's prompt, with the conversation context a cold spawn lacks.
 
 The cost is a visible turn: the model's reasoning and its tool block, narrating a decision you already made by typing the handle. The extension keeps the mechanism and moves it off-screen. It copies the conversation into a throwaway in-memory session. That clone takes the turn holding only the `agent` tool. What it starts is an ordinary top-level agent:
 
@@ -150,7 +150,7 @@ Either way the started agent honours its own frontmatter: `model:`, `thinking:`,
 - `model` reads your words, so `@reviewer with model deepseek flash and reasoning high, review the ADR` sets `model` and `thinking` for that run.
 - The clone's `agent` tool refuses `max_turns`, `run_in_background`, and `resume`. `inherit_context`, `isolated` and `isolation` fill as on the main tool.
 - The clone's forced background start is not disclosed as an override.
-- When the tool refuses the clone's call, the extension shows a warning toast with the refusal message, and does not fall back to a direct start.
+- When the tool refuses the clone's call, the extension shows a warning toast with the refusal message. It does not fall back to a direct start.
 
 Mentioning something as the very first thing in a session works. There is simply no history to carry, and the clone still runs on your model and system prompt.
 
@@ -192,7 +192,7 @@ Settings                                    ← every persistent setting
 ```
 
 - **Agents**: the whole hierarchy, indented, with nested children under their spawner. The list marks an agent whose owner is gone as `detached`. Select an agent to open its [conversation viewer](#conversation-viewer), where `Enter` steers, `x` twice stops, and `Ctrl+O` expands the messages.
-- **Agent types**: a unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model, and the full description of the highlighted agent appears below the list. The model column flags `(unavailable, fallback: inherit)` when the extension cannot resolve a configured model, and shows `(→ provider/id)` when the model resolves to a different provider or version than configured. Select an agent to manage it:
+- **Agent types**: a unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model, and the full description of the highlighted agent appears below the list. The model column flags `(unavailable, fallback: inherit)` when the extension cannot resolve a configured model. It shows `(→ provider/id)` when the model resolves to a different provider or version than configured. Select an agent to manage it:
   - **Skill agents**: Eject, Disable.
   - **Custom agents**: Edit, Disable, Delete.
   - **Disabled agents**: Enable, Edit, Delete.
