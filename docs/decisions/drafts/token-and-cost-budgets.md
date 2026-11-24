@@ -10,12 +10,15 @@ Usage accrues per assistant message in `src/usage.ts`, and `addUsageToAncestors`
 
 Cost is pi's per-message figure, and an unlisted rate contributes zero (ADR 0028). A cost ceiling alone never trips on such a model.
 
-Four accepted ADRs constrain it:
+Five accepted ADRs constrain it:
 
 - ADR 0013 bounds a nested spawn by its parent.
 - ADR 0033 settles every run once.
 - ADR 0034 routes every stop through `abort()` with a `stopCause`.
 - ADR 0045 keeps the spawn option surface closed.
+- ADR 0046 sets when the protocol version changes.
+
+This decision amends ADR 0034, which gains the `budget` cause, and ADR 0046's code set, which gains `budget_exhausted`.
 
 ## Decision
 
@@ -38,7 +41,8 @@ A budget is a token ceiling, a cost ceiling, or both. Crossing either one stops 
 - `agent:rpc:spawn` accepts `maxTokens` and `maxCost`, listed in `RPC_SPAWN_OPTIONS`.
 - The fleet keys are settings only: a fleet is a property of the session, not of a spawn.
 - Precedence is the caller, then the file, then the setting (ADR 0014), with the same override disclosure as `max_turns`.
-- A nested spawn's budget is the smaller of its parent's and its own. A caller value above the parent's narrows, and never refuses the spawn.
+- A nested spawn's `max_tokens` and `max_cost` cap that agent's own subtree, counted from its own `lifetimeUsage`. The effective cap is the smaller of its own value and the parent's remaining budget at spawn time. A caller value above that narrows, and never refuses the spawn.
+- A nested agent's spend also counts against every ancestor's cap, so a parent's cap still bounds all its children (ADR 0013).
 - A mention clone refuses `max_tokens` and `max_cost`, as it refuses `max_turns`.
 - An ephemeral agent takes its budget from the caller and the setting alone.
 
@@ -48,17 +52,18 @@ A budget is a token ceiling, a cost ceiling, or both. Crossing either one stops 
 - A crossed cap stops the run through `abort()` with the `stopCause` `budget`, which settles once (ADR 0033). The settle saves and removes the worktree as for any stop.
 - The `stopCause` set of ADR 0034 includes `budget`, both outcome tables in `src/tool/status-note.ts` carry its text, and `docs/rpc.md` lists it.
 - A crossed fleet cap stops every running and queued top-level tree. Their children stop through their owner (ADR 0033).
-- Admission while over a cap refuses the spawn or the resume. `agent:rpc:spawn` fails with the code `budget_exhausted`, and `features` gains `budgets`.
+- Admission while over a cap refuses the spawn or the resume. `agent:rpc:spawn` fails with the code `budget_exhausted`.
+- A refusal of a request that the same version accepted is a breaking change (ADR 0046). `PROTOCOL_VERSION` rises by one, `features` resets, and `features` then gains `budgets` for the new options. The matching pi-advisor change ships with it.
 
 Rejected, one line each:
 
-- A cost ceiling alone: an unpriced model spends zero, so the ceiling never trips.
+- Cost as the only unit: an unpriced model spends zero, so a cost ceiling alone never trips. The token ceiling covers that case.
 - A token count without `cacheRead`: a loop that re-reads one large context grows only there.
 - One fleet ceiling and no per-tree ceiling: one expensive tree stays invisible.
 - A ceiling per nested agent without its subtree: a parent could not bound its children (ADR 0013).
 - Grace turns as `maxTurns` has them: a spend ceiling that spends past itself.
 
-Done check: `npx vitest run test/budget.test.ts test/manager/stop-cause.test.ts test/tool/nested-tools.test.ts test/triggers/cross-extension-rpc.test.ts test/settings.test.ts` passes. It covers both units, both scopes, the settings and frontmatter keys, and precedence and disclosure. It also covers nested narrowing, the ephemeral path, the refusal at admission, and the `budget_exhausted` and `budget` text.
+Done check: `npx vitest run test/manager/budget.test.ts test/manager/stop-cause.test.ts test/tool/nested-tools.test.ts test/triggers/cross-extension-rpc.test.ts test/config/settings.test.ts` passes. It covers both units, both scopes, the settings and frontmatter keys, and precedence and disclosure. It also covers nested narrowing, the ephemeral path, the refusal at admission, and the `budget_exhausted` and `budget` text.
 
 ## Consequences
 

@@ -52,7 +52,7 @@ agent({
 })
 ```
 
-Agents run in the background by default. The call returns an id immediately, and a completion notification carries a preview of the result. Call `agent_get_result` for the full text. Pass `run_in_background: false` to block until the agent finishes and get its output inline.
+Agents run in the background by default. The call returns an id immediately, and a completion notification carries a preview of the result. See [Background and foreground](docs/agent-tool.md#background-and-foreground) to block on a run instead.
 
 Define the `reviewer` type in `.pi/agents/reviewer.md` first, or omit `subagent_type` to run a [one-off agent](docs/agent-tool.md#ephemeral-agents) built from the call's parameters.
 
