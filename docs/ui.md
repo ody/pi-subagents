@@ -89,7 +89,7 @@ The handle names the **agent**, not one process, so a single syntax covers its w
 
 | State | `@reviewer fix the flaky test` does |
 | --- | --- |
-| running or queued | sends the message into its conversation, exactly as `agent_steer` would |
+| running or queued | sends the message into its conversation. A queued agent gets it when its session starts |
 | finished | **resumes** it in the background from its existing session, continuing where it left off |
 | finished long ago, record gone | **reopens** its session from disk and continues there |
 | never started | **starts** it, through the path that [`agentMentions`](settings.md#agent-mentions) selects |

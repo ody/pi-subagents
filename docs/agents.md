@@ -113,13 +113,20 @@ A caller `max_turns` of `0` means unlimited and is not re-resolved from the file
 
 ## Model resolution
 
-The extension matches a `model:` pin against pi's model registry tolerantly. Cosmetic id variations therefore do not silently drop the agent back to the parent's model:
+The extension resolves a `model:` pin, and a caller `model`, against the models pi reports as available. The first of three passes that finds a model wins:
 
-- `.` and `-` are equivalent in version numbers (`claude-haiku-4.5` matches `claude-haiku-4-5`).
-- A trailing `-YYYYMMDD` date stamp is optional, in both directions.
-- A `provider/modelId` whose named provider does not carry that model retries the bare id against every provider.
+1. **Literal lookup.** A `provider/modelId` value that names an available model exactly resolves to that model.
+2. **Scored search.** The extension lowercases the whole value, turns `.` into `-`, and scores it against every available model under every provider. The highest score wins.
+3. **Provider strip.** If a qualified value does not resolve, the extension strips the first prefix and retries with the rest.
 
-Precedence is **exact, then fuzzy under the named provider, then same model under any provider, then unavailable**. An exact match always wins, so dated snapshots are never conflated.
+For each model, the first applicable rule supplies its score:
+
+- A normalized id or `provider/id` match scores 100. For example, `claude-haiku-4.5` and `claude-haiku-4-5` normalize to the same id.
+- An id or `provider/id` substring scores `60 + 30 × query length / id length`. A qualified substring can outscore a normalized exact match.
+- A display-name substring scores `40 + 20 × query length / name length`.
+- A match on all parts scores 20. The extension splits on whitespace, `-`, and `/`. Each part must appear in the id, name, or provider, unless it contains exactly eight digits and nothing else.
+
+Equal scores keep the first entry in registry order. Only the literal lookup guarantees the named provider and snapshot. The scored search can choose a gateway or another version.
 
 If nothing resolves, the pin cannot run and the agent inherits the parent model. `/agents → Agent types` flags this case as `(unavailable, fallback: inherit)` and shows the resolved target `(→ provider/id)` when resolution lands on a different provider or version than configured.
 
@@ -216,9 +223,8 @@ Three things survive that boundary:
 
 The **human** surfaces are not part of that ownership boundary. A nested child appears indented under its owner in `/agents → Agents` and, while running, in the above-editor widget. You can open, steer and stop it from any of them. Ownership scoping keeps siblings and other extensions out of each other's agents. It does not hide an agent from the person running the session.
 
-The hard cap is [`maxSubagentDepth`](settings.md#nested-depth): main session (0), subagent (1), nested child (2). The depth cap bounds how *deep* nesting goes, not how *wide*.
+The hard cap is [`maxSubagentDepth`](settings.md#nested-depth), which defines how depth counts and which values turn nesting off. The cap bounds how *deep* nesting goes, not how *wide*.
 
-- `0` or `1` turns nesting off everywhere.
 - An agent already at the cap gets no nested tools at all, not even `agent_get_result`, since it can never own a child.
 - A child must independently set `allowed_subagents` to delegate again.
 - Isolated agents never receive nested tools.

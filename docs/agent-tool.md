@@ -1,6 +1,6 @@
 # The agent tools
 
-The extension registers four model-facing tools: `agent`, `agent_get_result`, `agent_steer`, and `agent_stop`. A nested agent owns scoped copies of the same four, limited to its own children. See [Nested subagents](agents.md#nested-subagents).
+The extension registers four model-facing tools: `agent`, `agent_get_result`, `agent_steer`, and `agent_stop`. A nested agent owns scoped copies of the same four, limited to its own children. Each tool section below names where the nested copy differs. See [Nested subagents](agents.md#nested-subagents).
 
 ## `agent`
 
@@ -10,7 +10,7 @@ Launch a sub-agent.
 | --- | --- | --- | --- |
 | `prompt` | string | yes | The task for the agent |
 | `description` | string | yes | Short 3-5 word summary, shown in the UI |
-| `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `agent_steer`/`agent_get_result`/`agent_stop`. Additive: the type-derived handle is still assigned |
+| `name` | string | no | Memorable name for this agent (`auth-audit`), addressable as `@name` and accepted by `agent_steer`/`agent_get_result`/`agent_stop`. Additive: the type-derived handle is still assigned. Top-level only: the nested tool has no `name` |
 | `subagent_type` | string | no | Agent type to run. Omit it to build a one-off [ephemeral agent](#ephemeral-agents) from the parameters below. Ignored with `resume` |
 | `tools` | `string[]` | no | Ephemeral only. `*`, built-in names, `none`, and `ext:` selectors, as in the agent file `tools` field. Default: every built-in and every extension tool |
 | `disallowed_tools` | `string[]` | no | Ephemeral only. Tools to remove, built-in or from an extension |
@@ -23,7 +23,7 @@ Launch a sub-agent.
 | `thinking` | string | no | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Availability depends on pi version and model |
 | `max_turns` | number | no | Max agentic turns; `0` means no limit. Overrides the agent's frontmatter; omit to use it, then [`defaultMaxTurns`](settings.md#turn-limits) |
 | `run_in_background` | boolean | no | Overrides the agent's frontmatter; otherwise follows [`backgroundByDefault`](settings.md#background-by-default). `false` blocks and returns the result inline. The parameter description states the current default and is re-registered when the setting changes |
-| `resume` | string | no | Agent ID to resume a previous session. See [Resume](#resume) |
+| `resume` | string | no | Agent ID to resume a previous session. See [Resume](#resume). The nested tool takes only the ID of a child the caller owns |
 | `isolated` | boolean | no | No extension or MCP tools |
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when [`worktreeIsolation`](settings.md#worktree-isolation) is `false` |
 | `inherit_context` | boolean | no | Fork the parent conversation into the agent |
@@ -40,7 +40,7 @@ A call with no `subagent_type` runs an agent built from its parameters, and the 
 - The handle is `name`, else a slug of `description`, else `agent`, with no alias. The name badge is `name`, else the first three words of `description` title-cased, else `Agent`.
 - A top-level ephemeral agent persists its session as [`rememberAgents`](settings.md#remember-agents) says, and no parameter overrides that. A nested ephemeral agent never persists. The agent is steerable and resumable while its record is in memory. Once the extension evicts the record, `@handle` reopens the agent from the config its tombstone stores.
 - The extension checks every value against the [capability policy](settings.md#capability-policy).
-- The nested `agent` tool takes the same optional type and parameters, and runs the child in the foreground by default. The extension allows a nested ephemeral child only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn. The extension narrows ephemeral defaults.
+- The nested `agent` tool takes the same optional type and the same ephemeral parameters, and runs the child in the foreground by default. The extension allows a nested ephemeral child only when the parent's `allowed_subagents` is `all`. A caller-supplied value outside the parent's set refuses the spawn. The extension narrows ephemeral defaults.
 - In `agentMentions: "model"` mode, the extension refuses the conversation clone's `agent` call when it omits `subagent_type` or names a different type than the mention.
 
 ## Background and foreground
@@ -69,7 +69,9 @@ Set the mode with [`defaultJoinMode`](settings.md#join-mode), or with `/agents` 
 
 `agent({ resume: "<id>" })` continues a previous session, preserving full conversation context. `agent_get_result` accepts an ID too, and `agent_steer` reaches a live agent.
 
-The resumed session keeps its model and thinking level. `run_in_background` and `max_turns` come from the resuming call, else from the run's original values. Pass `run_in_background: false` to block and get the result inline.
+The resumed session keeps its model and thinking level. For a top-level resume, `run_in_background` and `max_turns` come from the resuming call, else from the run's original values. Pass `run_in_background: false` to block and get the result inline.
+
+A nested resume always blocks until the run ends. It ignores `run_in_background` and `max_turns`, and keeps the run's original turn limit.
 
 A resume uses the pool of its own call, not the pool of the agent's earlier runs. The manager refuses a resume in three cases:
 
@@ -117,15 +119,15 @@ Check status and retrieve a background agent's result. Its completion notificati
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent_id` | string | yes | Agent ID to check. The agent's handle also works: its `name` if you gave it one, otherwise its type (`explore`, `explore-2`) |
+| `agent_id` | string | yes | Agent ID to check. The agent's handle also works: its `name` if you gave it one, otherwise its type (`explore`, `explore-2`). The nested tool takes only the ID of a child the caller owns |
 | `wait` | boolean | no | Wait for completion. Default `false` |
-| `verbose` | boolean | no | Include the agent's full conversation: messages and tool calls. Default `false` |
+| `verbose` | boolean | no | Include the agent's full conversation: messages and tool calls. Default `false`. Top-level only |
 
 Cancelling a `wait: true` call, for example with `Esc`, stops only the wait. The background agent keeps running, and its completion notification still arrives normally.
 
 The extension rebuilds tombstones from the active session branch on startup and tree navigation. Tree navigation removes settled top-level records absent from the active branch; running and queued agents remain. It retains up to 100 of the newest tombstones. A live record takes precedence over a tombstone, and for equal completion times the later branch entry wins.
 
-After the extension evicts an agent's record, `agent_get_result` still answers from the agent's tombstone. It resolves the ID, handle, or alias, and reports the stored status, result, error, and stop cause. It omits the tool-use, token and duration stats. The tombstone answer consumes nothing, and `agent_steer` and `agent_stop` reply "not found" for a tombstone.
+After the extension evicts a top-level agent's record, `agent_get_result` can find its tombstone by ID, handle, or alias. It reports the stored status, result, error, and stop cause without tool-use, token, or duration stats. The tombstone answer consumes nothing. The nested tool does not check tombstones, and `agent_steer` and `agent_stop` reply "not found" for a tombstone.
 
 ## `agent_steer`
 
@@ -133,7 +135,7 @@ Send a steering message to a running agent. The message interrupts after the cur
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent_id` | string | yes | Agent ID to steer |
+| `agent_id` | string | yes | Agent ID or handle of a running agent. The nested tool takes only the ID of a running child the caller owns |
 | `message` | string | yes | Message to inject into the agent's conversation |
 
 ## `agent_stop`
@@ -142,11 +144,11 @@ Stop a running or queued background agent. The run records `stopCause` `agent`. 
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `agent_id` | string | yes | Agent ID to stop. A handle or alias works too |
+| `agent_id` | string | yes | Agent ID to stop. A handle or alias works too. The nested tool takes only the ID of a child the caller owns |
 
 An already-completed, errored, or otherwise terminal agent reports its status and that the result is still available. This is success, not an error, since the model's intent ("that agent should not be running") is already true.
 
-The reply carries whatever assistant text the agent had streamed before the stop. An agent that stopped before it produced any text says so instead of showing an empty block.
+The top-level reply shows up to 500 characters of assistant text from before the stop. If there is no text, the reply says so. The nested reply carries no partial output.
 
 The result arrives later through the ordinary completion notification, but only if the agent finishes. A stopped agent's notification carries whatever partial output it had streamed, which is also what `agent_get_result` returns afterwards. Stopping does **not** mark the result consumed, because at stop time `agent_get_result`'s data (`record.result`) does not exist yet.
 

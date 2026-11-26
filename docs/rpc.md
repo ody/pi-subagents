@@ -94,7 +94,7 @@ pi.events.emit("agent:rpc:consume", { requestId: crypto.randomUUID(), agentId: "
 
 This is the bus-side half of what `agent_get_result` does when it returns a result. A caller that joins an agent on `agent:completed` and reports the result itself should consume it. Otherwise the notification lands after the parent has already answered, and it costs a turn to dismiss.
 
-Fire-and-forget is the intended use, and the reply carries nothing to act on. The channel is outside the `agent:rpc:ping` version handshake, so a caller can send it unconditionally: an older extension with no handler simply keeps notifying.
+Fire-and-forget is the intended use, and the reply carries nothing to act on.
 
 The extension refuses to consume a running or unknown agent, with code `still_running` or `not_found`, and changes nothing. A running agent has no result for anyone to read, and its notification is still the caller's only signal that it finished.
 
@@ -323,19 +323,9 @@ The extension also writes two session names. Neither goes on the bus:
 
 `agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields", "agent_failed_provider_stage", "agent_record_worktree"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
 
-Version 4 reuses the original agent id when a tombstone reopens for a new run.
+This document describes version 4. A tombstone reopen runs under the agent's original id.
 
-Version 3 contains these breaks against version 2:
-
-- Every channel, event and session entry name uses the `agent:` prefix.
-- Every failure reply carries a `code` from the closed set in this document.
-- A spawn payload accepts only the options in the spawn-option allowlist.
-- Version 3 has no global agent registry.
-- `agent:rpc:wait_idle` exists.
-- `stopCause` is part of the stop flow.
-- `agent:settings_loaded` fires on `session_start`, right after `agent:ready`, and not from the extension factory.
-
-The feature list resets to `[]` on each version bump. Version 4 includes these features:
+Each feature names one additive change to version 4:
 
 - `agent_record_session_fields` adds the optional session fields to `agent:record`.
 - `agent_failed_provider_stage` adds `failure` to `agent:failed`. See [Provider-stage failures](#provider-stage-failures).
