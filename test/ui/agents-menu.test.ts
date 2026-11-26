@@ -41,7 +41,7 @@ function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; l
   } as unknown as ExtensionAPI;
 
   registerAgentsCommand(pi, {
-    manager: { listAgents: () => [] },
+    manager: { listAgents: () => [], listTombstones: () => [] },
     reloadCustomAgents: (strict?: boolean) => registerAgents(loadCustomAgents(cwd, strict)),
     viewer: { open: async () => {} },
     showSettings: async () => {},
@@ -139,7 +139,7 @@ describe("/agents -> Agents", () => {
     const record = { id: "a1", type: "general-purpose", description: "the one", status: "running", toolUses: 0, startedAt: Date.now() } as AgentRecord;
     const viewer = { open: vi.fn(async () => {}) };
     registerAgentsCommand(pi, {
-      manager: { listAgents: () => [record], getActivity: () => undefined },
+      manager: { listAgents: () => [record], listTombstones: () => [], getActivity: () => undefined },
       reloadCustomAgents: () => {},
       viewer,
       showCost: () => false,
@@ -168,7 +168,7 @@ describe("/agents -> Agents", () => {
     await commands.get("agents")?.handler("", { cwd: "/", ui });
 
     expect(viewer.open).toHaveBeenCalledTimes(1);
-    expect(viewer.open).toHaveBeenCalledWith(ui, record);
+    expect(viewer.open).toHaveBeenCalledWith(ui, { kind: "live", record });
   });
 });
 
@@ -250,5 +250,149 @@ describe("/agents on a skill-embedded agent", () => {
     expect(loaded?.source).toBe("global");
     expect(loaded?.sourcePath).toBe(stubPath);
     expect(readFileSync(skillPath, "utf-8")).toBe(agentFile);
+  });
+});
+
+function liveRecord(over: Partial<AgentRecord> = {}): AgentRecord {
+  return {
+    id: "a1",
+    type: "general-purpose",
+    description: "the live one",
+    status: "running",
+    toolUses: 0,
+    startedAt: Date.now(),
+    lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 },
+    compactionCount: 0,
+    ...over,
+  } as AgentRecord;
+}
+
+function finished(over: Partial<AgentTombstone> = {}): AgentTombstone {
+  return {
+    handle: "fixer",
+    id: "h1",
+    type: "general-purpose",
+    description: "the finished one",
+    sessionFile: "/sessions/h1.jsonl",
+    completedAt: Date.now() - 60_000,
+    status: "completed",
+    ...over,
+  };
+}
+
+function runAgentList(agents: AgentRecord[], tombstones: AgentTombstone[], downs = 0) {
+  const commands = new Map<string, { handler: (args: string, ctx: unknown) => Promise<void> }>();
+  const pi = {
+    registerCommand: (name: string, command: { handler: (args: string, ctx: unknown) => Promise<void> }) => {
+      commands.set(name, command);
+    },
+  } as unknown as ExtensionAPI;
+  const viewer = { open: vi.fn(async () => {}) };
+  registerAgentsCommand(pi, {
+    manager: { listAgents: () => agents, listTombstones: () => tombstones, getActivity: () => undefined },
+    reloadCustomAgents: () => {},
+    viewer,
+    showCost: () => false,
+    showModel: () => false,
+    showSettings: async () => {},
+  });
+
+  const selectOptions: string[][] = [];
+  const lists: string[][] = [];
+  let selects = 0;
+  let customs = 0;
+  const ui = {
+    select: async (_title: string, options: string[]) => {
+      selectOptions.push(options);
+      return selects++ < 1 ? options[0] : undefined;
+    },
+    custom: async (factory: (...args: unknown[]) => { render(w: number): string[]; handleInput(d: string): void }) => {
+      let chosen: unknown;
+      const component = factory(
+        { requestRender: () => {} },
+        { fg: (_c: string, s: string) => s, bold: (s: string) => s },
+        { matches: (_data: string, id: string) => id === "tui.select.confirm" },
+        (value: unknown) => { chosen = value; },
+      );
+      lists.push(component.render(200));
+      if (customs++ > 0) return undefined;
+      for (let i = 0; i < downs; i++) component.handleInput("down");
+      component.handleInput("enter");
+      return chosen;
+    },
+    notify: () => {},
+  };
+
+  return {
+    viewer,
+    selectOptions,
+    lists,
+    run: async () => {
+      const command = commands.get("agents");
+      if (!command) throw new Error("/agents was not registered");
+      await command.handler("", { cwd: "/", ui });
+    },
+  };
+}
+
+describe("/agents -> Agents history", () => {
+  it("counts live rows and history rows separately in the menu header", async () => {
+    const menu = runAgentList([liveRecord()], [finished({ handle: "one" }), finished({ handle: "two", id: "h2" })]);
+
+    await menu.run();
+
+    expect(menu.selectOptions[0][0]).toBe("Agents (1) — 1 running, 0 done · 2 in history");
+  });
+
+  it("reaches the list when only history rows exist", async () => {
+    const menu = runAgentList([], [finished()]);
+
+    await menu.run();
+
+    expect(menu.selectOptions[0][0]).toBe("Agents (0) — 0 running, 0 done · 1 in history");
+    expect(menu.lists[0].join("\n")).toContain("History");
+  });
+
+  it("lists the newest tombstone first", async () => {
+    const older = finished({ handle: "older", id: "h-old", description: "older work", completedAt: Date.now() - 600_000 });
+    const newer = finished({ handle: "newer", id: "h-new", description: "newer work", completedAt: Date.now() - 1000 });
+    const menu = runAgentList([], [older, newer]);
+
+    await menu.run();
+
+    const rows = menu.lists[0].filter(line => line.includes("work"));
+    expect(rows[0]).toContain("newer work");
+    expect(rows[1]).toContain("older work");
+  });
+
+  it("opens a selected history row through the shared opener", async () => {
+    const entry = finished();
+    const menu = runAgentList([], [entry]);
+
+    await menu.run();
+
+    expect(menu.viewer.open).toHaveBeenCalledWith(expect.anything(), { kind: "history", entry });
+  });
+
+  it("skips a tombstone that still has a live record", async () => {
+    const record = liveRecord({ id: "h1" });
+    const menu = runAgentList([record], [finished({ id: "h1" })]);
+
+    await menu.run();
+
+    expect(menu.lists[0].join("\n")).not.toContain("History");
+  });
+
+  it("never lists a nested agent under History", async () => {
+    const parent = liveRecord({ id: "p1", description: "parent job" });
+    const child = liveRecord({ id: "c1", description: "child job", parentAgentId: "p1", status: "completed" });
+    const menu = runAgentList([parent, child], []);
+
+    await menu.run();
+
+    const out = menu.lists[0].join("\n");
+    expect(out).toContain("parent job");
+    expect(out).toContain("child job");
+    expect(out).not.toContain("History");
   });
 });

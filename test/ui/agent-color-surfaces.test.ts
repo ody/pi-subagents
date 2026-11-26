@@ -189,9 +189,7 @@ describe("custom agent color runtime surfaces", () => {
     const record = makeRecord();
     const viewer = new ConversationViewer(
       { terminal: { rows: 30, columns: 120 }, requestRender: vi.fn() } as unknown as ConstructorParameters<typeof ConversationViewer>[0],
-      record.session!,
-      record,
-      undefined,
+      { kind: "live", session: record.session!, record },
       theme,
       vi.fn(),
     );

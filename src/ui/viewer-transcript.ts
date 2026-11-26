@@ -6,17 +6,49 @@ import {
   CompactionSummaryMessageComponent,
   CustomMessageComponent,
   getMarkdownTheme,
+  type MessageRenderer,
   parseSkillBlock,
   SkillInvocationMessageComponent,
   ToolExecutionComponent,
+  type ToolRenderers,
   UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
 import type { Component, MarkdownTheme, TUI } from "@earendil-works/pi-tui";
 
-type SessionMessage = AgentSession["messages"][number];
+export type SessionMessage = AgentSession["messages"][number];
 type ToolResultMessage = Extract<SessionMessage, { role: "toolResult" }>;
 type AssistantMessage = Extract<SessionMessage, { role: "assistant" }>;
 type UserMessage = Extract<SessionMessage, { role: "user" }>;
+
+export interface StoredTranscript {
+  messages: readonly SessionMessage[];
+  cwd: string;
+}
+
+export interface TranscriptSource {
+  getMessages(): readonly SessionMessage[];
+  resolveToolDefinition(name: string): ToolRenderers | undefined;
+  getMessageRenderer(customType: string): MessageRenderer | undefined;
+  getCwd(): string;
+}
+
+export function liveTranscriptSource(session: AgentSession): TranscriptSource {
+  return {
+    getMessages: () => session.messages,
+    resolveToolDefinition: name => session.extensionRunner.resolveToolRenderers(name, () => session.getToolDefinition(name)),
+    getMessageRenderer: customType => session.extensionRunner.getMessageRenderer(customType),
+    getCwd: () => session.sessionManager.getCwd(),
+  };
+}
+
+export function storedTranscriptSource(transcript: StoredTranscript): TranscriptSource {
+  return {
+    getMessages: () => transcript.messages,
+    resolveToolDefinition: () => undefined,
+    getMessageRenderer: () => undefined,
+    getCwd: () => transcript.cwd,
+  };
+}
 
 interface Block {
   component: Component & { setExpanded?(expanded: boolean): void };
@@ -60,7 +92,7 @@ export class ViewerTranscript {
 
   constructor(
     private readonly tui: TUI,
-    private readonly session: AgentSession,
+    private readonly source: TranscriptSource,
   ) {}
 
   toggleExpanded(): void {
@@ -79,8 +111,9 @@ export class ViewerTranscript {
   }
 
   render(width: number): string[] {
+    const messages = this.source.getMessages();
     const results = new Map<string, ToolResultMessage>();
-    for (const message of this.session.messages) {
+    for (const message of messages) {
       if (message.role === "toolResult") results.set(message.toolCallId, message);
     }
     const lines: string[] = [];
@@ -90,7 +123,7 @@ export class ViewerTranscript {
       if (block.spaced && lines.length > 0) lines.push("");
       lines.push(...rendered);
     };
-    for (const message of this.session.messages) {
+    for (const message of messages) {
       for (const block of this.blocksFor(message)) add(block);
       if (message.role === "assistant") {
         for (const part of message.content) {
@@ -133,7 +166,7 @@ export class ViewerTranscript {
       }
       case "custom": {
         if (!message.display) return [];
-        const renderer = this.session.extensionRunner.getMessageRenderer(message.customType);
+        const renderer = this.source.getMessageRenderer(message.customType);
         return [{ component: new CustomMessageComponent(message, renderer, theme), spaced: false }];
       }
       case "compactionSummary":
@@ -166,16 +199,14 @@ export class ViewerTranscript {
   ): ToolExecutionComponent {
     let tool = this.toolBlocks.get(call.id);
     if (!tool) {
-      const { extensionRunner } = this.session;
-      const definition = extensionRunner.resolveToolRenderers(call.name, () => this.session.getToolDefinition(call.name));
       tool = new ToolExecutionComponent(
         call.name,
         call.id,
         call.arguments,
         undefined,
-        definition,
+        this.source.resolveToolDefinition(call.name),
         this.tui,
-        this.session.sessionManager.getCwd(),
+        this.source.getCwd(),
       );
       tool.setArgsComplete();
       tool.markExecutionStarted();

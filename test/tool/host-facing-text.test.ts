@@ -7,6 +7,7 @@ import subagentsExtension from "../../src/index.js";
 import { formatTaskNotification } from "../../src/manager/notification-format.js";
 import { buildAgentPrompt } from "../../src/session/prompts.js";
 import { registerAgentControlTools } from "../../src/tool/agent-control-tools.js";
+import { createAgentModelsTool } from "../../src/tool/agent-models-tool.js";
 import { type AgentToolDeps, createAgentTool } from "../../src/tool/agent-tool.js";
 import { createNestedSubagentTools } from "../../src/tool/nested-tools.js";
 import { getForegroundOutcomeNote, getStatusNote } from "../../src/tool/status-note.js";
@@ -61,7 +62,7 @@ function topLevelTools(over: Partial<AgentToolDeps["settings"]>): ToolLike[] {
     resolveAgentTombstone: () => undefined,
     usageReporting: { settings: { reportUsage: false }, pendingUsage: new Map() } as any,
   });
-  return [createAgentTool(pi, deps) as ToolLike, ...registered];
+  return [createAgentTool(pi, deps) as ToolLike, createAgentModelsTool() as ToolLike, ...registered];
 }
 
 function nestedTools(): ToolLike[] {

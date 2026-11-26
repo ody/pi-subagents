@@ -57,7 +57,7 @@ With `widgetMode` `off`, or for an agent the widget does not show, `/agents → 
 
 ## Conversation viewer
 
-The viewer is a live-scrolling overlay of an agent's full conversation. It is 95% wide and up to 90% tall, and it closes when pi shuts the extension down. `/agents` and the Agents widget open it the same way. An agent with no session shows a notice that names its status.
+The viewer is a live-scrolling overlay of an agent's full conversation. It is 95% wide and up to 90% tall, and it closes when pi shuts the extension down. `/agents` and the Agents widget open it the same way. A live agent with no session shows a notice that names its status.
 
 - The viewer renders with pi's own message components: each message uses the same component the main session uses for its kind. It has no other rendering mode.
 - The viewer follows the agent by default. After any scroll key, follow is on exactly when the view shows the latest line. `Home` goes to the start, and `End` goes to the latest line and turns follow on. While follow is off, the footer says `follow off · End to follow`.
@@ -70,6 +70,16 @@ Steer a running agent inline. Press `Enter` to open pi's input box, type, then p
 Stop a still-running agent by pressing `x`, then `x` again to confirm. `Esc` never stops an agent. Steer and stop work only while the agent is running or queued.
 
 A stopped agent reports its partial output and flags it as incomplete, not as a completion. An agent wedged inside a tool call that never returns still frees its concurrency slot, and it fires its completion notification within a few seconds.
+
+### A finished agent's conversation
+
+A finished agent that left a session file opens in the same overlay, read-only. The viewer reads the file once when it opens and renders the stored messages with the same pi message components. It subscribes to nothing.
+
+- The top border keeps the main-session line.
+- The header comes only from the agent's stored entry. It shows the type, the description, the status, the `stopCause` when set, and the stored agent config of an ephemeral agent when present. It has no model line and no `policy removed` line.
+- Steer and stop never apply, because the agent has no running or queued state. `Enter` and `x` do nothing, and the footer omits them. Scroll, expand, close and follow work as they do for a live agent.
+- A session file that is missing or unreadable opens no viewer. The notice names the path.
+- Opening a stored conversation never starts a run, never removes the agent's entry, and never marks its result consumed.
 
 ## Agent mentions
 
@@ -186,12 +196,13 @@ Pi persists subagent sessions by default ([`rememberAgents`](settings.md#remembe
 `/agents` opens an interactive menu.
 
 ```text
-Agents (4) — 2 running, 2 done              ← the whole tree, nested included
-Agent types (6)                             ← unified list of registered agents
-Settings                                    ← every persistent setting
+Agents (4) — 2 running, 2 done · 3 in history   ← the whole tree, nested included
+Agent types (6)                                 ← unified list of registered agents
+Settings                                        ← every persistent setting
 ```
 
-- **Agents**: the whole hierarchy, indented, with nested children under their spawner. The list marks an agent whose owner is gone as `detached`. Select an agent to open its [conversation viewer](#conversation-viewer), where `Enter` steers, `x` twice stops, and `Ctrl+O` expands the messages.
+- **Agents**: the whole hierarchy, indented, with nested children under their spawner. The list marks an agent whose owner is gone as `detached`. Select an agent to open its [conversation viewer](#conversation-viewer), where `Enter` steers, `x` twice stops, and `Ctrl+O` expands the messages. The menu header counts live rows and history rows separately.
+- **History**: rows below the tree, under a `History` heading, one per finished agent of the active branch, newest `completedAt` first. A row shows the status icon, the handle or alias, the type, the description, and the age of `completedAt`. Select one to open its [read-only viewer](#a-finished-agents-conversation), which never starts a run. A tombstone with a live record never lists, a nested agent never gets a row, and the history holds at most 100 rows.
 - **Agent types**: a unified list with source indicators: `•` (project), `◦` (global), `▹` (skill), `✕` (disabled). Each row shows the agent's model, and the full description of the highlighted agent appears below the list. The model column flags `(unavailable, fallback: inherit)` when the extension cannot resolve a configured model. It shows `(→ provider/id)` when the model resolves to a different provider or version than configured. Select an agent to manage it:
   - **Skill agents**: Eject, Disable.
   - **Custom agents**: Edit, Disable, Delete.

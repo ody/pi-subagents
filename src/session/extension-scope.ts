@@ -11,6 +11,7 @@ import { BUILTIN_TOOL_NAMES } from "../agents/agent-types.js";
 
 export const SUBAGENT_TOOL_NAMES = {
   AGENT: "agent",
+  MODELS: "agent_models",
   GET_RESULT: "agent_get_result",
   STEER: "agent_steer",
   STOP: "agent_stop",

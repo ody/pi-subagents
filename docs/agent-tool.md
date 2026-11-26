@@ -1,6 +1,6 @@
 # The agent tools
 
-The extension registers four model-facing tools: `agent`, `agent_get_result`, `agent_steer`, and `agent_stop`. A nested agent owns scoped copies of the same four, limited to its own children. Each tool section below names where the nested copy differs. See [Nested subagents](agents.md#nested-subagents).
+The extension registers five model-facing tools: `agent`, `agent_models`, `agent_get_result`, `agent_steer`, and `agent_stop`. A nested agent owns scoped copies of the same five, limited to its own children. Each tool section below names where the nested copy differs. See [Nested subagents](agents.md#nested-subagents).
 
 ## `agent`
 
@@ -27,6 +27,22 @@ Launch a sub-agent.
 | `isolated` | boolean | no | No extension or MCP tools |
 | `isolation` | `"off"` \| `"worktree"` | no | `worktree` runs in an isolated git worktree; `off` (the default) does not. Absent from the schema entirely when [`worktreeIsolation`](settings.md#worktree-isolation) is `false` |
 | `inherit_context` | boolean | no | Fork the parent conversation into the agent |
+
+## `agent_models`
+
+Check a model the user named before an agent call, without starting one.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `model` | string | no | Model to check, as `provider/modelId` or a shorthand. Omit it to list the accepted models. Set it only when the user named a model |
+
+With no `model`, the tool lists the accepted models: one `provider/id` per line, sorted lexically. The accepted set is the models in scope when [Model scope](settings.md#model-scope) bounds the run, and pi's available models otherwise. A blank `model` counts as absent.
+
+With `model`, the tool runs the same resolver and scope check as a spawn, and reports the `provider/id` a spawn would run. A miss, an ambiguity, or an out-of-scope value returns the refusal text a spawn returns, with the accepted models.
+
+Every result says that listing a model does not mean to set one, and that the model sets `model` only when the user named a model. See [Caller overrides](agents.md#caller-overrides). The result never names an agent's configured model, and it never ranks models.
+
+The tool starts no agent, changes no state, and writes no `agent:record` entry. It is available exactly where `agent` is, top-level and nested. `policy.tools` neither grants nor denies it, and `allowed_subagents` does not narrow it.
 
 ## Ephemeral agents
 

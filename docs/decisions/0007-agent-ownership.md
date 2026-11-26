@@ -35,6 +35,7 @@ Ownership is a property of the record, set at spawn and never changed: `parentAg
 ### UI
 
 - UI surfaces show every agent. `/agents -> Agents` and the above-editor widget render nested agents indented under their owner. An agent whose owner is gone appears as a root row.
+- The `History` rows of ADR 0054 are the one exception: one row per persisted top-level tombstone, and never one for a nested agent.
 - The widget lists only running descendants, to stay inside its line budget.
 - `AgentManager.getActivity(id)` is the only store of live activity state. UI code reads it and never builds its own, so every spawn route reports activity.
 
@@ -42,7 +43,7 @@ Done check: `npm run check` passes.
 
 ## Consequences
 
-- Filtering a UI surface through `isTopLevelAgent` makes owned agents unreachable by the user.
+- Filtering the agent tree through `isTopLevelAgent` makes owned agents unreachable by the user. The history rows filter tombstones instead, and never hide a live owned agent (ADR 0054).
 - Loosening control scoping to match the UI would let siblings and other extensions steer, stop, or consume agents they do not own.
 - Charging owned children to the concurrency pools reintroduces the parent-awaiting-child deadlock.
 - This ADR is the canonical owner of the RPC-stop rule. ADR 0003 does not restate it.

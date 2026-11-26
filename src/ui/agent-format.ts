@@ -117,6 +117,16 @@ export function formatMs(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+export function formatAge(completedAt: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.floor((now - completedAt) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 export function formatDuration(startedAt: number, completedAt?: number): string {
   if (completedAt) return formatMs(completedAt - startedAt);
   return `${formatMs(Date.now() - startedAt)} (running)`;

@@ -351,7 +351,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("queues a steer for an owned child whose session is not ready yet", async () => {
-    const [, , steer] = tools();
+    const [, , , steer] = tools();
     const record: Record<string, unknown> = {
       id: "child-1",
       status: "running",
@@ -395,7 +395,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("supports background launches and ownership-scopes result, resume, and steer", async () => {
-    const [agent, getResult, steer] = tools(["scout"]);
+    const [agent, , getResult, steer] = tools(["scout"]);
     const launched = await execute(agent, {
       subagent_type: "scout",
       description: "find files",
@@ -441,7 +441,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("stops a running owned child and marks who stopped it", async () => {
-    const [, , , stop] = tools();
+    const [, , , , stop] = tools();
     const record: Record<string, unknown> = { id: "child-1", status: "running", parentAgentId: "parent-1" };
     records.set("child-1", record);
 
@@ -455,7 +455,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("reports an unknown or unowned stop target as not found and leaves it alone", async () => {
-    const [, , , stop] = tools();
+    const [, , , , stop] = tools();
     const foreign = { id: "foreign", status: "running", parentAgentId: "other" };
     records.set(foreign.id, foreign);
 
@@ -472,7 +472,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("reports an already-settled child's terminal status as success, not an error", async () => {
-    const [, , , stop] = tools();
+    const [, , , , stop] = tools();
     const record = { id: "child-1", status: "completed", result: "done", parentAgentId: "parent-1" };
     records.set(record.id, record);
 
@@ -504,7 +504,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("waits for a queued owned child to start and settle", async () => {
-    const [, getResult] = tools();
+    const [, , getResult] = tools();
     const record = {
       id: "queued-child",
       status: "queued",
@@ -527,7 +527,7 @@ describe("child-safe nested agent tools", () => {
   });
 
   it("aborts a nested result wait without aborting the owned child", async () => {
-    const [, getResult] = tools();
+    const [, , getResult] = tools();
     let settleChild: (() => void) | undefined;
     const record = {
       id: "running-child",
@@ -604,7 +604,7 @@ describe("child-safe nested agent tools", () => {
     records.set("child-1", {
       id: "child-1", status: "aborted", result: "partial work", parentAgentId: "parent-1",
     });
-    const [, getResult] = tools();
+    const [, , getResult] = tools();
     const result = await execute(getResult, { agent_id: "child-1" });
 
     expect(result.content[0].text).toContain("output may be incomplete");

@@ -171,13 +171,9 @@ export function mountViewer(
 ) {
   const viewer = new Viewer(
     perfTui(120, 40),
-    session,
-    record,
-    undefined,
+    { kind: "live", session, record },
     perfTheme,
     () => {},
-    undefined,
-    undefined,
     undefined,
     false,
   );

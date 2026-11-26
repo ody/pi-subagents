@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_TOOL_NAMES, registerAgents } from "../../src/agents/agent-types.js";
 import { getModelLabelFromConfig } from "../../src/config/model-resolver.js";
 import { formatTaskNotification } from "../../src/manager/notification-format.js";
+import { createAgentModelsTool } from "../../src/tool/agent-models-tool.js";
 import { type AgentToolDeps, createAgentTool } from "../../src/tool/agent-tool.js";
 import { buildAgentToolDescription, firstSentence, formatToolsSuffix } from "../../src/tool/agent-tool-description.js";
 import { createNestedSubagentTools } from "../../src/tool/nested-tools.js";
@@ -137,17 +138,19 @@ describe("buildAgentToolDescription", () => {
 });
 
 describe("agent tool parameters", () => {
-  it("tells the caller to set model only when the user named one, in both tools", () => {
-    const nested = nestedAgentTools().find((t) => t.name === "agent");
-    for (const tool of [topLevelAgentTool(), nested]) {
-      const description = tool?.parameters?.properties?.model?.description ?? "";
-      expect(description, tool?.name).toContain(MODEL_PARAMETER_RULE);
-      expect(description).toMatch(/omit/);
+  it("tells the caller to set model only when the user named one, in every tool with a model parameter", () => {
+    const tools = [topLevelAgentTool(), createAgentModelsTool() as ToolLike, ...nestedAgentTools()];
+    const withModel = tools.filter((tool) => tool.parameters?.properties?.model !== undefined);
+    expect(withModel.map((tool) => tool.name).sort()).toEqual(["agent", "agent", "agent_models", "agent_models"]);
+    for (const tool of withModel) {
+      const description = tool.parameters?.properties?.model?.description ?? "";
+      expect(description, tool.name).toContain(MODEL_PARAMETER_RULE);
+      expect(description).toMatch(/omit/i);
     }
   });
 
   it("no string explains how caller and frontmatter values rank", () => {
-    for (const tool of [topLevelAgentTool(), ...nestedAgentTools()]) {
+    for (const tool of [topLevelAgentTool(), createAgentModelsTool() as ToolLike, ...nestedAgentTools()]) {
       for (const text of toolStrings(tool)) {
         expect(text, `${tool.name}: ${text}`).not.toMatch(/agent's default|frontmatter|precedence|overrides? the agent/i);
       }

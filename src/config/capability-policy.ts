@@ -1,6 +1,6 @@
 import { BUILTIN_TOOL_NAMES, getAgentConfig } from "../agents/agent-types.js";
 import { RpcError } from "../rpc-error.js";
-import { parseExtensionsSpec, parseExtSelectors } from "../session/extension-scope.js";
+import { parseExtensionsSpec, parseExtSelectors, SUBAGENT_TOOL_NAMES } from "../session/extension-scope.js";
 import type { AgentConfig } from "../types.js";
 import { type LoadedPolicy, loadCapabilityPolicy, type PolicyList, type PolicyScope } from "./capability-policy-config.js";
 
@@ -232,7 +232,7 @@ function splitDenies(denies: string[], initial: string[]): { deniedWhole: Set<st
   const disallowed = new Set(initial);
   for (const entry of denies) {
     if (entry.startsWith("ext:")) addExtensionDeny(entry, deniedWhole, disallowed);
-    else if (!BUILTIN_TOOL_NAMES.includes(entry)) disallowed.add(entry);
+    else if (!BUILTIN_TOOL_NAMES.includes(entry) && entry !== SUBAGENT_TOOL_NAMES.MODELS) disallowed.add(entry);
   }
   return { deniedWhole, disallowed };
 }

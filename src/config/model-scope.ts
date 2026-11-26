@@ -1,6 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { isModelInScope, type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "./enabled-models.js";
-import { type ModelMatch, type ModelRegistry, matchModel, resolveModel } from "./model-resolver.js";
+import { type ModelMatch, type ModelMatchOptions, type ModelRegistry, matchModel } from "./model-resolver.js";
 import { SETTING_SPECS } from "./settings-defaults.js";
 
 let scopeModelsEnabled = SETTING_SPECS.scopeModels.default;
@@ -12,6 +12,34 @@ export type ModelScopeVerdict =
   | { kind: "ok" }
   | { kind: "error"; message: string }
   | { kind: "replace"; message: string; replaced: string };
+
+export function acceptedModels(
+  scope: Iterable<string> | undefined,
+  registry: ModelRegistryRef,
+): string[] {
+  const scoped = scope === undefined ? [] : [...scope];
+  if (scoped.length > 0) return scoped.sort();
+  const available = (registry.getAvailable?.() ?? []) as { provider: string; id: string }[];
+  return available.map(model => `${model.provider}/${model.id}`).sort();
+}
+
+export function acceptedModelLines(scope: Iterable<string> | undefined, registry: ModelRegistryRef): string {
+  return acceptedModels(scope, registry).map(model => `  ${model}`).join("\n");
+}
+
+export function resolveModel(
+  input: string,
+  registry: ModelRegistry,
+  options: ModelMatchOptions = {},
+): Model<Api> | string {
+  const match = matchModel(input, registry, options);
+  if (match.kind === "resolved") return match.model;
+  const accepted = acceptedModelLines(options.scope, registry);
+  if (match.kind === "ambiguous") {
+    return `Model "${input}" is ambiguous: ${match.candidates.join(", ")}.\n\nAccepted models:\n${accepted}`;
+  }
+  return `Model not found: "${input}".\n\nAccepted models:\n${accepted}`;
+}
 
 export function checkModelScope(args: {
   model: { provider: string; id: string } | undefined;
@@ -28,10 +56,9 @@ export function checkModelScope(args: {
   if (!allowed || isModelInScope(model, allowed)) return { kind: "ok" };
 
   if (callerSupplied) {
-    const list = [...allowed].sort().map(m => `  ${m}`).join("\n");
     return {
       kind: "error",
-      message: `Model not in scope: "${modelInput}".\n\nAllowed models (from enabledModels):\n${list}`,
+      message: `Model not in scope: "${modelInput}".\n\nAccepted models:\n${acceptedModelLines(allowed, modelRegistry)}`,
     };
   }
   const modelLabel = modelInput ?? `${model.provider}/${model.id}`;

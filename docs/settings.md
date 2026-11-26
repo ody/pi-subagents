@@ -288,12 +288,14 @@ When on, the extension validates each subagent spawn's effective model against p
 
 The exact entries also help [model resolution](agents.md#model-resolution) decide a shorthand. If only one in-scope candidate matches a shorthand pin or caller model, it wins. The entries never redirect a literal or normalized match. A blank caller `model` counts as absent, so a frontmatter pin applies.
 
-The scope check runs after resolution, and an out-of-scope result never retries another candidate. Out-of-scope handling depends on source:
+Every refusal lists the accepted set, one `provider/id` line each, sorted lexically. The accepted set is the models in scope when the check bounds the run, and pi's full available catalog otherwise. [`agent_models`](agent-tool.md#agent_models) reports the same set without a spawn.
+
+The check runs after resolution, and an out-of-scope result never retries another candidate. Out-of-scope handling depends on source:
 
 | Model source | Out-of-scope behaviour |
 | --- | --- |
-| Caller-supplied via `agent({ model: "..." })` | Hard error returned to the orchestrator, listing allowed models |
-| Caller-supplied via cross-extension RPC (`agent:rpc:spawn`) | Hard error returned to the calling extension, listing allowed models |
+| Caller-supplied via `agent({ model: "..." })` | Hard error returned to the orchestrator, listing the accepted models |
+| Caller-supplied via cross-extension RPC (`agent:rpc:spawn`) | Hard error returned to the calling extension, listing the accepted models |
 | Pinned in agent frontmatter, with no caller `model` | Warning toast and the session model runs instead; the `agent` tool result carries a note |
 | Session model (nothing pinned, or the pin does not resolve) | Never checked; the session model runs |
 | `agent({ resume })` of a live agent | Never checked; the agent keeps its session and model |

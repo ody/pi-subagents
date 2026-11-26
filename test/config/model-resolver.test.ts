@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { describeModel, type ModelRegistry, matchModel, resolveModel } from "../../src/config/model-resolver.js";
+import { describeModel, type ModelRegistry, matchModel } from "../../src/config/model-resolver.js";
+import { resolveModel } from "../../src/config/model-scope.js";
 
 const MODELS = [
   { id: "claude-opus-4-6", name: "Claude Opus 4.6", provider: "anthropic" },
@@ -228,12 +229,12 @@ describe("matchModel", () => {
       expectNoModel("anthropic/20251001");
     });
 
-    it("reports a miss with the available models", () => {
+    it("reports a miss with the accepted models", () => {
       const message = expectNoModel("nonexistent-model");
       expect(message).toContain('Model not found: "nonexistent-model"');
-      expect(message).toContain("Available models:");
-      expect(message).toContain("anthropic/claude-opus-4-6");
-      expect(message).toContain("openai/gpt-4o");
+      expect(message).toContain("Accepted models:");
+      expect(message).toContain("  anthropic/claude-opus-4-6");
+      expect(message).toContain("  openai/gpt-4o");
     });
 
     it("reports a miss on an empty pool", () => {
@@ -295,6 +296,20 @@ describe("matchModel", () => {
       const single = makeRegistry([OPUS]);
       expect(resolveModel("opus", single, { scope: scope(OPUS) })).toEqual(OPUS);
       expect(resolveModel("opus", single, { scope: scope(HAIKU) })).toEqual(OPUS);
+    });
+
+    it("lists the scoped set, not the full catalog, in a not-found refusal", () => {
+      const message = resolveModel("nonexistent-model", registry, { scope: scope(SIMILAR_MODELS[0]) }) as string;
+      expect(message).toContain("Accepted models:");
+      expect(message).toContain("  anthropic/claude-sonnet-4-6");
+      expect(message).not.toContain("anthropic/claude-haiku-4-5-20251001");
+    });
+
+    it("lists the scoped set in an ambiguity refusal", () => {
+      const message = resolveModel("sonnet", registry, { scope: scope(SIMILAR_MODELS[0], SIMILAR_MODELS[1]) }) as string;
+      expect(message).toContain('Model "sonnet" is ambiguous');
+      expect(message).toContain("Accepted models:\n  anthropic/claude-sonnet-4-5-20241022\n  anthropic/claude-sonnet-4-6");
+      expect(message).not.toContain("claude-haiku");
     });
   });
 });

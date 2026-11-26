@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { SUBAGENT_TOOL_NAMES } from "../../src/session/extension-scope.js";
+import { createAgentModelsTool } from "../../src/tool/agent-models-tool.js";
 import { type AgentToolDeps, createAgentTool } from "../../src/tool/agent-tool.js";
 import { createNestedSubagentTools, NESTED_TOOL_NAMES } from "../../src/tool/nested-tools.js";
 
@@ -42,14 +43,20 @@ describe("tool names", () => {
   });
 
   it("prefixes every lifecycle tool with agent_ in both registrations", () => {
+    expect(SUBAGENT_TOOL_NAMES.MODELS).toBe("agent_models");
     expect(SUBAGENT_TOOL_NAMES.GET_RESULT).toBe("agent_get_result");
     expect(SUBAGENT_TOOL_NAMES.STEER).toBe("agent_steer");
     expect(SUBAGENT_TOOL_NAMES.STOP).toBe("agent_stop");
-    expect(NESTED_TOOL_NAMES.slice(1)).toEqual(["agent_get_result", "agent_steer", "agent_stop"]);
+    expect(NESTED_TOOL_NAMES.slice(0, 2)).toEqual(["agent", "agent_models"]);
+    expect(NESTED_TOOL_NAMES.slice(2)).toEqual(["agent_get_result", "agent_steer", "agent_stop"]);
   });
 
   it("registers the top-level agent tool under SUBAGENT_TOOL_NAMES.AGENT", () => {
     expect(topLevelAgentTool().name).toBe(SUBAGENT_TOOL_NAMES.AGENT);
+  });
+
+  it("registers the top-level models tool under SUBAGENT_TOOL_NAMES.MODELS", () => {
+    expect(createAgentModelsTool().name).toBe(SUBAGENT_TOOL_NAMES.MODELS);
   });
 
   it("registers the nested tools under NESTED_TOOL_NAMES", () => {

@@ -19,7 +19,7 @@ Matching:
 - Built-in tool names match exactly. A bare name in a deny list that is not a built-in matches any tool of that name. `ext:<extension>` and `ext:<extension>/<tool>` select extension tools.
 - An extension matches if any of its canonical names matches, case-insensitively. A skill matches by the name pi's skill loader assigns, which is the frontmatter `name` or else the directory name, case-insensitively.
 - A deny entry beats an allow entry. `ext:<extension>` in a deny list denies all of that extension's tools. `*` is valid only in an allow list.
-- `*` in `tools.allow` allows all built-in and all extension tools, and a `tools` allow list with no `ext:` entry and no `*` permits no extension tools. The delegation tools are `agent`, `agent_get_result`, `agent_steer`, and `agent_stop`. `allowed_subagents` and ADR 0013 govern them, not `policy.tools`.
+- `*` in `tools.allow` allows all built-in and all extension tools, and a `tools` allow list with no `ext:` entry and no `*` permits no extension tools. The delegation tools are `agent`, `agent_get_result`, `agent_steer`, `agent_stop`, and `agent_models`. `allowed_subagents` and ADR 0013 govern them, not `policy.tools` (ADR 0055).
 - Wildcards, `extensions: true`, and whole-extension selectors expand first and are then narrowed, without refusal. A caller-supplied `ext:<extension>` refuses the spawn when `policy.extensions` denies that extension, and a tool-level deny only narrows. A path-form `extensions` entry matches by its canonical name. A caller-supplied path refuses the spawn whenever `policy.extensions` has an allow list.
 
 Ephemeral nesting:

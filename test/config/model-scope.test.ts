@@ -4,7 +4,17 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import type { ModelRegistryRef } from "../../src/config/enabled-models.js";
-import { checkModelScope, isScopeModelsEnabled, resolvePinnedModel, resolveScopedModel, scopeModel, setScopeModelsEnabled } from "../../src/config/model-scope.js";
+import {
+  acceptedModelLines,
+  acceptedModels,
+  checkModelScope,
+  isScopeModelsEnabled,
+  modelScope,
+  resolvePinnedModel,
+  resolveScopedModel,
+  scopeModel,
+  setScopeModelsEnabled,
+} from "../../src/config/model-scope.js";
 import { registerRpcHandlers } from "../../src/triggers/cross-extension-rpc.js";
 import { createSpawnFunnel } from "../../src/triggers/spawn-funnel.js";
 import { testAgent } from "../harness/test-agents.js";
@@ -276,7 +286,7 @@ describe("spawn funnel scope", () => {
 
   it("refuses a caller-supplied out-of-scope model and lists the allowed ones", () => {
     expect(() => funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d", model: MODELS[0] }))
-      .toThrow(/Allowed models[\s\S]*anthropic\/claude-haiku-4-5/);
+      .toThrow(/Accepted models[\s\S]*anthropic\/claude-haiku-4-5/);
     expect(spawn).not.toHaveBeenCalled();
   });
 
@@ -328,7 +338,7 @@ describe("spawn funnel scope", () => {
     expect(reply("a")).toEqual({ success: true, data: { id: "id-1", modelReplaced: "anthropic/claude-opus-4-6" } });
     expect(reply("b")).toEqual({ success: true, data: { id: "id-1" } });
     expect(reply("c").success).toBe(false);
-    expect(reply("c").error).toContain("Allowed models");
+    expect(reply("c").error).toContain("Accepted models");
   });
 });
 
@@ -406,7 +416,7 @@ describe("resolveScopedModel", () => {
 
   it("refuses an out-of-scope model from params", () => {
     const { result } = resolve("anthropic/claude-opus-4-6", true);
-    expect(result).toEqual({ ok: false, message: expect.stringContaining("Allowed models") });
+    expect(result).toEqual({ ok: false, message: expect.stringContaining("Accepted models") });
   });
 
   it("replaces an out-of-scope pin with the session model and warns", () => {
@@ -459,5 +469,83 @@ describe("resolveScopedModel", () => {
       "scout",
     );
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("acceptedModels", () => {
+  const catalog = { getAll: () => MODELS, getAvailable: () => MODELS, find: () => undefined };
+
+  it("lists every available model, sorted, when no scope applies", () => {
+    expect(acceptedModels(undefined, catalog)).toEqual([
+      "anthropic/claude-haiku-4-5",
+      "anthropic/claude-opus-4-6",
+      "anthropic/claude-sonnet-4-6",
+    ]);
+  });
+
+  it("treats an empty scope as no scope", () => {
+    expect(acceptedModels(new Set<string>(), catalog)).toEqual(acceptedModels(undefined, catalog));
+  });
+
+  it("lists only the scoped set, sorted, as indented provider/id lines", () => {
+    expect(acceptedModelLines(["anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5"], catalog))
+      .toBe("  anthropic/claude-haiku-4-5\n  anthropic/claude-sonnet-4-6");
+  });
+});
+
+describe("acceptedModels under the model scope setting", () => {
+  let projectDir: string;
+  let agentDir: string;
+  let prevAgentDir: string | undefined;
+  let prevEnabled: boolean;
+
+  const catalog = { getAll: () => MODELS, getAvailable: () => MODELS, find: () => undefined };
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "pi-accepted-project-"));
+    agentDir = mkdtempSync(join(tmpdir(), "pi-accepted-global-"));
+    prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    prevEnabled = isScopeModelsEnabled();
+  });
+
+  afterEach(() => {
+    setScopeModelsEnabled(prevEnabled);
+    if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
+  });
+
+  function setEnabledModels(models: string[]) {
+    mkdirSync(join(projectDir, ".pi"), { recursive: true });
+    writeFileSync(join(projectDir, ".pi", "settings.json"), JSON.stringify({ enabledModels: models }));
+  }
+
+  function accepted(): string[] {
+    return acceptedModels(modelScope(projectDir, catalog), catalog);
+  }
+
+  it("lists the scoped set when the setting is on and enabledModels resolves", () => {
+    setScopeModelsEnabled(true);
+    setEnabledModels(["anthropic/claude-haiku-4-5"]);
+    expect(accepted()).toEqual(["anthropic/claude-haiku-4-5"]);
+  });
+
+  it("lists the full catalog when the setting is off", () => {
+    setScopeModelsEnabled(false);
+    setEnabledModels(["anthropic/claude-haiku-4-5"]);
+    expect(accepted()).toEqual(acceptedModels(undefined, catalog));
+  });
+
+  it("lists the full catalog when enabledModels is missing", () => {
+    setScopeModelsEnabled(true);
+    expect(accepted()).toEqual(acceptedModels(undefined, catalog));
+  });
+
+  it("lists the full catalog when enabledModels resolves to nothing usable", () => {
+    setScopeModelsEnabled(true);
+    setEnabledModels(["anthropic/*", "haiku"]);
+    expect(accepted()).toEqual(acceptedModels(undefined, catalog));
   });
 });

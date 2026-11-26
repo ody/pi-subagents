@@ -1,13 +1,31 @@
 import { createBashToolDefinition, initTheme, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { TUI_KEYBINDINGS, KeybindingsManager as TuiKeybindingsManager, visibleWidth } from "@earendil-works/pi-tui";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentRecord } from "../../src/types.js";
-import { ConversationViewer } from "../../src/ui/conversation-viewer.js";
+import type { AgentRecord, AgentTombstone } from "../../src/types.js";
+import { ConversationViewer, type HistoryViewerTarget, type LiveViewerTarget } from "../../src/ui/conversation-viewer.js";
 import { MainSessionStatus } from "../../src/ui/main-session-status.js";
 
 initTheme();
 
 const CTRL_O = "\x0f";
+
+function live(session: any, record: AgentRecord, extra: Partial<LiveViewerTarget> = {}): LiveViewerTarget {
+  return { kind: "live", session, record, ...extra };
+}
+
+function history(entry: Partial<AgentTombstone>, messages: any[] = [], cwd = "/work"): HistoryViewerTarget {
+  const tombstone: AgentTombstone = {
+    handle: "fixer",
+    id: "h1",
+    type: "general-purpose",
+    description: "test agent",
+    sessionFile: "/sessions/h1.jsonl",
+    completedAt: Date.now() - 5000,
+    status: "completed",
+    ...entry,
+  };
+  return { kind: "history", entry: tombstone, transcript: { messages, cwd } };
+}
 
 function piKeybindings(): KeybindingsManager {
   return new TuiKeybindingsManager(TUI_KEYBINDINGS) as unknown as KeybindingsManager;
@@ -79,7 +97,7 @@ const toolResult = (id: string, name: string, value: string) => ({
 describe("ConversationViewer invocation line", () => {
   function invocationLine(invocation: AgentRecord["invocation"]): string {
     const viewer = new ConversationViewer(
-      mockTui(30, 200), mockSession([]), mockRecord({ invocation }), undefined,
+      mockTui(30, 200), live(mockSession([]), mockRecord({ invocation })),
       { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any,
       vi.fn(),
     );
@@ -122,9 +140,8 @@ describe("ConversationViewer cost display", () => {
       lifetimeUsage: { input: 1000, output: 200, cacheWrite: 0, cost },
     } as Partial<AgentRecord>);
     const viewer = new ConversationViewer(
-      mockTui(30, 200), mockSession([]), record, undefined,
-      { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any,
-      vi.fn(), undefined, undefined, undefined, on,
+      mockTui(30, 200), live(mockSession([]), record), { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any,
+      vi.fn(), undefined, on,
     );
     return viewer.render(200).join("\n");
   }
@@ -153,7 +170,7 @@ describe("ConversationViewer header and footer", () => {
   } as any;
 
   function render(record: AgentRecord, session = mockSession(), rows = 30): string[] {
-    return new ConversationViewer(mockTui(rows, 120), session, record, undefined, tagTheme, vi.fn()).render(120);
+    return new ConversationViewer(mockTui(rows, 120), live(session, record), tagTheme, vi.fn()).render(120);
   }
 
   it.each([
@@ -178,7 +195,7 @@ describe("ConversationViewer header and footer", () => {
   it("reads a partial percentage when content overflows the viewport", () => {
     const body = Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n");
     const session = mockSession([assistantMessage(text(body))]);
-    const viewer = new ConversationViewer(mockTui(20, 120), session, mockRecord({ status: "completed" }), undefined, tagTheme, vi.fn());
+    const viewer = new ConversationViewer(mockTui(20, 120), live(session, mockRecord({ status: "completed" })), tagTheme, vi.fn());
     viewer.render(200);
     viewer.handleInput("\x1b[H");
     const footer = viewer.render(200).at(-2) ?? "";
@@ -193,7 +210,7 @@ describe("ConversationViewer", () => {
   it("closes with Ctrl+C when not composing", () => {
     const done = vi.fn();
     const viewer = new ConversationViewer(
-      mockTui(), mockSession(), mockRecord(), undefined, ansiTheme(), done,
+      mockTui(), live(mockSession(), mockRecord()), ansiTheme(), done,
     );
 
     viewer.handleInput("\x03");
@@ -208,7 +225,7 @@ describe("ConversationViewer", () => {
     function fitsAt(messages: any[], activity?: unknown) {
       for (const w of widths) {
         const viewer = new ConversationViewer(
-          mockTui(30, w), mockSession(messages), mockRecord(), activity as any, ansiTheme(), vi.fn(),
+          mockTui(30, w), live(mockSession(messages), mockRecord(), { activity: activity as any }), ansiTheme(), vi.fn(),
         );
         assertAllLinesFit(viewer.render(w), w);
       }
@@ -227,9 +244,7 @@ describe("ConversationViewer", () => {
       for (let prefixLength = 0; prefixLength < width; prefixLength++) {
         const viewer = new ConversationViewer(
           mockTui(30, width),
-          mockSession([]),
-          mockRecord({ description: `${"a".repeat(prefixLength)}界more` }),
-          undefined,
+          live(mockSession([]), mockRecord({ description: `${"a".repeat(prefixLength)}界more` })),
           ansiTheme(),
           vi.fn(),
         );
@@ -301,7 +316,7 @@ describe("ConversationViewer", () => {
       const onStop = vi.fn();
       const tui = mockTui(30, W);
       const viewer = new ConversationViewer(
-        tui, mockSession(), mockRecord({ status: "running" }), undefined, ansiTheme(), vi.fn(), onStop,
+        tui, live(mockSession(), mockRecord({ status: "running" }), { onStop }), ansiTheme(), vi.fn(),
       );
 
       expect(viewer.render(W).join("\n")).toContain("x stop");
@@ -318,7 +333,7 @@ describe("ConversationViewer", () => {
     it("any other key disarms the confirm", () => {
       const onStop = vi.fn();
       const viewer = new ConversationViewer(
-        mockTui(30, W), mockSession(), mockRecord({ status: "running" }), undefined, ansiTheme(), vi.fn(), onStop,
+        mockTui(30, W), live(mockSession(), mockRecord({ status: "running" }), { onStop }), ansiTheme(), vi.fn(),
       );
 
       viewer.handleInput("x");
@@ -333,7 +348,7 @@ describe("ConversationViewer", () => {
     it("does not offer or perform stop once the agent is no longer running", () => {
       const onStop = vi.fn();
       const viewer = new ConversationViewer(
-        mockTui(30, W), mockSession(), mockRecord({ status: "completed" }), undefined, ansiTheme(), vi.fn(), onStop,
+        mockTui(30, W), live(mockSession(), mockRecord({ status: "completed" }), { onStop }), ansiTheme(), vi.fn(),
       );
 
       expect(viewer.render(W).join("\n")).not.toContain("x stop");
@@ -344,7 +359,7 @@ describe("ConversationViewer", () => {
 
     it("no stop affordance when no onStop handler is provided (read-only history)", () => {
       const viewer = new ConversationViewer(
-        mockTui(30, W), mockSession(), mockRecord({ status: "running" }), undefined, ansiTheme(), vi.fn(),
+        mockTui(30, W), live(mockSession(), mockRecord({ status: "running" })), ansiTheme(), vi.fn(),
       );
       expect(viewer.render(W).join("\n")).not.toContain("x stop");
       expect(() => { viewer.handleInput("x"); viewer.handleInput("x"); }).not.toThrow();
@@ -362,8 +377,8 @@ describe("ConversationViewer", () => {
       const messages: any[] = [];
       const record = mockRecord({ status: opts.status ?? "running" });
       const viewer = new ConversationViewer(
-        tui, mockSession(messages, undefined, steering), record,
-        undefined, ansiTheme(), done, undefined, piKeybindings(), onSteer,
+        tui, live(mockSession(messages, undefined, steering), record, { onSteer }),
+        ansiTheme(), done, piKeybindings(),
       );
       return { viewer, tui, onSteer, done, steering, messages, record };
     }
@@ -494,7 +509,7 @@ describe("ConversationViewer", () => {
 
     it("no steer affordance when no onSteer handler is provided", () => {
       const viewer = new ConversationViewer(
-        mockTui(30, W), mockSession(), mockRecord({ status: "running" }), undefined, ansiTheme(), vi.fn(),
+        mockTui(30, W), live(mockSession(), mockRecord({ status: "running" })), ansiTheme(), vi.fn(),
       );
       expect(viewer.render(W).join("\n")).not.toContain("Enter steer");
       expect(() => viewer.handleInput("\r")).not.toThrow();
@@ -504,8 +519,8 @@ describe("ConversationViewer", () => {
       for (const w of [40, 80, 120]) {
         const tui = mockTui(30, w);
         const viewer = new ConversationViewer(
-          tui, mockSession(), mockRecord({ status: "running" }),
-          undefined, ansiTheme(), vi.fn(), undefined, piKeybindings(), vi.fn(),
+          tui, live(mockSession(), mockRecord({ status: "running" }), { onSteer: vi.fn() }),
+          ansiTheme(), vi.fn(), piKeybindings(),
         );
         viewer.handleInput("\r");
         for (const ch of "x".repeat(200)) viewer.handleInput(ch);
@@ -518,8 +533,8 @@ describe("ConversationViewer", () => {
 describe("ConversationViewer transcript", () => {
   function viewerFor(messages: any[], opts: { rows?: number; messageRenderer?: unknown } = {}) {
     return new ConversationViewer(
-      mockTui(opts.rows ?? 200, 80), mockSession(messages, opts.messageRenderer), mockRecord({ status: "completed" }),
-      undefined, ansiTheme(), vi.fn(),
+      mockTui(opts.rows ?? 200, 80), live(mockSession(messages, opts.messageRenderer), mockRecord({ status: "completed" })),
+      ansiTheme(), vi.fn(),
     );
   }
 
@@ -629,8 +644,7 @@ describe("ConversationViewer transcript", () => {
 
   it("appends the streaming line for a running agent with activity", () => {
     const viewer = new ConversationViewer(
-      mockTui(60, 60), mockSession([userMessage("go")]), mockRecord({ status: "running" }),
-      { activeTools: new Map(), toolUses: 0, tokens: "", responseText: "", session: undefined } as any,
+      mockTui(60, 60), live(mockSession([userMessage("go")]), mockRecord({ status: "running" }), { activity: { activeTools: new Map(), toolUses: 0, tokens: "", responseText: "", session: undefined } as any }),
       ansiTheme(), vi.fn(),
     );
     expect(viewer.render(60).some(l => l.includes("▍ "))).toBe(true);
@@ -698,7 +712,7 @@ describe("ConversationViewer transcript", () => {
     it("requests a render", () => {
       const tui = mockTui(200, 80);
       const viewer = new ConversationViewer(
-        tui, mockSession(messages()), mockRecord({ status: "completed" }), undefined, ansiTheme(), vi.fn(),
+        tui, live(mockSession(messages()), mockRecord({ status: "completed" })), ansiTheme(), vi.fn(),
       );
       viewer.handleInput(CTRL_O);
 
@@ -719,7 +733,7 @@ describe("ConversationViewer follow", () => {
   function viewerWith(lineCount: number) {
     const body = Array.from({ length: lineCount }, (_, i) => `line ${i}`).join("\n");
     const session = mockSession([assistantMessage(text(body))]);
-    const viewer = new ConversationViewer(mockTui(20, 120), session, mockRecord({ status: "running" }), undefined, tagTheme, vi.fn());
+    const viewer = new ConversationViewer(mockTui(20, 120), live(session, mockRecord({ status: "running" })), tagTheme, vi.fn());
     viewer.render(120);
     return viewer;
   }
@@ -798,8 +812,8 @@ describe("ConversationViewer main-session line", () => {
 
   function topBorder(main: MainSessionStatus | undefined, width = 80): string {
     const viewer = new ConversationViewer(
-      mockTui(30, width), mockSession([]), mockRecord(), undefined, plainTheme,
-      vi.fn(), undefined, undefined, undefined, false, main,
+      mockTui(30, width), live(mockSession([]), mockRecord()), plainTheme,
+      vi.fn(), undefined, false, main,
     );
     const lines = viewer.render(width);
     assertAllLinesFit(lines, width);
@@ -852,13 +866,152 @@ describe("ConversationViewer main-session line", () => {
     const main = new MainSessionStatus();
     const tui = mockTui(30, 80);
     const viewer = new ConversationViewer(
-      tui, mockSession([]), mockRecord(), undefined, plainTheme,
-      vi.fn(), undefined, undefined, undefined, false, main,
+      tui, live(mockSession([]), mockRecord()), plainTheme,
+      vi.fn(), undefined, false, main,
     );
     main.agentStart();
     expect(tui.requestRender).toHaveBeenCalledTimes(1);
     viewer.dispose();
     main.agentEnd();
     expect(tui.requestRender).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("ConversationViewer history", () => {
+  const W = 80;
+  const plain = { fg: (_c: string, t: string) => t, bold: (t: string) => t } as any;
+
+  function viewerFor(target: HistoryViewerTarget, opts: { rows?: number; main?: MainSessionStatus; keybindings?: KeybindingsManager } = {}) {
+    const tui = mockTui(opts.rows ?? 30, W);
+    return { viewer: new ConversationViewer(tui, target, plain, vi.fn(), opts.keybindings, false, opts.main), tui };
+  }
+
+  const bodyOf = (viewer: ConversationViewer) => strip(viewer.render(W).join("\n"));
+
+  it("renders the stored messages with the pi message components", () => {
+    const target = history({}, [userMessage("hello history"), assistantMessage(text("all **done**"))]);
+    const out = bodyOf(viewerFor(target).viewer);
+
+    expect(out).toContain("hello history");
+    expect(out).toContain("all done");
+  });
+
+  it("renders a stored tool call with its result", () => {
+    const messages = [
+      assistantMessage(toolCall("t1", "bash", { command: "cat a.ts" })),
+      toolResult("t1", "bash", "stored body"),
+    ];
+
+    expect(bodyOf(viewerFor(history({}, messages)).viewer)).toContain("stored body");
+  });
+
+  it("skips a stored message kind pi does not render", () => {
+    const out = bodyOf(viewerFor(history({}, [{ role: "mystery", content: "ignored" }])).viewer);
+
+    expect(out).not.toContain("ignored");
+    expect(out).toContain("(no messages)");
+  });
+
+  it("shows a no-messages placeholder rather than the waiting message", () => {
+    const out = bodyOf(viewerFor(history({}, [])).viewer);
+
+    expect(out).toContain("(no messages)");
+    expect(out).not.toContain("waiting for first message");
+  });
+
+  it("expands a stored bash execution on the expand key", () => {
+    const output = Array.from({ length: 60 }, (_, i) => `out ${i}`).join("\n");
+    const target = history({}, [{
+      role: "bashExecution", command: "seq", output, exitCode: 0, cancelled: false, truncated: false, timestamp: 0,
+    }]);
+    const { viewer } = viewerFor(target, { rows: 200 });
+
+    expect(bodyOf(viewer)).not.toContain("out 0");
+    viewer.handleInput(CTRL_O);
+    expect(bodyOf(viewer)).toContain("out 0");
+  });
+
+  it("keeps the main-session line on the top border", () => {
+    const main = new MainSessionStatus();
+    main.messageEnd({ role: "assistant", content: [text("Reading files")] });
+    const { viewer } = viewerFor(history({}, [userMessage("hi")]), { main });
+
+    expect(viewer.render(W)[0]).toContain("main idle");
+    expect(viewer.render(W)[0]).toContain("Reading files");
+  });
+
+  it("starts with follow on and turns it off when scrolled away", () => {
+    const body = Array.from({ length: 60 }, (_, i) => `line ${i}`).join("\n");
+    const { viewer } = viewerFor(history({}, [assistantMessage(text(body))]), { rows: 20 });
+
+    viewer.render(W);
+    expect((viewer as any).autoScroll).toBe(true);
+    viewer.handleInput("\x1b[H");
+    expect((viewer as any).autoScroll).toBe(false);
+    expect(viewer.render(W).at(-2)).toContain("follow off");
+  });
+
+  it("holds only tombstone fields in the header", () => {
+    const target = history({
+      handle: "fixer",
+      type: "explore",
+      description: "looked around",
+      status: "stopped",
+      stopCause: "user",
+    });
+    const { viewer } = viewerFor(target);
+    const lines = viewer.render(W);
+    const header = strip(lines[1]);
+
+    expect(header).toContain("■");
+    expect(header).toContain("fixer");
+    expect(header).toContain("looked around");
+    expect(header).toContain("explore");
+    expect(header).toContain("stopped by user");
+    expect(strip(lines.join("\n"))).not.toContain("↳");
+  });
+
+  it("shows the agent config display name and mode tag when present", () => {
+    const target = history({
+      handle: "one-off",
+      type: "ephemeral-1a2b3c4d",
+      agentConfig: { displayName: "Fixer", promptMode: "replace" } as any,
+    });
+    const header = strip(viewerFor(target).viewer.render(W)[1]);
+
+    expect(header).toContain("Fixer");
+    expect(header).toContain("(bare)");
+    expect(header).not.toContain("ephemeral-1a2b3c4d");
+  });
+
+  it("shows the status of a failed agent without its error text", () => {
+    const header = strip(viewerFor(history({ status: "error", error: "provider refused" })).viewer.render(W)[1]);
+
+    expect(header).toContain("error");
+    expect(header).not.toContain("provider refused");
+  });
+
+  it("offers no steer and no stop and leaves Enter and x inert", () => {
+    const { viewer } = viewerFor(history({ status: "stopped", stopCause: "user" }), { keybindings: piKeybindings() });
+    const footer = strip(viewer.render(W).at(-2) ?? "");
+
+    expect(footer).not.toContain("Enter steer");
+    expect(footer).not.toContain("x stop");
+    viewer.handleInput("x");
+    viewer.handleInput("x");
+    viewer.handleInput("\r");
+    const out = strip(viewer.render(W).join("\n"));
+    expect(out).not.toContain("Enter send");
+    expect(out).not.toContain("x again to STOP");
+  });
+
+  it("refuses steer and stop even when the stored status reads running", () => {
+    const { viewer } = viewerFor(history({ status: "running" }), { keybindings: piKeybindings() });
+    const footer = strip(viewer.render(W).at(-2) ?? "");
+
+    expect(footer).not.toContain("Enter steer");
+    expect(footer).not.toContain("x stop");
+    viewer.handleInput("x");
+    expect(strip(viewer.render(W).join("\n"))).not.toContain("x again to STOP");
   });
 });

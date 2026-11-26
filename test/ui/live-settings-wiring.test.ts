@@ -92,7 +92,7 @@ describe("live settings wiring", () => {
       },
     };
     const record = { id: "a1", type: "general-purpose", description: "d", status: "running", toolUses: 0, startedAt: Date.now(), session: { subscribe: () => () => {}, messages: [] }, lifetimeUsage: { input: 0, output: 0, cacheWrite: 0 }, compactionCount: 0 };
-    const viewing = captured.menu.viewer.open(ui, record);
+    const viewing = captured.menu.viewer.open(ui, { kind: "live", record });
     await shutdown?.();
     await expect(viewing).resolves.toBeUndefined();
   });

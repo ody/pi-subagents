@@ -1,19 +1,40 @@
 import { type AgentSession, CustomEditor, getSelectListTheme, type KeybindingsManager } from "@earendil-works/pi-coding-agent";
 import { type Component, matchesKey, type TUI, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { AgentActivity, AgentRecord } from "../types.js";
+import type { AgentActivity, AgentRecord, AgentTombstone } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
-import { renderAgentName } from "./agent-color.js";
-import type { Theme } from "./agent-format.js";
-import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag, renderStatusIcon } from "./agent-format.js";
+import { renderAgentName, renderAgentNameLabel } from "./agent-color.js";
+import type { AgentStatus, Theme } from "./agent-format.js";
+import { buildInvocationTags, describeActivity, fgPreservingNestedStyles, formatCost, formatDuration, formatSessionTokens, getPromptModeLabel, renderModeTag, renderStatusIcon, statusPresentation } from "./agent-format.js";
 import type { MainSessionStatus } from "./main-session-status.js";
 import { createViewerKeys, type ViewerKeys } from "./viewer-keys.js";
 import { PendingSteers } from "./viewer-steers.js";
-import { ViewerTranscript } from "./viewer-transcript.js";
+import { liveTranscriptSource, type StoredTranscript, storedTranscriptSource, ViewerTranscript } from "./viewer-transcript.js";
 
 const CHROME_LINES_BASE = 6;
 const MIN_VIEWPORT = 3;
 export const VIEWPORT_WIDTH_PCT = 95;
 export const VIEWPORT_HEIGHT_PCT = 90;
+
+export interface LiveViewerTarget {
+  kind: "live";
+  session: AgentSession;
+  record: AgentRecord;
+  activity?: AgentActivity;
+  onStop?: () => void;
+  onSteer?: (message: string) => void;
+}
+
+export interface HistoryViewerTarget {
+  kind: "history";
+  entry: AgentTombstone;
+  transcript: StoredTranscript;
+}
+
+export type ViewerTarget = LiveViewerTarget | HistoryViewerTarget;
+
+function isActive(status: AgentStatus): boolean {
+  return status === "running" || status === "queued";
+}
 
 export class ConversationViewer implements Component {
   private scrollOffset = 0;
@@ -26,29 +47,31 @@ export class ConversationViewer implements Component {
   private keys: ViewerKeys;
   private composer: CustomEditor | undefined;
   private readonly transcript: ViewerTranscript;
-  private readonly steers: PendingSteers;
+  private readonly steers: PendingSteers | undefined;
 
   constructor(
     private tui: TUI,
-    session: AgentSession,
-    private record: AgentRecord,
-    private activity: AgentActivity | undefined,
+    private target: ViewerTarget,
     private theme: Theme,
     private done: (result: undefined) => void,
-    private onStop?: () => void,
     private keybindings?: KeybindingsManager,
-    private onSteer?: (message: string) => void,
     private showCost = false,
     private mainSession?: MainSessionStatus,
   ) {
-    this.transcript = new ViewerTranscript(tui, session);
-    this.steers = new PendingSteers(session);
+    this.transcript = new ViewerTranscript(
+      tui,
+      target.kind === "live" ? liveTranscriptSource(target.session) : storedTranscriptSource(target.transcript),
+    );
     this.keys = createViewerKeys(keybindings);
-    this.unsubscribe = session.subscribe(() => {
-      if (this.closed) return;
-      this.steers.refresh();
-      this.tui.requestRender();
-    });
+    if (target.kind === "live") {
+      const steers = new PendingSteers(target.session);
+      this.steers = steers;
+      this.unsubscribe = target.session.subscribe(() => {
+        if (this.closed) return;
+        steers.refresh();
+        this.tui.requestRender();
+      });
+    }
     this.unsubscribeMain = mainSession?.subscribe(() => {
       if (!this.closed) this.tui.requestRender();
     });
@@ -74,7 +97,7 @@ export class ConversationViewer implements Component {
       return;
     }
 
-    if (matchesKey(data, "x")) {
+    if (this.target.kind === "live" && matchesKey(data, "x")) {
       this.pressStop();
       return;
     }
@@ -94,7 +117,7 @@ export class ConversationViewer implements Component {
     if (!this.isStoppable()) return;
     if (this.stopArmed) {
       this.stopArmed = false;
-      this.onStop?.();
+      if (this.target.kind === "live") this.target.onStop?.();
     } else {
       this.stopArmed = true;
     }
@@ -189,24 +212,45 @@ export class ConversationViewer implements Component {
   }
 
   private headerLine(): string {
+    const target = this.target;
+    return target.kind === "live" ? this.liveHeaderLine(target) : this.historyHeaderLine(target.entry);
+  }
+
+  private liveHeaderLine(target: LiveViewerTarget): string {
+    const { record, activity } = target;
     const th = this.theme;
-    const modeLabel = getPromptModeLabel(this.record);
+    const modeLabel = getPromptModeLabel(record);
     const modeTag = renderModeTag(th, modeLabel);
-    const statusIcon = renderStatusIcon(th, this.record.status);
-    const duration = formatDuration(this.record.startedAt, this.record.completedAt);
+    const statusIcon = renderStatusIcon(th, record.status);
+    const duration = formatDuration(record.startedAt, record.completedAt);
 
     const headerParts: string[] = [duration];
-    const toolUses = this.activity?.toolUses ?? this.record.toolUses;
+    const toolUses = activity?.toolUses ?? record.toolUses;
     if (toolUses > 0) headerParts.unshift(`${toolUses} tool${toolUses === 1 ? "" : "s"}`);
-    const tokens = getLifetimeTotal(this.record.lifetimeUsage);
+    const tokens = getLifetimeTotal(record.lifetimeUsage);
     if (tokens > 0) {
-      const percent = getSessionContextPercent(this.activity?.session);
-      headerParts.push(formatSessionTokens(tokens, percent, th, this.record.compactionCount));
+      const percent = getSessionContextPercent(activity?.session);
+      headerParts.push(formatSessionTokens(tokens, percent, th, record.compactionCount));
     }
-    const cost = this.showCost ? formatCost(getLifetimeCost(this.record.lifetimeUsage)) : "";
+    const cost = this.showCost ? formatCost(getLifetimeCost(record.lifetimeUsage)) : "";
     if (cost) headerParts.push(cost);
 
-    return `${statusIcon} ${renderAgentName(this.record, th, { bold: true })}${modeTag}  ${th.fg("muted", this.record.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`;
+    return `${statusIcon} ${renderAgentName(record, th, { bold: true })}${modeTag}  ${th.fg("muted", record.description)} ${th.fg("dim", "·")} ${fgPreservingNestedStyles(th, "dim", headerParts.join(" · "))}`;
+  }
+
+  private historyHeaderLine(entry: AgentTombstone): string {
+    const th = this.theme;
+    const name = renderAgentNameLabel(entry.alias ?? entry.handle, entry.agentConfig?.color, th, { bold: true });
+    const modeTag = renderModeTag(th, entry.agentConfig?.promptMode === "replace" ? "bare" : undefined);
+
+    const statusParts: string[] = [];
+    const { color, note } = statusPresentation(entry.status);
+    if (entry.stopCause) statusParts.push(th.fg("dim", `stopped by ${entry.stopCause}`));
+    else if (entry.status === "error") statusParts.push(th.fg(color, "error"));
+    else if (entry.status !== "completed") statusParts.push(th.fg(color, note ? `${entry.status} (${note})` : entry.status));
+
+    const tail = [th.fg("muted", entry.agentConfig?.displayName ?? entry.type), ...statusParts].join(th.fg("dim", " · "));
+    return `${renderStatusIcon(th, entry.status)} ${name}${modeTag}  ${th.fg("muted", entry.description)} ${th.fg("dim", "·")} ${tail}`;
   }
 
   private composerFooter(innerW: number): string[] {
@@ -250,15 +294,21 @@ export class ConversationViewer implements Component {
   }
 
   private isStoppable(): boolean {
-    return Boolean(this.onStop) && (this.record.status === "running" || this.record.status === "queued");
+    return this.target.kind === "live" && Boolean(this.target.onStop) && isActive(this.target.record.status);
   }
 
   private canSteer(): boolean {
-    return Boolean(this.onSteer) && Boolean(this.keybindings) && (this.record.status === "running" || this.record.status === "queued");
+    return this.target.kind === "live"
+      && Boolean(this.target.onSteer)
+      && Boolean(this.keybindings)
+      && isActive(this.target.record.status);
   }
 
   private openComposer(): void {
-    if (!this.keybindings) return;
+    if (this.target.kind !== "live" || !this.keybindings) return;
+    const { onSteer } = this.target;
+    const steers = this.steers;
+    if (!steers) return;
     const editor = new CustomEditor(
       this.tui,
       { borderColor: (text) => this.theme.fg("borderMuted", text), selectList: getSelectListTheme() },
@@ -269,8 +319,8 @@ export class ConversationViewer implements Component {
       const message = value.trim();
       this.composer = undefined;
       if (message) {
-        this.steers.add(message);
-        this.onSteer?.(message);
+        steers.add(message);
+        onSteer?.(message);
       }
       this.tui.requestRender();
     };
@@ -303,10 +353,12 @@ export class ConversationViewer implements Component {
   }
 
   private invocationLine(): string | undefined {
-    const { modelName, modelId, tags } = buildInvocationTags(this.record.invocation);
+    if (this.target.kind !== "live") return undefined;
+    const { invocation, filtered } = this.target.record;
+    const { modelName, modelId, tags } = buildInvocationTags(invocation);
     const model = modelId ?? modelName;
-    const filtered = this.record.filtered?.length ? [`policy removed ${this.record.filtered.join(", ")}`] : [];
-    const parts = [...(model ? [model, ...tags] : tags), ...filtered];
+    const policy = filtered?.length ? [`policy removed ${filtered.join(", ")}`] : [];
+    const parts = [...(model ? [model, ...tags] : tags), ...policy];
     if (parts.length === 0) return undefined;
     return this.theme.fg("dim", `  ↳ ${parts.join(" · ")}`);
   }
@@ -318,16 +370,18 @@ export class ConversationViewer implements Component {
     const lines = this.transcript.render(width);
 
     if (lines.length === 0) {
-      lines.push(th.fg("dim", "(waiting for first message...)"));
-    } else if (this.record.status === "running" && this.activity) {
-      const act = describeActivity(this.activity.activeTools, this.activity.responseText);
+      lines.push(th.fg("dim", this.target.kind === "history" ? "(no messages)" : "(waiting for first message...)"));
+    } else if (this.target.kind === "live" && this.target.record.status === "running" && this.target.activity) {
+      const act = describeActivity(this.target.activity.activeTools, this.target.activity.responseText);
       lines.push("");
       lines.push(truncateToWidth(th.fg("accent", "▍ ") + th.fg("dim", act), width));
     }
 
-    if (!this.canSteer()) this.steers.clear();
-    this.steers.refresh();
-    for (const text of this.steers.texts()) lines.push(th.fg("dim", `Steering: ${text.replace(/\s*\n\s*/g, " ")}`));
+    const steers = this.steers;
+    if (!steers) return lines.map(l => truncateToWidth(l, width));
+    if (!this.canSteer()) steers.clear();
+    steers.refresh();
+    for (const text of steers.texts()) lines.push(th.fg("dim", `Steering: ${text.replace(/\s*\n\s*/g, " ")}`));
 
     return lines.map(l => truncateToWidth(l, width));
   }

@@ -8,7 +8,7 @@ import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
 import { getModelLabelFromConfig } from "../config/model-resolver.js";
 import { resolveModelMatch } from "../config/model-scope.js";
 import type { AgentManager } from "../manager/agent-manager.js";
-import type { AgentConfig, AgentRecord } from "../types.js";
+import type { AgentConfig, AgentRecord, AgentTombstone } from "../types.js";
 import { buildAgentTree } from "./agent-tree.js";
 import { selectAgentRow } from "./agents-list.js";
 import type { ConversationViewerOpener } from "./conversation-viewer-opener.js";
@@ -16,7 +16,7 @@ import type { ConversationViewerOpener } from "./conversation-viewer-opener.js";
 type UserAgentFile = NonNullable<ReturnType<typeof locateAgentFile>>;
 
 export interface AgentsCommandDeps {
-  manager: Pick<AgentManager, "listAgents" | "getActivity">;
+  manager: Pick<AgentManager, "listAgents" | "listTombstones" | "getActivity">;
   showCost: () => boolean;
   showModel: () => boolean;
   reloadCustomAgents: (strict?: boolean) => void;
@@ -33,12 +33,18 @@ export function detailMenuOptions(cfg: AgentConfig, hasFile: boolean): string[] 
   return ["Edit", "Disable", "Delete", "Back"];
 }
 
-function agentsMenuOptions(agents: AgentRecord[], typeCount: number): string[] {
+function historyRows(agents: readonly AgentRecord[], entries: readonly AgentTombstone[]): AgentTombstone[] {
+  const live = new Set(agents.map(agent => agent.id));
+  return entries.filter(entry => !live.has(entry.id)).sort((a, b) => b.completedAt - a.completedAt);
+}
+
+function agentsMenuOptions(agents: AgentRecord[], historyCount: number, typeCount: number): string[] {
   const options: string[] = [];
-  if (agents.length > 0) {
+  if (agents.length > 0 || historyCount > 0) {
     const running = agents.filter(a => a.status === "running" || a.status === "queued").length;
     const done = agents.filter(a => a.status === "completed" || a.status === "steered").length;
-    options.push(`Agents (${agents.length}) — ${running} running, ${done} done`);
+    const history = historyCount > 0 ? ` · ${historyCount} in history` : "";
+    options.push(`Agents (${agents.length}) — ${running} running, ${done} done${history}`);
   }
   if (typeCount > 0) options.push(`Agent types (${typeCount})`);
   options.push("Settings");
@@ -85,9 +91,10 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     const allNames = getAllTypes();
 
     const agents = manager.listAgents();
-    const options = agentsMenuOptions(agents, allNames.length);
+    const history = historyRows(agents, manager.listTombstones());
+    const options = agentsMenuOptions(agents, history.length, allNames.length);
 
-    const noAgentsMsg = allNames.length === 0 && agents.length === 0
+    const noAgentsMsg = allNames.length === 0 && agents.length === 0 && history.length === 0
       ? `No agents found. Define them as .md files in ${projectAgentsDir()} (project) or ${personalAgentsDir()} (personal).\n\n`
       : "";
 
@@ -160,20 +167,22 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
   }
 
   async function showRunningAgents(ctx: ExtensionCommandContext) {
-    const nodes = buildAgentTree(manager.listAgents());
-    if (nodes.length === 0) {
+    const agents = manager.listAgents();
+    const nodes = buildAgentTree(agents);
+    const history = historyRows(agents, manager.listTombstones());
+    if (nodes.length === 0 && history.length === 0) {
       ctx.ui.notify("No agents.", "info");
       return;
     }
 
-    const node = await selectAgentRow(ctx.ui, nodes, {
+    const agent = await selectAgentRow(ctx.ui, nodes, {
       getActivity: id => manager.getActivity(id),
       showCost: showCost(),
       showModel: showModel(),
-    });
-    if (!node) return;
+    }, history);
+    if (!agent) return;
 
-    await viewer.open(ctx.ui, node.record);
+    await viewer.open(ctx.ui, agent);
     await showRunningAgents(ctx);
   }
 

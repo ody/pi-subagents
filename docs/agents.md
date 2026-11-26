@@ -80,7 +80,7 @@ All fields are optional. Omitted fields take the defaults in the table.
 | `persist_session` | [`rememberAgents`](settings.md#remember-agents) | Persist this subagent as a normal pi session instead of keeping the session in memory only. Overrides the `rememberAgents` default in both directions. The subagent records its spawning session as parent, so it nests under it in `/resume`. Its `.output` transcript is still written either way unless `output_transcript` is `false` |
 | `output_transcript` | [`outputTranscript`](settings.md#output-transcript) | Write this subagent's `.output` transcript. When set, it overrides the `outputTranscript` default. `false` writes no transcript file or path. Governs only the transcript: independent of `persist_session` and `isolation: worktree` |
 | `session_dir` | pi default | Optional session directory when `persist_session: true`. Omitted uses pi's normal session location, and relative paths resolve from the agent cwd. A session outside the parent's session directory (this override, or `isolation: worktree`) appears separately in the list, so it shows as a root instead of nesting |
-| `allowed_subagents` | none | Opt in to scoped nested `agent`, `agent_get_result`, `agent_steer`, and `agent_stop` tools. Omitted, empty, `none` or `false` means no nesting. `all` (or `"*"` / `true`) means any enabled agent. A comma-separated list means only those types. See [Nested subagents](#nested-subagents) |
+| `allowed_subagents` | none | Opt in to scoped nested `agent`, `agent_models`, `agent_get_result`, `agent_steer`, and `agent_stop` tools. Omitted, empty, `none` or `false` means no nesting. `all` (or `"*"` / `true`) means any enabled agent. A comma-separated list means only those types. See [Nested subagents](#nested-subagents) |
 | `prompt_mode` | `replace` | `replace`: the body is the full system prompt, with no AGENTS.md or CLAUDE.md inheritance. `append`: the extension appends the body to the parent's prompt, which inherits the parent's AGENTS.md or CLAUDE.md. The extension tags a `replace` agent `(bare)` in the widget, the viewer, and the tool result |
 | `inherit_context` | `false` | Fork the parent conversation into the agent |
 | `run_in_background` | none | Default this agent to background (`true`) or foreground (`false`). A caller value overrides it. Omit to follow [`backgroundByDefault`](settings.md#background-by-default) |
@@ -130,6 +130,8 @@ Candidates at the winning tier are equivalent only when their IDs match after re
 With [Model scope](settings.md#model-scope) on, the exact `enabledModels` entries disambiguate the shorthand tier only. They never redirect a literal or normalized match.
 
 A caller `model` that does not resolve refuses the spawn. A pin that does not resolve leaves the model unset, so the agent inherits the session model. `/agents → Agent types` marks that pin `(unavailable, fallback: inherit)`. A caller `model` that displaces a pin shows the resolved pin in the `(over pinned …)` disclosure.
+
+A refusal lists the accepted models, one `provider/id` line each, sorted lexically. The accepted set is the scoped set when [Model scope](settings.md#model-scope) bounds the run, and pi's available models otherwise. [`agent_models`](agent-tool.md#agent_models) reports the same set before a spawn.
 
 This is distinct from [Model scope](settings.md#model-scope) enforcement, which matches the `enabledModels` allowlist by *exact* entry.
 

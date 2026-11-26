@@ -1,3 +1,4 @@
+// Size: the nested agent tool and its control tools share one ownership rule and one context object.
 import type { Api, Model } from "@earendil-works/pi-ai";
 import {
   type AgentSession,
@@ -43,6 +44,7 @@ import type {
 } from "../types.js";
 import { addUsage } from "../usage.js";
 import { waitForRunEnd } from "./abortable.js";
+import { createAgentModelsTool } from "./agent-models-tool.js";
 import { ephemeralParamShape } from "./ephemeral-params.js";
 import { describeOverrides, isolationParam, resolveAgentInvocationConfig } from "./invocation-config.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
@@ -52,7 +54,13 @@ let maxSubagentDepth = SETTING_SPECS.maxSubagentDepth.default;
 export function getMaxSubagentDepth(): number { return maxSubagentDepth; }
 export function setMaxSubagentDepth(n: number): void { maxSubagentDepth = Math.max(0, Math.floor(n)); }
 
-export const NESTED_TOOL_NAMES = ["agent", "agent_get_result", "agent_steer", "agent_stop"] as const;
+export const NESTED_TOOL_NAMES = [
+  "agent",
+  "agent_models",
+  "agent_get_result",
+  "agent_steer",
+  "agent_stop",
+] as const;
 
 interface NestedSpawnOptions {
   description: string;
@@ -419,8 +427,10 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
     execute: (_toolCallId, params, signal, _onUpdate, ctx) => runNestedAgentCall(context, params, signal, ctx),
   });
 
+  const modelsTool = createAgentModelsTool(context.configCwd);
+
   const resultTool = defineTool({
-    name: NESTED_TOOL_NAMES[1],
+    name: NESTED_TOOL_NAMES[2],
     label: "Get Nested Agent Result",
     description: "Check or wait for a background nested agent owned by this parent.",
     parameters: Type.Object({
@@ -438,7 +448,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
   });
 
   const steerTool = defineTool({
-    name: NESTED_TOOL_NAMES[2],
+    name: NESTED_TOOL_NAMES[3],
     label: "Steer Nested Agent",
     description: "Send guidance to a running nested agent owned by this parent.",
     parameters: Type.Object({
@@ -465,7 +475,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
   });
 
   const stopTool = defineTool({
-    name: NESTED_TOOL_NAMES[3],
+    name: NESTED_TOOL_NAMES[4],
     label: "Stop Nested Agent",
     description:
       "Stop a running or queued nested agent owned by this parent. Its result arrives through the completion " +
@@ -491,5 +501,5 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
     },
   });
 
-  return [agentTool, resultTool, steerTool, stopTool];
+  return [agentTool, modelsTool, resultTool, steerTool, stopTool];
 }

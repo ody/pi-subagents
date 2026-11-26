@@ -176,7 +176,7 @@ export class AgentWidget {
       return;
     }
     this.viewingId = record.id;
-    this.viewer.open(this.inputCtx, record).then(() => this.closeViewer(), () => this.closeViewer());
+    this.viewer.open(this.inputCtx, { kind: "live", record }).then(() => this.closeViewer(), () => this.closeViewer());
   }
 
   private closeViewer(): void {

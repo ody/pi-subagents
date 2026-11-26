@@ -19,6 +19,7 @@ import { setWorktreeIsolationEnabled } from "./platform/worktree.js";
 import { RpcError } from "./rpc-error.js";
 import { inChildSessionContext } from "./session/child-context.js";
 import { registerAgentControlTools } from "./tool/agent-control-tools.js";
+import { createAgentModelsTool } from "./tool/agent-models-tool.js";
 import { createAgentTool } from "./tool/agent-tool.js";
 import { setMaxSubagentDepth } from "./tool/nested-tools.js";
 import { type RpcHandle, registerRpcHandlers } from "./triggers/cross-extension-rpc.js";
@@ -313,6 +314,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   registerAgentControlTools(pi, { manager, notifier, settings, resolveAgentRef, resolveAgentTombstone, usageReporting });
+  pi.registerTool(createAgentModelsTool());
 
   registerAgentsCommand(pi, {
     manager,

@@ -101,6 +101,7 @@ vi.mock("../../src/tool/nested-tools.js", () => ({
   getMaxSubagentDepth: vi.fn(() => 2),
   createNestedSubagentTools: vi.fn(() => [
     { name: "agent" },
+    { name: "agent_models" },
     { name: "agent_get_result" },
     { name: "agent_steer" },
     { name: "agent_stop" },
@@ -987,9 +988,9 @@ describe("agent-runner master tool allowlist", () => {
       configCwd: "/tmp",
     }));
     expect(lastToolsPassed()).toEqual(expect.arrayContaining([
-      "agent", "agent_get_result", "agent_steer", "agent_stop",
+      "agent", "agent_models", "agent_get_result", "agent_steer", "agent_stop",
     ]));
-    expect(createAgentSession.mock.calls[0][0].customTools).toHaveLength(4);
+    expect(createAgentSession.mock.calls[0][0].customTools).toHaveLength(5);
   });
 
   it("keeps opt-in nested tools active UNDER EXTENSIONS despite the EXCLUDED-name collision", async () => {
@@ -1009,9 +1010,9 @@ describe("agent-runner master tool allowlist", () => {
 
     const opts = createAgentSession.mock.calls[0][0];
     expect(opts.excludeTools ?? []).not.toContain("agent");
-    expect(opts.customTools).toHaveLength(4);
+    expect(opts.customTools).toHaveLength(5);
     const active = lastToolsPassed();
-    expect(active).toEqual(expect.arrayContaining(["agent", "agent_get_result", "agent_steer", "agent_stop"]));
+    expect(active).toEqual(expect.arrayContaining(["agent", "agent_models", "agent_get_result", "agent_steer", "agent_stop"]));
     expect(active).toContain("ok_ext");
   });
 

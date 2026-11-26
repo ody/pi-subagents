@@ -51,7 +51,7 @@ function createViewer(keybindings?: ViewerKeybindings) {
     fg: (_color: string, text: string) => text,
     bold: (text: string) => text,
   } as any;
-  const viewer = new ConversationViewer(tui, session, record, undefined, theme, vi.fn(), undefined, keybindings);
+  const viewer = new ConversationViewer(tui, { kind: "live", session, record }, theme, vi.fn(), keybindings);
   viewer.render(80);
   return viewer;
 }

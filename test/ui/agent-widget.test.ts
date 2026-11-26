@@ -521,7 +521,7 @@ describe("AgentWidget", () => {
         m.press(DOWN);
         expect(m.press(ENTER)).toEqual({ consume: true });
         expect(m.open).toHaveBeenCalledTimes(1);
-        expect(m.open.mock.calls[0]?.[1]).toBe(rows[1]);
+        expect(m.open.mock.calls[0]?.[1]).toEqual({ kind: "live", record: rows[1] });
       });
 
       it("lets keys pass to the viewer while it is open", () => {

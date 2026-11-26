@@ -1,9 +1,10 @@
-import type { AgentActivity, AgentRecord } from "../types.js";
+import type { AgentActivity, AgentRecord, AgentTombstone } from "../types.js";
 import { getLifetimeCost, getLifetimeTotal, getSessionContextPercent } from "../usage.js";
-import { renderAgentName } from "./agent-color.js";
+import { renderAgentName, renderAgentNameLabel } from "./agent-color.js";
 import {
   buildInvocationTags,
   describeActivity,
+  formatAge,
   formatCost,
   formatMs,
   formatSessionTokens,
@@ -50,6 +51,12 @@ export function finishedRowLine(a: AgentRecord, depth: number, selected: boolean
 
   const indent = "   ".repeat(depth);
   return `${indent}${connector(theme, selected)} ${icon} ${renderAgentName(a, theme, { fallbackColor: "dim" })}${renderModeTag(theme, modeLabel)}  ${theme.fg("muted", a.description)} ${theme.fg("dim", "·")} ${renderStats(theme, parts)}${statusText}`;
+}
+
+export function historyRowLine(entry: AgentTombstone, selected: boolean, theme: Theme): string {
+  const name = entry.alias ?? entry.handle;
+  const stats = renderStats(theme, [{ kind: "time", text: formatAge(entry.completedAt) }]);
+  return `${connector(theme, selected)} ${renderStatusIcon(theme, entry.status)} ${renderAgentNameLabel(name, entry.agentConfig?.color, theme, { fallbackColor: "dim" })}  ${theme.fg("muted", entry.description)} ${theme.fg("dim", "·")} ${theme.fg("muted", entry.agentConfig?.displayName ?? entry.type)} ${theme.fg("dim", "·")} ${stats}`;
 }
 
 export function runningRowLines(

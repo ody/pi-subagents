@@ -196,29 +196,3 @@ export function matchModel(
   const winner = [...scoped].sort((a, b) => compareEntries(a, b, query))[0];
   return { kind: "resolved", model: winner as Model<Api> };
 }
-
-function availableModelList(registry: ModelRegistry): string {
-  return availableModels(registry)
-    .map(entry => `  ${entry.provider}/${entry.id}`)
-    .sort()
-    .join("\n");
-}
-
-function notFoundMessage(input: string, registry: ModelRegistry): string {
-  return `Model not found: "${input}".\n\nAvailable models:\n${availableModelList(registry)}`;
-}
-
-function ambiguousMessage(input: string, candidates: string[], registry: ModelRegistry): string {
-  return `Model "${input}" is ambiguous: ${candidates.join(", ")}.\n\nAvailable models:\n${availableModelList(registry)}`;
-}
-
-export function resolveModel(
-  input: string,
-  registry: ModelRegistry,
-  options: ModelMatchOptions = {},
-): Model<Api> | string {
-  const match = matchModel(input, registry, options);
-  if (match.kind === "resolved") return match.model;
-  if (match.kind === "ambiguous") return ambiguousMessage(input, match.candidates, registry);
-  return notFoundMessage(input, registry);
-}

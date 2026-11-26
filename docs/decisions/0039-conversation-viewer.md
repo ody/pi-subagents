@@ -19,7 +19,7 @@ The viewer is one `ConversationViewer` overlay in `src/ui/conversation-viewer.ts
 1. `/agents -> Agents` and a selected Agents widget row (ADR 0038) open the viewer through one shared function, with the same overlay options, handlers, and notices.
 2. The overlay sits at the centre with a width of 95% and a maximum height of 90% of the terminal.
 3. The viewer's top border carries one main-session line. It shows a working indicator while the main session runs, and the first line of its last assistant message, cut to fit. The extension builds the line from pi's session events.
-4. An agent with no session does not open the viewer. Both entry points show the same notice, which names the agent's status.
+4. A live record with no session does not open the viewer. Both entry points show the same notice, which names the agent's status. A history row opens from its session file instead, as ADR 0054 sets.
 5. The viewer opens for every agent, nested agents included (ADR 0007).
 6. Disposing the extension's UI context closes any open viewer. The agent finishing never closes it.
 
