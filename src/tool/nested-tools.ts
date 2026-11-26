@@ -327,7 +327,7 @@ async function runNestedAgentCall(
       inheritContext: invocation.inheritContext,
       runInBackground: invocation.runInBackground,
       isolation: invocation.isolation,
-      ...describeOverrides(invocation.overridden, model, ctx.modelRegistry),
+      ...describeOverrides(invocation.overridden, model, { cwd: context.configCwd, modelRegistry: ctx.modelRegistry }),
     },
     onAssistantUsage: usage => addUsageToAncestors(context.manager, context.parentAgentId, usage),
     depth: childDepth,

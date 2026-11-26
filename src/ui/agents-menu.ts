@@ -5,7 +5,8 @@ import { type ExtensionAPI, type ExtensionCommandContext, getSettingsListTheme }
 import { Container, type SettingItem, SettingsList, Spacer, Text } from "@earendil-works/pi-tui";
 import { disableInContent, enableInContent, isEmptyStub, locateAgentFile, personalAgentsDir, projectAgentsDir, serializeAgentFile } from "../agents/agent-file-toggle.js";
 import { getAgentConfig, getAllTypes } from "../agents/agent-types.js";
-import { getModelLabelFromConfig, type ModelRegistry, resolveModel } from "../config/model-resolver.js";
+import { getModelLabelFromConfig } from "../config/model-resolver.js";
+import { resolveModelMatch } from "../config/model-scope.js";
 import type { AgentManager } from "../manager/agent-manager.js";
 import type { AgentConfig, AgentRecord } from "../types.js";
 import { buildAgentTree } from "./agent-tree.js";
@@ -53,6 +54,22 @@ function sourceIndicator(cfg: AgentConfig | undefined): string {
   return disabled ? `✕${mark} ` : `${mark}  `;
 }
 
+export function modelLabelFor(
+  cfg: AgentConfig | undefined,
+  env?: { cwd: string; modelRegistry: Parameters<typeof resolveModelMatch>[1]["modelRegistry"] },
+): string {
+  const input = cfg?.model?.trim();
+  if (!input) return "inherit";
+  const label = getModelLabelFromConfig(input);
+  if (!env) return label;
+  const match = resolveModelMatch(input, env);
+  if (match.kind !== "resolved") return `${label} (unavailable, fallback: inherit)`;
+  const resolvedKey = `${match.model.provider}/${match.model.id}`;
+  const normalize = (value: string) => value.toLowerCase().replace(/\./g, "-");
+  if (normalize(input) === normalize(resolvedKey)) return label;
+  return `${label} (→ ${resolvedKey})`;
+}
+
 function agentLegendParts(configs: (AgentConfig | undefined)[]): string[] {
   const legendParts: string[] = [];
   if (configs.some(c => c && c.enabled !== false)) legendParts.push("• = project  ◦ = global  ▹ = skill");
@@ -62,19 +79,6 @@ function agentLegendParts(configs: (AgentConfig | undefined)[]): string[] {
 
 export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps): void {
   const { manager, reloadCustomAgents, viewer, showSettings, showCost, showModel } = deps;
-
-  function getModelLabel(type: string, registry?: ModelRegistry): string {
-    const cfg = getAgentConfig(type);
-    if (!cfg?.model) return "inherit";
-    const label = getModelLabelFromConfig(cfg.model);
-    if (!registry) return label;
-    const resolved = resolveModel(cfg.model, registry);
-    if (typeof resolved === "string") return `${label} (unavailable, fallback: inherit)`;
-    const resolvedFull = `${resolved.provider}/${resolved.id}`;
-    const norm = (s: string) => s.toLowerCase().replace(/\./g, "-").replace(/-\d{8}$/, "");
-    if (norm(cfg.model) === norm(resolvedFull)) return label;
-    return `${label} (→ ${resolvedFull.replace(/-\d{8}$/, "")})`;
-  }
 
   async function showAgentsMenu(ctx: ExtensionCommandContext) {
     reloadCustomAgents();
@@ -116,7 +120,7 @@ export function registerAgentsCommand(pi: ExtensionAPI, deps: AgentsCommandDeps)
     const items: SettingItem[] = allNames.map(name => {
       const cfg = getAgentConfig(name);
       const disabled = cfg?.enabled === false;
-      const model = getModelLabel(name, ctx.modelRegistry);
+      const model = modelLabelFor(cfg, { cwd: ctx.cwd, modelRegistry: ctx.modelRegistry });
       return {
         id: name,
         label: `${sourceIndicator(cfg)}${name}`,

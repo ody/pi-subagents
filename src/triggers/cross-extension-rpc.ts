@@ -15,9 +15,9 @@ export type RpcReply<T = void> =
   | { success: true; data?: T }
   | { success: false; code: RpcErrorCode; error: string };
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 
-export const RPC_FEATURES: readonly string[] = ["agent_record_session_fields", "agent_failed_provider_stage", "agent_record_worktree"];
+export const RPC_FEATURES: readonly string[] = [];
 
 export const RPC_SPAWN_OPTIONS = [
   "description",

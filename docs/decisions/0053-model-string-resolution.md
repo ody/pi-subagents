@@ -1,6 +1,4 @@
-> DRAFT: not accepted, not current truth.
-
-# NNNN. Model resolution with exact version and snapshot constraints
+# 0053. Model resolution with exact version and snapshot constraints
 
 ## Context
 

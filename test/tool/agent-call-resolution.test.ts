@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import { detailBaseFor, resolveAgentCall } from "../../src/tool/agent-call-resolution.js";
@@ -108,6 +108,24 @@ describe("resolveAgentCall", () => {
     expect(out.ok).toBe(true);
   });
 
+  it("does not look up a model when resuming a live agent", () => {
+    const registry = {
+      find: vi.fn(() => { throw new Error("model lookup on resume"); }),
+      getAvailable: vi.fn(() => { throw new Error("model lookup on resume"); }),
+      getAll: vi.fn(() => { throw new Error("model lookup on resume"); }),
+    };
+    const out = resolveAgentCall(
+      { subagent_type: "Explore", description: "d", prompt: "p", resume: "abc" } as never,
+      { ...ctx, modelRegistry: registry },
+      opts,
+    );
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.model).toBeUndefined();
+    expect(registry.find).not.toHaveBeenCalled();
+    expect(registry.getAvailable).not.toHaveBeenCalled();
+  });
+
   describe("model scope", () => {
     const MODELS = [
       { id: "allowed", name: "Allowed", provider: "anthropic" },
@@ -162,6 +180,20 @@ describe("resolveAgentCall", () => {
       const out = resolveAgentCall({ subagent_type: "ghost", description: "d", prompt: "p" } as never, { ...scopedCtx, model: { provider: "anthropic", id: "blocked" } } as never, opts);
       expect(out.ok).toBe(true);
       if (!out.ok) return;
+      expect(out.modelReplaced).toBeUndefined();
+      expect(notices).toEqual([]);
+    });
+
+    it("treats a blank caller model as absent, so the file's pin applies", () => {
+      registerAgents(new Map([["pinned", testAgent("pinned", { model: "anthropic/allowed" })]]));
+      const out = resolveAgentCall(
+        { subagent_type: "pinned", description: "d", prompt: "p", model: "   " } as never,
+        scopedCtx,
+        opts,
+      );
+      expect(out.ok).toBe(true);
+      if (!out.ok) return;
+      expect(out.model).toMatchObject({ provider: "anthropic", id: "allowed" });
       expect(out.modelReplaced).toBeUndefined();
       expect(notices).toEqual([]);
     });

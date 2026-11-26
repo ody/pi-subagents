@@ -227,6 +227,44 @@ describe("spawn funnel scope", () => {
     expect(spawn.mock.calls[0][4]).toMatchObject({ model: SESSION, modelReplaced: "anthropic/claude-opus-4-6" });
   });
 
+  it("treats a blank caller model as absent over a file pin", () => {
+    funnel.spawnTopLevel({}, funnelCtx(), "inscope", "go", { description: "d", model: "   " });
+    expect(spawn.mock.calls[0][4]).toMatchObject({ model: { provider: "anthropic", id: "claude-haiku-4-5" } });
+    expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
+  });
+
+  it("passes a resolved pin with its snapshot to a tombstone reopen", () => {
+    setScopeModelsEnabled(false);
+    const dated = { provider: "anthropic", id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5" };
+    const registry = {
+      getAll: () => [dated],
+      getAvailable: () => [dated],
+      find: (provider: string, id: string) => (provider === dated.provider && id === dated.id ? dated : undefined),
+    };
+    registerAgents(new Map([["dated", testAgent("dated", { model: "haiku" })]]));
+
+    funnel.spawnResolved({}, { ...funnelCtx(), modelRegistry: registry }, "dated", "go", {
+      description: "d",
+      resumeSessionFile: "/x",
+      reclaim: { handle: "h" },
+    });
+
+    expect(spawn.mock.calls[0][4]).toMatchObject({ model: dated });
+  });
+
+  it("lets an unresolved pin inherit the session model on a tombstone reopen", () => {
+    registerAgents(new Map([["ghost", testAgent("ghost", { model: "nope/none" })]]));
+
+    funnel.spawnResolved({}, funnelCtx(), "ghost", "go", {
+      description: "d",
+      resumeSessionFile: "/x",
+      reclaim: { handle: "h" },
+    });
+
+    expect(spawn.mock.calls[0][4].model).toBeUndefined();
+    expect(spawn.mock.calls[0][4].modelReplaced).toBeUndefined();
+  });
+
   it("leaves an in-scope pin and an unpinned agent without a replacement", () => {
     funnel.spawnTopLevel({}, funnelCtx(), "inscope", "go", { description: "d" });
     funnel.spawnTopLevel({}, funnelCtx(), "plain", "go", { description: "d" });
@@ -296,26 +334,32 @@ describe("spawn funnel scope", () => {
 
 const findingRegistry = {
   getAll: () => MODELS,
+  getAvailable: () => MODELS,
   find: (provider: string, id: string) => MODELS.find(m => m.provider === provider && m.id === id),
 };
 
 describe("resolvePinnedModel", () => {
   it("returns no pin when no model input", () => {
-    expect(resolvePinnedModel({ modelInput: undefined, modelFromParams: false }, findingRegistry)).toEqual({ ok: true, pinned: undefined });
+    expect(resolvePinnedModel({ modelInput: undefined, modelFromParams: false }, { cwd: process.cwd(), modelRegistry: findingRegistry })).toEqual({ ok: true, pinned: undefined });
   });
 
   it("resolves a known model", () => {
-    const r = resolvePinnedModel({ modelInput: "anthropic/claude-opus-4-6", modelFromParams: true }, findingRegistry);
+    const r = resolvePinnedModel({ modelInput: "anthropic/claude-opus-4-6", modelFromParams: true }, { cwd: process.cwd(), modelRegistry: findingRegistry });
     expect(r).toMatchObject({ ok: true, pinned: OPUS });
   });
 
   it("refuses an unresolved model that came from params", () => {
-    const r = resolvePinnedModel({ modelInput: "nope/none", modelFromParams: true }, findingRegistry);
+    const r = resolvePinnedModel({ modelInput: "nope/none", modelFromParams: true }, { cwd: process.cwd(), modelRegistry: findingRegistry });
     expect(r).toEqual({ ok: false, message: expect.any(String) });
   });
 
   it("returns no pin when an unresolved model came from config", () => {
-    const r = resolvePinnedModel({ modelInput: "nope/none", modelFromParams: false }, findingRegistry);
+    const r = resolvePinnedModel({ modelInput: "nope/none", modelFromParams: false }, { cwd: process.cwd(), modelRegistry: findingRegistry });
+    expect(r).toEqual({ ok: true, pinned: undefined });
+  });
+
+  it("treats a blank caller input as absent, even when it came from params", () => {
+    const r = resolvePinnedModel({ modelInput: "   ", modelFromParams: true }, { cwd: process.cwd(), modelRegistry: findingRegistry });
     expect(r).toEqual({ ok: true, pinned: undefined });
   });
 });
@@ -378,5 +422,42 @@ describe("resolveScopedModel", () => {
     const { result, notify } = resolve("anthropic/claude-haiku-4-5", true);
     expect(result).toMatchObject({ ok: true, model: HAIKU, replaced: undefined });
     expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("resolves a shorthand that is unique in scope", () => {
+    const pool = [
+      { provider: "anthropic", id: "claude-sonnet-4-5-20241022", name: "Claude Sonnet 4.5" },
+      { provider: "anthropic", id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+    ];
+    writeFileSync(join(projectDir, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/claude-sonnet-4-6"] }));
+    const registry = {
+      getAll: () => pool,
+      getAvailable: () => pool,
+      find: (provider: string, id: string) => pool.find(m => m.provider === provider && m.id === id),
+    };
+    const result = resolveScopedModel(
+      { modelInput: "sonnet", modelFromParams: true },
+      { sessionModel: HAIKU as never, cwd: projectDir, modelRegistry: registry, notify: vi.fn() },
+      "scout",
+    );
+    expect(result).toMatchObject({ ok: true, model: pool[1] });
+  });
+
+  it("refuses a shorthand when scope holds no candidate", () => {
+    const pool = [
+      { provider: "anthropic", id: "claude-sonnet-4-5-20241022", name: "Claude Sonnet 4.5" },
+      { provider: "anthropic", id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
+    ];
+    const registry = {
+      getAll: () => pool,
+      getAvailable: () => pool,
+      find: (provider: string, id: string) => pool.find(m => m.provider === provider && m.id === id),
+    };
+    const result = resolveScopedModel(
+      { modelInput: "sonnet", modelFromParams: true },
+      { sessionModel: HAIKU as never, cwd: projectDir, modelRegistry: registry, notify: vi.fn() },
+      "scout",
+    );
+    expect(result.ok).toBe(false);
   });
 });

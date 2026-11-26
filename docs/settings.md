@@ -286,7 +286,9 @@ An optional `policy` object in `subagents.json` bounds the tools, extensions, an
 
 When on, the extension validates each subagent spawn's effective model against pi's own `enabledModels` list (which you configure via pi's `/scoped-models` UI). pi-subagents reads that list; it does not manage it. The extension honors both of pi's settings files: global `~/.pi/agent/settings.json` and project-local `<cwd>/.pi/settings.json`. **Project overrides global**, mirroring pi's `SettingsManager` deep-merge, so the extension respects a tighter per-project scope.
 
-Out-of-scope handling depends on source:
+The exact entries also help [model resolution](agents.md#model-resolution) decide a shorthand. If only one in-scope candidate matches a shorthand pin or caller model, it wins. The entries never redirect a literal or normalized match. A blank caller `model` counts as absent, so a frontmatter pin applies.
+
+The scope check runs after resolution, and an out-of-scope result never retries another candidate. Out-of-scope handling depends on source:
 
 | Model source | Out-of-scope behaviour |
 | --- | --- |

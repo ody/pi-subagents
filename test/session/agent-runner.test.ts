@@ -117,7 +117,6 @@ import {
 } from "../../src/config/runner-defaults.js";
 import {
   type RunOptions,
-  resolveDefaultModel,
   resumeAgent,
   runAgent as runAgentWithCapability,
 } from "../../src/session/agent-runner.js";
@@ -334,6 +333,24 @@ describe("agent-runner final output capture", () => {
     expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({
       modelRuntime,
     }));
+  });
+
+  it("runs on the resolved model without a second registry lookup", async () => {
+    const { session } = createSession("MODEL");
+    createAgentSession.mockResolvedValue({ session });
+    const resolved = { provider: "anthropic", id: "claude-haiku-4-5" } as any;
+    const registry = { find: vi.fn(() => undefined), getAvailable: vi.fn(() => []) };
+    const context = { ...ctx, model: { provider: "anthropic", id: "parent" }, modelRegistry: registry };
+    const agentConfig = normalizeInlineAgentConfig("advisor", {
+      systemPrompt: "s",
+      model: "anthropic/claude-opus-4-6",
+    });
+
+    await runAgent(context, "advisor", "go", { pi, model: resolved, agentConfig });
+
+    expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({ model: resolved }));
+    expect(registry.find).not.toHaveBeenCalled();
+    expect(registry.getAvailable).not.toHaveBeenCalled();
   });
 
   it("suppresses AGENTS.md/CLAUDE.md/APPEND_SYSTEM.md for subagents", async () => {
@@ -2083,53 +2100,5 @@ describe("agent-runner abort signal forwarding", () => {
     await runAgent(ctx, "Explore", "go", { pi });
 
     expect(session.abort).not.toHaveBeenCalled();
-  });
-});
-
-describe("resolveDefaultModel", () => {
-  const parent = { provider: "anthropic", id: "parent-model" } as any;
-  const haiku = { provider: "anthropic", id: "claude-haiku-4-5" } as any;
-
-  function registry(available?: any[]) {
-    return {
-      find: vi.fn((provider: string, id: string) => ({ provider, id }) as any),
-      getAvailable: available ? () => available : undefined,
-    };
-  }
-
-  it("returns the configured model when the registry has it available", () => {
-    const r = registry([haiku]);
-    expect(resolveDefaultModel(parent, r, "anthropic/claude-haiku-4-5"))
-      .toEqual({ provider: "anthropic", id: "claude-haiku-4-5" });
-  });
-
-  it("falls back to the parent when the model is NOT in the available set", () => {
-    const r = registry([haiku]);
-    expect(resolveDefaultModel(parent, r, "openai/gpt-5")).toBe(parent);
-  });
-
-  it("trusts `find` when the registry cannot enumerate availability", () => {
-    const r = registry(undefined);
-    expect(resolveDefaultModel(parent, r, "anthropic/claude-haiku-4-5"))
-      .toEqual({ provider: "anthropic", id: "claude-haiku-4-5" });
-  });
-
-  it("falls back to the parent when the registry cannot find the model", () => {
-    const r = { find: vi.fn(() => undefined), getAvailable: undefined };
-    expect(resolveDefaultModel(parent, r as any, "anthropic/nope")).toBe(parent);
-  });
-
-  it("falls back to the parent for a model string with no provider prefix", () => {
-    const r = registry([haiku]);
-    expect(resolveDefaultModel(parent, r, "haiku")).toBe(parent);
-    expect(r.find).not.toHaveBeenCalled();
-  });
-
-  it("returns the parent model when no model is configured", () => {
-    expect(resolveDefaultModel(parent, registry([haiku]), undefined)).toBe(parent);
-  });
-
-  it("returns undefined when neither a config model nor a parent model exists", () => {
-    expect(resolveDefaultModel(undefined, registry([haiku]), undefined)).toBeUndefined();
   });
 });

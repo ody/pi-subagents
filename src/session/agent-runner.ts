@@ -34,32 +34,6 @@ import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { collectResponseText, finalTurnFailure, getLastAssistantText, type TurnFailure } from "./session-text.js";
 import { preloadSkills } from "./skill-loader.js";
 
-export function resolveDefaultModel(
-  parentModel: Model<Api> | undefined,
-  registry: { find(provider: string, modelId: string): Model<Api> | undefined; getAvailable?(): Model<Api>[] },
-  configModel?: string,
-): Model<Api> | undefined {
-  if (configModel) {
-    const slashIdx = configModel.indexOf("/");
-    if (slashIdx !== -1) {
-      const provider = configModel.slice(0, slashIdx);
-      const modelId = configModel.slice(slashIdx + 1);
-
-      const available = registry.getAvailable?.();
-      const availableKeys = available
-        ? new Set(available.map((m) => `${m.provider}/${m.id}`))
-        : undefined;
-      const isAvailable = (p: string, id: string) =>
-        !availableKeys || availableKeys.has(`${p}/${id}`);
-
-      const found = registry.find(provider, modelId);
-      if (found && isAvailable(provider, modelId)) return found;
-    }
-  }
-
-  return parentModel;
-}
-
 export interface ToolActivity {
   type: "start" | "end";
   toolName: string;
@@ -349,9 +323,7 @@ export async function runAgent(
   });
   for (const toolName of warnings) options.onToolActivity?.({ type: "end", toolName });
 
-  const model = options.model ?? resolveDefaultModel(
-    ctx.model, ctx.modelRegistry, agentConfig?.model,
-  );
+  const model = options.model ?? ctx.model;
 
   const thinkingLevel = options.thinkingLevel ?? agentConfig?.thinking;
 

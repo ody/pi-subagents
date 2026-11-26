@@ -14,7 +14,7 @@ This document is the contract reference ([ADR 0044](decisions/0044-bus-only-inte
 - The complete spawn-option surface.
 - Every error code.
 - The notification race.
-- What protocol version `4` does and does not promise.
+- What protocol version `5` does and does not promise.
 
 The channel names are the only integration surface. The extension publishes no `globalThis` object.
 
@@ -124,7 +124,7 @@ The full interface is `SpawnOptions` in `src/manager/agent-spawn.ts`. Internal k
 | `description` | string | What the agent is doing. Shown in the widget and the completion notification |
 | `agentConfig` | `Partial<AgentConfig>` with `systemPrompt` | Runs this definition instead of the registered `type`. See [Inline agent definitions](#inline-agent-definitions) |
 | `name` | string | A memorable second handle (`@auth-audit`). Slugged, never validated: anything unusable degrades rather than failing the spawn |
-| `model` | `Model` **or** `"provider/modelId"` | The spawn funnel resolves strings against `ctx.modelRegistry`. `null` means inherit, not override. Resolution is fuzzy, so a bare `"sonnet"` can land on a provider you never named |
+| `model` | `Model` **or** `"provider/modelId"` | The spawn funnel resolves strings through the shared [model resolver](agents.md#model-resolution). A blank string counts as absent. `null` means inherit, not override. A miss or an ambiguity fails with `model_not_found`; a scope refusal fails with `model_out_of_scope` |
 | `maxTurns` | number | Turn ceiling for the run |
 | `isolated` | boolean | Strips extensions, skills and nested tools. **Not** a git worktree; use `isolation` for that |
 | `inheritContext` | boolean | Fork the parent conversation into the child |
@@ -213,7 +213,7 @@ Every failure reaches the caller as `{ success: false, code, error }` (`handleRp
 | `invalid_agent_config` | Inline `agentConfig` is not an object, has no string `systemPrompt`, or has an empty or non-string `type` |
 | `unknown_type` | `type` does not resolve to exactly one enabled agent, or is empty, and the caller gave no `agentConfig` |
 | `unknown_option` | `options` has a key outside the allowed list. The error text names the key |
-| `model_not_found` | A string `model` matches no model in the registry |
+| `model_not_found` | A string `model` matches no model or is ambiguous |
 | `model_out_of_scope` | `scopeModels` is on and the caller's `model` is outside `enabledModels`. The check uses the *resolved* model |
 | `policy_denied` | A tool, extension, or skill is outside the [capability policy](settings.md#capability-policy), or the policy files have problems. Nothing spawns |
 | `invalid_cwd` | `options.cwd` is not an absolute path, does not exist, or is not a directory |
@@ -321,15 +321,13 @@ The extension also writes two session names. Neither goes on the bus:
 
 ## Protocol versions
 
-`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `4`. `features` is `RPC_FEATURES` in the same file, currently `["agent_record_session_fields", "agent_failed_provider_stage", "agent_record_worktree"]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
+`agent:rpc:ping` replies `{ version, features, policy }`. `version` is `PROTOCOL_VERSION` in `src/triggers/cross-extension-rpc.ts`, currently `5`. `features` is `RPC_FEATURES` in the same file, currently `[]`. The rules for breaking and additive changes are in [ADR 0046](decisions/0046-rpc-versioning-and-error-codes.md).
 
-This document describes version 4. A tombstone reopen runs under the agent's original id.
+This document describes version 5. A tombstone reopen runs under the agent's original id.
 
-Each feature names one additive change to version 4:
+Version 5 replaces the earlier scored model search with the deterministic [model resolver](agents.md#model-resolution). That changes which model a string names, so it is a breaking change: `version` is `5` and `features` is reset to `[]`. A caller therefore reads the model rules from this document, not from a feature flag.
 
-- `agent_record_session_fields` adds the optional session fields to `agent:record`.
-- `agent_failed_provider_stage` adds `failure` to `agent:failed`. See [Provider-stage failures](#provider-stage-failures).
-- `agent_record_worktree` adds the optional `worktree` resume state to `agent:record`.
+The fields those earlier feature names introduced stay in version 5, without a flag.
 
 `policy` is `{ global, project, ephemeralNesting }`: each file's `allow` and `deny` lists for `tools`, `extensions` and `skills`, plus the merged `ephemeralNesting`. The ping reads it from disk every time, so it is the only copy that is always current. When the policy files have problems, it carries a `malformed` list of problems, and the manager denies every spawn.
 

@@ -1,7 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { resolveModel } from "../config/model-resolver.js";
+import { type ModelResolutionEnv, resolvePinnedModel } from "../config/model-scope.js";
 import type { AgentConfig, AgentInvocation, IsolationMode, JoinMode, ThinkingLevel } from "../types.js";
 
 const isolationParamShape = {
@@ -56,11 +55,17 @@ export function resolveAgentInvocationConfig(
   overridden?: { thinking?: ThinkingLevel; model?: string; maxTurns?: number; runInBackground?: boolean };
 } {
   const isolation = resolveIsolation(agentConfig?.isolation, params.isolation, opts?.worktreeAllowed !== false);
+  const presentModel = (value: string | undefined): string | undefined => {
+    const trimmed = value?.trim();
+    return trimmed ? trimmed : undefined;
+  };
+  const callerModel = presentModel(params.model);
+  const configModel = presentModel(agentConfig?.model);
 
   const displaced = <T,>(fileValue: T | undefined, callerValue: T | undefined): T | undefined =>
     fileValue != null && callerValue != null && fileValue !== callerValue ? fileValue : undefined;
   const overriddenThinking = displaced(agentConfig?.thinking as ThinkingLevel | undefined, params.thinking as ThinkingLevel | undefined);
-  const overriddenModel = displaced(agentConfig?.model, params.model);
+  const overriddenModel = displaced(configModel, callerModel);
   const overriddenMaxTurns = displaced(agentConfig?.maxTurns, params.max_turns);
   const overriddenRunInBackground = opts?.forceBackground
     ? undefined
@@ -69,8 +74,8 @@ export function resolveAgentInvocationConfig(
     || overriddenMaxTurns !== undefined || overriddenRunInBackground !== undefined;
 
   return {
-    modelInput: params.model ?? agentConfig?.model,
-    modelFromParams: params.model != null,
+    modelInput: callerModel ?? configModel,
+    modelFromParams: callerModel !== undefined,
     thinking: (params.thinking ?? agentConfig?.thinking) as ThinkingLevel | undefined,
     maxTurns: params.max_turns ?? agentConfig?.maxTurns,
     inheritContext: agentConfig?.inheritContext ?? params.inherit_context ?? false,
@@ -91,14 +96,16 @@ export function resolveAgentInvocationConfig(
 export function describeOverrides(
   overridden: ReturnType<typeof resolveAgentInvocationConfig>["overridden"],
   model: Model<Api> | undefined,
-  modelRegistry: ExtensionContext["modelRegistry"],
+  env: ModelResolutionEnv,
 ): Pick<AgentInvocation, "pinnedModel" | "pinnedThinking" | "pinnedMaxTurns" | "pinnedRunInBackground"> {
   const pin = overridden?.model;
-  const resolvedPin = pin === undefined ? undefined : resolveModel(pin, modelRegistry);
-  const samePin = resolvedPin !== undefined && typeof resolvedPin !== "string"
+  const resolved = pin === undefined ? undefined : resolvePinnedModel({ modelInput: pin, modelFromParams: false }, env);
+  const resolvedPin = resolved?.ok ? resolved.pinned : undefined;
+  const samePin = resolvedPin !== undefined
     && resolvedPin.provider === model?.provider && resolvedPin.id === model?.id;
+  const pinLabel = resolvedPin === undefined ? pin : `${resolvedPin.provider}/${resolvedPin.id}`;
   return {
-    pinnedModel: pin === undefined || samePin ? undefined : pin,
+    pinnedModel: pin === undefined || samePin ? undefined : pinLabel,
     pinnedThinking: overridden?.thinking,
     pinnedMaxTurns: overridden?.maxTurns,
     pinnedRunInBackground: overridden?.runInBackground,

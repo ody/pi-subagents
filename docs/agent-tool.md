@@ -19,7 +19,7 @@ Launch a sub-agent.
 | `skills` | `boolean` \| `string[]` | no | Ephemeral only. Default `true` |
 | `allowed_subagents` | `"all"` \| `string[]` | no | Ephemeral only. Default `[]`, which means no nesting. Refused when `policy.ephemeralNesting` is `false` |
 | `prompt_mode` | `"append"` \| `"replace"` | no | Ephemeral only. Default `append` |
-| `model` | string | no | Model as `provider/modelId` or a fuzzy name (`"haiku"`, `"sonnet"`). Resolved tolerantly, with provider fallback. See [Model resolution](agents.md#model-resolution) |
+| `model` | string | no | Model as `provider/modelId` or shorthand (`"haiku"`, `"sonnet"`). Resolved against pi's available models. A caller value that does not resolve refuses the spawn. See [Model resolution](agents.md#model-resolution) |
 | `thinking` | string | no | Thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Availability depends on pi version and model |
 | `max_turns` | number | no | Max agentic turns; `0` means no limit. Overrides the agent's frontmatter; omit to use it, then [`defaultMaxTurns`](settings.md#turn-limits) |
 | `run_in_background` | boolean | no | Overrides the agent's frontmatter; otherwise follows [`backgroundByDefault`](settings.md#background-by-default). `false` blocks and returns the result inline. The parameter description states the current default and is re-registered when the setting changes |

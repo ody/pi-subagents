@@ -1,6 +1,6 @@
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { isModelInScope, type ModelRegistryRef, readEnabledModels, resolveEnabledModels } from "./enabled-models.js";
-import { type ModelRegistry, resolveModel } from "./model-resolver.js";
+import { type ModelMatch, type ModelRegistry, matchModel, resolveModel } from "./model-resolver.js";
 import { SETTING_SPECS } from "./settings-defaults.js";
 
 let scopeModelsEnabled = SETTING_SPECS.scopeModels.default;
@@ -69,12 +69,29 @@ export interface ModelRequest {
   modelFromParams: boolean;
 }
 
+export interface ModelResolutionEnv {
+  cwd: string;
+  modelRegistry: ModelRegistry;
+}
+
+export function modelScope(cwd: string, modelRegistry: ModelRegistry): Iterable<string> | undefined {
+  if (!scopeModelsEnabled) return undefined;
+  return resolveEnabledModels(readEnabledModels(cwd), modelRegistry, cwd);
+}
+
+export function resolveModelMatch(input: string | undefined, env: ModelResolutionEnv): ModelMatch {
+  const trimmed = input?.trim();
+  if (!trimmed) return { kind: "unspecified" };
+  return matchModel(trimmed, env.modelRegistry, { scope: modelScope(env.cwd, env.modelRegistry) });
+}
+
 export function resolvePinnedModel(
   request: ModelRequest,
-  modelRegistry: ModelRegistry,
+  env: ModelResolutionEnv,
 ): { ok: true; pinned: Model<Api> | undefined } | { ok: false; message: string } {
-  if (!request.modelInput) return { ok: true, pinned: undefined };
-  const resolved = resolveModel(request.modelInput, modelRegistry);
+  const input = request.modelInput?.trim();
+  if (!input) return { ok: true, pinned: undefined };
+  const resolved = resolveModel(input, env.modelRegistry, { scope: modelScope(env.cwd, env.modelRegistry) });
   if (typeof resolved !== "string") return { ok: true, pinned: resolved };
   return request.modelFromParams ? { ok: false, message: resolved } : { ok: true, pinned: undefined };
 }
@@ -89,7 +106,7 @@ export function resolveScopedModel(
   },
   agentLabel: string,
 ): { ok: false; message: string } | { ok: true; model: Model<Api> | undefined; replaced: string | undefined } {
-  const pinned = resolvePinnedModel(request, env.modelRegistry);
+  const pinned = resolvePinnedModel(request, { cwd: env.cwd, modelRegistry: env.modelRegistry });
   if (!pinned.ok) return pinned;
   const scoped = scopeModel({
     pinned: pinned.pinned,

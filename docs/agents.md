@@ -74,7 +74,7 @@ All fields are optional. Omitted fields take the defaults in the table.
 | `skills` | `true` | `true` inherits the parent's skills; `false` inherits none. A comma-separated list preloads **only** those skills into the system prompt and does not inherit the rest. Alias: `inherit_skills`. See [Skill preloading](#skill-preloading) |
 | `disallowed_tools` | none | Comma-separated tools to deny even if extensions provide them. See [Tool denylist](#tool-denylist) |
 | `isolation` | none | `worktree` runs in an isolated git worktree. `off` refuses one even when the caller passes `isolation: "worktree"`, because frontmatter is authoritative. `none`, `no` and `false` are spellings of `off`. See [Worktree isolation](worktrees.md) |
-| `model` | inherit parent | Model as `provider/modelId` or a fuzzy name (`"haiku"`, `"sonnet"`). Resolution is tolerant: `.` and `-` are interchangeable, a trailing date stamp is optional, and the same model under another provider is a fallback. See [Model resolution](#model-resolution) |
+| `model` | inherit parent | Model as `provider/modelId` or shorthand (`"haiku"`, `"sonnet 4.5"`). An explicit version or snapshot date must match the model. See [Model resolution](#model-resolution) |
 | `thinking` | inherit | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. Availability depends on your pi version and model; pi clamps unsupported levels down |
 | `max_turns` | unlimited | Max agentic turns before graceful shutdown. `0` or omit for unlimited. A caller `max_turns` overrides it |
 | `persist_session` | [`rememberAgents`](settings.md#remember-agents) | Persist this subagent as a normal pi session instead of keeping the session in memory only. Overrides the `rememberAgents` default in both directions. The subagent records its spawning session as parent, so it nests under it in `/resume`. Its `.output` transcript is still written either way unless `output_transcript` is `false` |
@@ -113,22 +113,23 @@ A caller `max_turns` of `0` means unlimited and is not re-resolved from the file
 
 ## Model resolution
 
-The extension resolves a `model:` pin, and a caller `model`, against the models pi reports as available. The first of three passes that finds a model wins:
+The extension resolves a `model:` pin and a caller `model` against the models pi reports as available, through one deterministic matcher. A blank or whitespace-only caller `model` counts as absent, so a frontmatter pin applies. `/agents → Agent types` shows the same resolved target as the override disclosure, snapshot date included.
 
-1. **Literal lookup.** A `provider/modelId` value that names an available model exactly resolves to that model.
-2. **Scored search.** The extension lowercases the whole value, turns `.` into `-`, and scores it against every available model under every provider. The highest score wins.
-3. **Provider strip.** If a qualified value does not resolve, the extension strips the first prefix and retries with the rest.
+A concrete `Model` object and a live `resume` bypass string resolution. A tombstone reopen re-resolves the pin it restores.
 
-For each model, the first applicable rule supplies its score:
+The matcher takes candidates in three tiers, and the first tier with a candidate wins:
 
-- A normalized id or `provider/id` match scores 100. For example, `claude-haiku-4.5` and `claude-haiku-4-5` normalize to the same id.
-- An id or `provider/id` substring scores `60 + 30 × query length / id length`. A qualified substring can outscore a normalized exact match.
-- A display-name substring scores `40 + 20 × query length / name length`.
-- A match on all parts scores 20. The extension splits on whitespace, `-`, and `/`. Each part must appear in the id, name, or provider, unless it contains exactly eight digits and nothing else.
+1. **Literal key.** A `provider/modelId` value present in the available pool.
+2. **Normalized ID.** The full ID matches after lowercasing and treating `.` and `-` as equal, or the base ID matches when the input omits a snapshot date.
+3. **Whole-token shorthand.** Every whitespace or hyphen separated token appears in the ID, or in the display name. Tokens from different fields never combine. An explicit version must match the ID's complete ordered version, and an explicit trailing `-YYYYMMDD` must match the ID's snapshot date.
 
-Equal scores keep the first entry in registry order. Only the literal lookup guarantees the named provider and snapshot. The scored search can choose a gateway or another version.
+A qualified input scans the named provider first. It scans the full pool with the text after the first `/` only when the named provider has no eligible candidate, never on ambiguity. An empty, whitespace-only or date-only model part never matches.
 
-If nothing resolves, the pin cannot run and the agent inherits the parent model. `/agents → Agent types` flags this case as `(unavailable, fallback: inherit)` and shows the resolved target `(→ provider/id)` when resolution lands on a different provider or version than configured.
+Candidates at the winning tier are equivalent only when their IDs match after removing a trailing snapshot date. Distinct base IDs are ambiguous. For an undated input, an undated ID wins, then the newest snapshot, then the lexically smallest `provider/id`; pool order never decides.
+
+With [Model scope](settings.md#model-scope) on, the exact `enabledModels` entries disambiguate the shorthand tier only. They never redirect a literal or normalized match.
+
+A caller `model` that does not resolve refuses the spawn. A pin that does not resolve leaves the model unset, so the agent inherits the session model. `/agents → Agent types` marks that pin `(unavailable, fallback: inherit)`. A caller `model` that displaces a pin shows the resolved pin in the `(over pinned …)` disclosure.
 
 This is distinct from [Model scope](settings.md#model-scope) enforcement, which matches the `enabledModels` allowlist by *exact* entry.
 

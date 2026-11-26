@@ -55,6 +55,7 @@ function session(provider: string, id: string, thinkingLevel: string, name?: str
 const MODELS = [
   { provider: "anthropic", id: "claude-opus-4-6", name: "Claude Opus 4.6" },
   { provider: "anthropic", id: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
+  { provider: "anthropic", id: "claude-sonnet-4-5-20251001", name: "Claude Sonnet 4.5" },
 ];
 
 const MODEL_NAMES: Record<string, string> = Object.fromEntries(MODELS.map(m => [m.id, m.name]));
@@ -225,6 +226,28 @@ describe("agent tool result — effective model", () => {
     );
 
     expect(result.details.modelName).toBe("opus 4.6 (over pinned anthropic/claude-haiku-4-5)");
+  });
+
+  it("discloses the resolved pin, snapshot included", async () => {
+    pinnedAgent("model: sonnet\n");
+    const tool = agentTool();
+    vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
+
+    const result = await tool.execute(
+      "tc-5e",
+      {
+        prompt: "go",
+        description: "d",
+        subagent_type: "pinned",
+        model: "anthropic/claude-opus-4-6",
+        run_in_background: true,
+      },
+      undefined,
+      undefined,
+      ctx(),
+    );
+
+    expect(result.details.modelName).toBe("opus 4.6 (over pinned anthropic/claude-sonnet-4-5-20251001)");
   });
 
   it("discloses a caller thinking level that displaced the file's", async () => {

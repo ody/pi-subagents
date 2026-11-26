@@ -177,6 +177,28 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
     expect(resolved.modelFromParams).toBe(true);
   });
 
+  it("treats a blank caller model as absent, so the file's pin applies", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ model: "provider/config-model" }),
+      { model: "   " },
+    );
+
+    expect(resolved.modelInput).toBe("provider/config-model");
+    expect(resolved.modelFromParams).toBe(false);
+    expect(resolved.overridden?.model).toBeUndefined();
+  });
+
+  it("treats a blank file model as absent when the caller names one", () => {
+    const resolved = resolveAgentInvocationConfig(
+      makeConfig({ model: "   " }),
+      { model: "provider/param-model" },
+    );
+
+    expect(resolved.modelInput).toBe("provider/param-model");
+    expect(resolved.modelFromParams).toBe(true);
+    expect(resolved.overridden?.model).toBeUndefined();
+  });
+
   it("lets the caller's thinking level outrank the file's", () => {
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ thinking: "low" }),

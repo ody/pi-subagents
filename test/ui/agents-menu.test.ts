@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { personalAgentsDir } from "../../src/agents/agent-file-toggle.js";
 import { registerAgents } from "../../src/agents/agent-types.js";
 import { loadCustomAgents } from "../../src/agents/custom-agents.js";
+import { setScopeModelsEnabled } from "../../src/config/model-scope.js";
 import type { AgentConfig, AgentRecord } from "../../src/types.js";
-import { type AgentsCommandDeps, detailMenuOptions, registerAgentsCommand } from "../../src/ui/agents-menu.js";
+import { type AgentsCommandDeps, detailMenuOptions, modelLabelFor, registerAgentsCommand } from "../../src/ui/agents-menu.js";
 
 const cfg = (over: Partial<AgentConfig>) => over as AgentConfig;
 
@@ -73,6 +74,59 @@ function runAgentsMenu(cwd: string, script: { selects: (string | undefined)[]; l
     },
   };
 }
+
+describe("modelLabelFor", () => {
+  const MODELS = [
+    { id: "claude-sonnet-4-5-20251001", name: "Claude Sonnet 4.5", provider: "anthropic" },
+    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", provider: "anthropic" },
+  ];
+  const registry = {
+    getAll: () => MODELS,
+    getAvailable: () => MODELS,
+    find: (provider: string, id: string) => MODELS.find(m => m.provider === provider && m.id === id),
+  };
+  let dir: string;
+  let agentDir: string;
+  let prevAgentDir: string | undefined;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "pi-menu-models-"));
+    agentDir = mkdtempSync(join(tmpdir(), "pi-menu-models-agent-"));
+    prevAgentDir = process.env.PI_CODING_AGENT_DIR;
+    process.env.PI_CODING_AGENT_DIR = agentDir;
+    mkdirSync(join(dir, ".pi"), { recursive: true });
+  });
+
+  afterEach(() => {
+    setScopeModelsEnabled(false);
+    if (prevAgentDir == null) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = prevAgentDir;
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(agentDir, { recursive: true, force: true });
+  });
+
+  it("shows the resolved snapshot target for a shorthand pin", () => {
+    expect(modelLabelFor(cfg({ model: "sonnet 4.5" }), { cwd: dir, modelRegistry: registry }))
+      .toBe("sonnet 4.5 (→ anthropic/claude-sonnet-4-5-20251001)");
+  });
+
+  it("stays quiet when a full key resolves to itself", () => {
+    expect(modelLabelFor(cfg({ model: "anthropic/claude-sonnet-4-6" }), { cwd: dir, modelRegistry: registry }))
+      .toBe("claude-sonnet-4-6");
+  });
+
+  it("marks an unresolved pin as unavailable", () => {
+    expect(modelLabelFor(cfg({ model: "missing" }), { cwd: dir, modelRegistry: registry }))
+      .toBe("missing (unavailable, fallback: inherit)");
+  });
+
+  it("uses enabledModels to disambiguate a shorthand when scope is on", () => {
+    setScopeModelsEnabled(true);
+    writeFileSync(join(dir, ".pi", "settings.json"), JSON.stringify({ enabledModels: ["anthropic/claude-sonnet-4-6"] }));
+    expect(modelLabelFor(cfg({ model: "sonnet" }), { cwd: dir, modelRegistry: registry }))
+      .toBe("sonnet (→ anthropic/claude-sonnet-4-6)");
+  });
+});
 
 describe("/agents -> Agents", () => {
   it("opens the viewer through the shared function with the command ui and the record", async () => {

@@ -11,7 +11,7 @@ import {
 } from "../agents/ephemeral-agent.js";
 import { type GrantedCapability, resolveCapability } from "../config/capability-policy.js";
 import { describeModel } from "../config/model-resolver.js";
-import { resolvePinnedModel, resolveScopedModel } from "../config/model-scope.js";
+import { resolveScopedModel } from "../config/model-scope.js";
 import { getDefaultMaxTurns, normalizeMaxTurns } from "../config/runner-defaults.js";
 import { getOutputTranscriptDefault } from "../platform/output-file.js";
 import type { AgentConfig, AgentInvocation, AgentRecord, IsolationMode, SubagentType, ThinkingLevel } from "../types.js";
@@ -125,10 +125,7 @@ function resolveCallModel(
   invocation: Pick<ReturnType<typeof resolveAgentInvocationConfig>, "modelInput" | "modelFromParams">,
   agentLabel: string,
 ): { ok: false; message: string } | { ok: true; model: Model<Api> | undefined; replaced: string | undefined } {
-  if (params.resume) {
-    const pinned = resolvePinnedModel(invocation, ctx.modelRegistry);
-    return pinned.ok ? { ok: true, model: pinned.pinned ?? ctx.model, replaced: undefined } : pinned;
-  }
+  if (params.resume) return { ok: true, model: undefined, replaced: undefined };
   return resolveScopedModel(
     invocation,
     { sessionModel: ctx.model, cwd: ctx.cwd, modelRegistry: ctx.modelRegistry, notify: (message, level) => ctx.ui.notify(message, level) },
@@ -179,7 +176,7 @@ export function resolveAgentCall(
     modelName,
     modelId,
     thinking,
-    ...describeOverrides(resolvedConfig.overridden, model, ctx.modelRegistry),
+    ...describeOverrides(resolvedConfig.overridden, model, { cwd: ctx.cwd, modelRegistry: ctx.modelRegistry }),
     maxTurns: normalizeMaxTurns(resolvedConfig.maxTurns),
     isolated,
     inheritContext,

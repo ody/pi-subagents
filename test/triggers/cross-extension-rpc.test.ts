@@ -79,7 +79,7 @@ describe("cross-extension RPC", () => {
       events.emit("agent:rpc:ping", { requestId: "req-1" });
 
       await vi.waitFor(() => expect(reply).toHaveBeenCalled());
-      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: 4, features: ["agent_record_session_fields", "agent_failed_provider_stage", "agent_record_worktree"], policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
+      expect(reply).toHaveBeenCalledWith({ success: true, data: { version: 5, features: [], policy: expect.objectContaining({ ephemeralNesting: expect.any(Boolean) }) } });
     });
 
     it("documents the protocol version", () => {
@@ -605,6 +605,19 @@ describe("cross-extension RPC", () => {
       expect(manager.spawn).not.toHaveBeenCalled();
     });
 
+    it("rejects a date-only caller model", async () => {
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("agent:rpc:spawn:reply:req-date", reply);
+      events.emit("agent:rpc:spawn", {
+        requestId: "req-date", type: "general-purpose", prompt: "x",
+        options: { model: "20251001" },
+      });
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      expect(reply).toHaveBeenCalledWith(expect.objectContaining({ success: false, code: "model_not_found" }));
+      expect(manager.spawn).not.toHaveBeenCalled();
+    });
+
     it("treats an explicit null model as no override at all", async () => {
       registerRpcHandlers(deps);
       const reply = vi.fn();
@@ -619,6 +632,36 @@ describe("cross-extension RPC", () => {
       expect(manager.spawn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: undefined }),
       );
+    });
+
+    it("returns model_not_found when the model string is ambiguous", async () => {
+      ctx = {
+        session: true,
+        modelRegistry: {
+          find: () => null,
+          getAll: () => [
+            { id: "claude-sonnet-4-5", provider: "anthropic", name: "Claude Sonnet 4.5" },
+            { id: "claude-sonnet-4-6", provider: "anthropic", name: "Claude Sonnet 4.6" },
+          ],
+          getAvailable: () => [
+            { id: "claude-sonnet-4-5", provider: "anthropic", name: "Claude Sonnet 4.5" },
+            { id: "claude-sonnet-4-6", provider: "anthropic", name: "Claude Sonnet 4.6" },
+          ],
+        },
+      };
+      registerRpcHandlers(deps);
+      const reply = vi.fn();
+      events.on("agent:rpc:spawn:reply:req-m7", reply);
+      events.emit("agent:rpc:spawn", {
+        requestId: "req-m7", type: "general-purpose", prompt: "x",
+        options: { model: "sonnet" },
+      });
+
+      await vi.waitFor(() => expect(reply).toHaveBeenCalled());
+      const call = (reply as ReturnType<typeof vi.fn>).mock.calls[0][0];
+      expect(call.success).toBe(false);
+      expect(call.code).toBe("model_not_found");
+      expect(manager.spawn).not.toHaveBeenCalled();
     });
 
     it("errors when ctx has no modelRegistry but a string model is given", async () => {
@@ -692,12 +735,19 @@ describe("cross-extension RPC", () => {
     }
 
     it("refuses an out-of-scope string override, listing what is allowed", async () => {
-      const call = await spawn("req-sc1", "sonnet");
+      const call = await spawn("req-sc1", "anthropic/claude-sonnet-4");
       expect(call.success).toBe(false);
       expect(call.code).toBe("model_out_of_scope");
       expect(call.error).toMatch(/Model not in scope/);
-      expect(call.error).toContain('"sonnet"');
+      expect(call.error).toContain('"anthropic/claude-sonnet-4"');
       expect(call.error).toContain("  openai-codex/gpt-5.5");
+      expect(manager.spawn).not.toHaveBeenCalled();
+    });
+
+    it("refuses a unique shorthand outside scope after resolution", async () => {
+      const call = await spawn("req-sc1b", "sonnet");
+      expect(call.success).toBe(false);
+      expect(call.code).toBe("model_out_of_scope");
       expect(manager.spawn).not.toHaveBeenCalled();
     });
 
@@ -724,6 +774,14 @@ describe("cross-extension RPC", () => {
       expect(call).toEqual({ success: true, data: { id: "agent-42" } });
       expect(manager.spawn).toHaveBeenCalledWith(
         deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: BLOCKED }),
+      );
+    });
+
+    it("treats a blank caller model as absent", async () => {
+      const call = await spawn("req-sc5", "   ");
+      expect(call).toEqual({ success: true, data: { id: "agent-42" } });
+      expect(manager.spawn).toHaveBeenCalledWith(
+        deps.pi, ctx, "general-purpose", "x", expect.objectContaining({ model: undefined }),
       );
     });
   });

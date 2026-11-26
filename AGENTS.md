@@ -30,6 +30,7 @@ Each entry: the rule an agent must not break, and its ADR.
 - **Host tools.** Text the extension injects into a model's context, including results, notifications and the append-mode bridge, never names a host tool to use. [ADR 0020](docs/decisions/0020-host-facing-text-names-no-host-tools.md)
 - **Settings layers.** A menu change writes one key to the layer it shows. Never copy an inherited value into a file, and never write a file that fails to parse. [ADR 0021](docs/decisions/0021-settings-layers-and-menu.md)
 - **Model scope.** With `scopeModels` on, every spawn path runs on an in-scope model, and the session model is never checked. [ADR 0024](docs/decisions/0024-model-scope-at-every-spawn.md)
+- **Model resolution.** Use one resolver and preserve explicit versions and snapshot dates. Use `enabledModels` to disambiguate shorthand, never to redirect an exact match. [ADR 0053](docs/decisions/0053-model-string-resolution.md)
 - **Mentions.** Never treat input from another extension as a mention, and never fall back to a direct start after the clone's tool refuses a call. [ADR 0025](docs/decisions/0025-agent-mentions.md)
 - **Background default.** The nested `agent` tool never reads `backgroundByDefault`. [ADR 0026](docs/decisions/0026-background-by-default.md)
 - **Session persistence.** A nested agent never persists a session. [ADR 0027](docs/decisions/0027-remember-agents.md)
